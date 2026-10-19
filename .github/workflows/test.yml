@@ -1,0 +1,30 @@
+name: test
+# Test bộ điều phối trên Linux (Node 20 = bản Debian 13 trong ISO). Test đỏ hiện thành chú thích lỗi (annotation) trên lần chạy.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['orchestrator/**', '.github/workflows/test.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Cài thư viện
+        working-directory: orchestrator
+        run: npm ci
+      - name: Chạy test
+        working-directory: orchestrator
+        run: |
+          set +e
+          npm test 2>&1 | tee ../test.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" != "0" ]; then
+            fails=$(sed -n '/failing tests:/,$p' ../test.log | head -80 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+            summary=$(grep -E '^ℹ (tests|pass|fail|skipped)' ../test.log | tr '\n' ' ')
+            echo "::error title=Test loi tren Linux ($summary)::$fails"
+          fi
+          exit $code

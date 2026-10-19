@@ -1,0 +1,4 @@
+# Mọi file dùng dấu xuống dòng kiểu Linux (LF). Script shell có CRLF sẽ không chạy được trong ISO.
+* text=auto eol=lf
+*.png binary
+*.jpg binary

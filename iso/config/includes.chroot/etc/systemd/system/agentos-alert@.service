@@ -1,0 +1,8 @@
+[Unit]
+Description=AgentOS - cảnh báo Telegram khi %i lỗi liên tục
+
+[Service]
+Type=oneshot
+User=agentos
+EnvironmentFile=/etc/agentos/orchestrator.env
+ExecStart=/usr/bin/node /opt/agentos/orchestrator/scripts/alert.js "⛔ AgentOS: dịch vụ %i lỗi liên tục và systemd đã bỏ cuộc. Máy vẫn bật nhưng KHÔNG nhận việc. Cần người kiểm tra (journalctl -u %i)."

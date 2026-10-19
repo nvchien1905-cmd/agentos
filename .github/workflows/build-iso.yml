@@ -1,0 +1,47 @@
+name: build-iso
+on:
+  workflow_dispatch:
+  push:
+    paths: ['iso/**', 'orchestrator/**', '.github/workflows/build-iso.yml']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cài live-build
+        run: |
+          apt-get update
+          apt-get install -y live-build debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools ca-certificates
+      - name: Chép bộ điều phối vào ISO
+        run: |
+          mkdir -p iso/config/includes.chroot/opt/agentos
+          cp -r orchestrator iso/config/includes.chroot/opt/agentos/orchestrator
+          rm -rf iso/config/includes.chroot/opt/agentos/orchestrator/node_modules iso/config/includes.chroot/opt/agentos/orchestrator/data iso/config/includes.chroot/opt/agentos/orchestrator/work iso/config/includes.chroot/opt/agentos/orchestrator/.env
+          cp orchestrator/tools.linux.json iso/config/includes.chroot/opt/agentos/orchestrator/tools.json
+      - name: Đặt quyền thực thi (Git trên Windows không giữ bit thực thi)
+        run: |
+          chmod +x iso/auto/config
+          chmod +x iso/config/hooks/normal/*.hook.chroot
+          chmod +x iso/config/includes.chroot/usr/local/sbin/agentos-firstboot
+      - name: Chạy test bộ điều phối (trên Linux; test lỗi không chặn build ISO, xem log)
+        continue-on-error: true
+        working-directory: orchestrator
+        run: |
+          apt-get install -y nodejs npm python3 build-essential
+          npm ci
+          npm test
+      - name: Build ISO
+        working-directory: iso
+        run: |
+          lb clean --purge || true
+          lb config
+          lb build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentos-iso
+          path: iso/*.iso
+          retention-days: 14

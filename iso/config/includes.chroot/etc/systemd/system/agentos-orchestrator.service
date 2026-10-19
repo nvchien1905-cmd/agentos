@@ -1,0 +1,46 @@
+[Unit]
+Description=AgentOS - bộ điều phối (Telegram -> AI)
+After=network-online.target agentos-xvfb.service
+Wants=network-online.target
+Requires=agentos-xvfb.service
+# Chỉ chạy khi đã được cấu hình (trình hướng dẫn lần đầu / quản trị viên tạo file này)
+ConditionPathExists=/etc/agentos/orchestrator.env
+# Lỗi liên tục tới mức systemd bỏ cuộc -> nhắn Telegram cho quản trị viên
+OnFailure=agentos-alert@%n.service
+StartLimitIntervalSec=600
+StartLimitBurst=15
+
+[Service]
+# Type=notify: bộ điều phối tự báo READY và nhịp tim (WATCHDOG=1) qua systemd-notify; im quá WatchdogSec -> systemd khởi động lại
+Type=notify
+NotifyAccess=all
+WatchdogSec=90
+User=agentos
+WorkingDirectory=/opt/agentos/orchestrator
+EnvironmentFile=/etc/agentos/orchestrator.env
+Environment=HOME=/var/lib/agentos DISPLAY=:99
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+# Dừng/khởi động lại là giết CẢ NHÓM (claude, trình duyệt, máy chủ MCP...), không để tiến trình mồ côi
+KillMode=control-group
+
+# Giới hạn tài nguyên: AI/trình duyệt chạy lỗi không kéo sập cả máy
+MemoryHigh=5G
+MemoryMax=6G
+TasksMax=4096
+LimitNOFILE=65536
+
+# Gia cố. KHÔNG đặt RestrictNamespaces/PrivateDevices: bubblewrap (cô lập AI) và Chromium cần user namespace.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/agentos
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

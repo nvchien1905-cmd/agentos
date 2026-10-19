@@ -1,0 +1,55 @@
+# Hệ thống cơ bản
+live-boot
+live-config
+systemd-sysv
+sudo
+curl
+ca-certificates
+git
+openssh-server
+network-manager
+network-manager-gnome
+locales
+
+# Trình cài đặt (Calamares) + cấu hình mặc định kiểu Debian
+calamares
+calamares-settings-debian
+
+# Giao diện tối thiểu (Calamares cần môi trường đồ họa trong chế độ live)
+xorg
+lightdm
+xfce4
+xfce4-terminal
+chromium
+
+# Màn hình ảo để AI điều khiển ứng dụng (+ công cụ cho điều khiển máy tính ở GĐ 3b)
+xvfb
+x11vnc
+xdotool
+scrot
+fonts-noto-core
+fonts-liberation
+
+# Biên dịch module gốc của Node (better-sqlite3) nếu không có bản dựng sẵn
+build-essential
+
+# Môi trường chạy bộ điều phối
+nodejs
+npm
+python3
+python3-pip
+
+# Cô lập tiến trình AI (sandbox không cần quyền root)
+bubblewrap
+
+# Ổ đĩa, snapshot quay lui, mã hóa
+btrfs-progs
+snapper
+cryptsetup
+unattended-upgrades
+
+# Phần cứng: Wi-Fi/Bluetooth/GPU thường gặp trên mini PC
+firmware-linux
+firmware-iwlwifi
+firmware-realtek
+firmware-misc-nonfree

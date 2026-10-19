@@ -1,0 +1,21 @@
+#!/bin/sh
+# Cấu hình live-build cho AgentOS (Debian 13 "trixie", amd64, ISO lai UEFI + BIOS).
+# Chạy trong thư mục iso/:  lb config   (script này được lb gọi tự động)
+set -e
+
+lb config noauto \
+	--mode debian \
+	--distribution trixie \
+	--architectures amd64 \
+	--archive-areas "main contrib non-free non-free-firmware" \
+	--binary-images iso-hybrid \
+	--bootloaders "grub-efi,syslinux" \
+	--debian-installer none \
+	--memtest none \
+	--apt-indices false \
+	--firmware-chroot true \
+	--iso-application "AgentOS" \
+	--iso-publisher "AgentOS" \
+	--iso-volume "AGENTOS" \
+	--bootappend-live "boot=live components quiet splash locales=vi_VN.UTF-8 keyboard-layouts=us timezone=Asia/Ho_Chi_Minh" \
+	"${@}"

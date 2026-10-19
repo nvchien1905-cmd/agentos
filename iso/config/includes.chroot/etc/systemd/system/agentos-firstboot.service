@@ -1,0 +1,13 @@
+[Unit]
+Description=AgentOS - cài đặt lần đầu
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/agentos/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentos-firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

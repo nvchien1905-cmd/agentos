@@ -1,0 +1,14 @@
+[Unit]
+Description=AgentOS - xem màn hình ảo bằng VNC (chỉ nghe ở 127.0.0.1, dùng qua đường hầm SSH)
+After=agentos-xvfb.service
+Requires=agentos-xvfb.service
+
+[Service]
+User=agentos
+ExecStart=/usr/bin/x11vnc -display :99 -localhost -nopw -forever -shared -rfbport 5900
+Restart=on-failure
+RestartSec=3
+
+[Install]
+# KHÔNG bật mặc định (bật khi cần xem: systemctl enable --now agentos-vnc)
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+{
+  "name": "agentos-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentOS GĐ1: bot Telegram -> hàng đợi (SQLite) -> claude -p",
+  "main": "src/index.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.0.0"
+  }
+}

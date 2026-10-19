@@ -1,0 +1,22 @@
+#!/bin/sh
+# Cài bộ điều phối + trình duyệt tự động vào ISO. Mã nguồn được CI chép vào /opt/agentos/orchestrator trước khi build.
+# KHÔNG cài Claude Code / Codex ở đây: chờ kết luận pháp lý GĐ 0 (xem docs/gd0-phap-ly.md), tải lúc cài/khởi động đầu.
+set -e
+
+id agentos >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/agentos --shell /bin/bash agentos
+mkdir -p /var/lib/agentos/work /var/lib/agentos/data /etc/agentos
+chown -R agentos:agentos /var/lib/agentos
+
+if [ -d /opt/agentos/orchestrator ]; then
+	cd /opt/agentos/orchestrator
+	npm ci --omit=dev
+fi
+
+# Máy chủ MCP trình duyệt: cài cố định phiên bản (không tải lúc chạy)
+mkdir -p /opt/agentos/tools
+cd /opt/agentos/tools
+npm init -y >/dev/null
+npm install --omit=dev @playwright/mcp@0.0.83
+
+# Chỉ khởi động bộ điều phối khi đã có /etc/agentos/orchestrator.env
+systemctl enable agentos-xvfb.service agentos-orchestrator.service || true

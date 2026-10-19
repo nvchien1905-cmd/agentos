@@ -1,0 +1,10 @@
+#!/bin/sh
+# Chạy một lần ở lần khởi động đầu tiên sau khi cài.
+# TODO (GĐ 6b): mở trình hướng dẫn web: Wi-Fi, đăng nhập Claude/Codex bằng CLI chính thức,
+# token bot Telegram, ID Telegram được phép ra lệnh. KHÔNG đọc/lưu token đăng nhập của hãng.
+set -e
+MARK=/var/lib/agentos/firstboot.done
+[ -f "$MARK" ] && exit 0
+mkdir -p /var/lib/agentos
+logger -t agentos-firstboot "chưa có trình hướng dẫn (placeholder)"
+touch "$MARK"

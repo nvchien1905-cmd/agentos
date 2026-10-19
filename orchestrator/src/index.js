@@ -1,0 +1,233 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const config = require('./config');
+config.loadEnvFile(path.join(__dirname, '..', '.env'));
+
+const { openDb } = require('./db');
+const { createTelegram } = require('./telegram');
+const { startClaude } = require('./engines/claude');
+const { startCodex } = require('./engines/codex');
+const { createWorker } = require('./worker');
+const { createBot } = require('./bot');
+const { loadTools } = require('./tools');
+const { createOutbox } = require('./outbox');
+const { createApprovals } = require('./approvals');
+const { createGate } = require('./gate');
+const { createHealth } = require('./health');
+const { createSandbox } = require('./sandbox');
+const maint = require('./maintenance');
+
+const log = (m) => console.log(new Date().toISOString() + ' ' + m);
+const fwd = (p) => String(p).replace(/\\/g, '/');
+const quote = (p) => '"' + fwd(p) + '"';
+
+async function main() {
+  const cfg = config.load();
+  const errs = config.validate(cfg);
+  if (errs.length) { errs.forEach((e) => console.error('LỖI CẤU HÌNH: ' + e)); process.exit(1); }
+
+  fs.mkdirSync(cfg.workdir, { recursive: true });
+  const dataDir = path.dirname(cfg.dbPath);
+  const backupDir = path.join(dataDir, 'backups');
+  const notices = [];                                    // gửi cho quản trị viên lúc khởi động
+
+  // Cơ sở dữ liệu hỏng (mất điện giữa chừng, đĩa lỗi): giữ file hỏng để điều tra, khôi phục bản sao lưu gần nhất còn tốt, không thì tạo mới.
+  const integrity = maint.checkIntegrity(cfg.dbPath);
+  if (!integrity.ok) {
+    const moved = maint.quarantine(cfg.dbPath);
+    const restored = maint.restoreLatestBackup(cfg.dbPath, backupDir);
+    log('CƠ SỞ DỮ LIỆU HỎNG (' + integrity.detail + '). Đã giữ ' + moved + (restored ? ', khôi phục từ ' + restored : ', tạo mới'));
+    notices.push('⚠️ Cơ sở dữ liệu bị hỏng (' + String(integrity.detail).slice(0, 80) + '). ' + (restored ? 'Đã khôi phục từ bản sao lưu ' + restored + ' (có thể mất việc gần đây).' : 'Không có bản sao lưu dùng được nên đã tạo mới.'));
+  }
+  const db = openDb(cfg.dbPath);
+  const tg = createTelegram(cfg.token);
+
+  const me = await tg.getMe();
+  log('Bot @' + me.username + ' sẵn sàng. Người được phép: ' + [...cfg.allowedUserIds].join(',') + ' · admin: ' + [...cfg.adminUserIds].join(',') + ' · engine: ' + cfg.engineOrder.join(' > '));
+  if (cfg.codexSandbox !== 'read-only') log('CẢNH BÁO: CODEX_SANDBOX=' + cfg.codexSandbox + ' - Codex KHÔNG đi qua cổng duyệt, có thể ghi file không hỏi.');
+
+  // Công cụ: máy chủ MCP (trình duyệt...) và các bộ công cụ chọn bằng lệnh /<tên>.
+  const outDir = path.join(cfg.workdir, 'out');
+  fs.mkdirSync(outDir, { recursive: true });
+  const tools = loadTools({
+    file: cfg.toolsFile,
+    fallbackAllow: cfg.allowedTools,
+    vars: { DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath },
+  });
+  if (tools.errors.length) { tools.errors.forEach((e) => console.error('LỖI CẤU HÌNH CÔNG CỤ: ' + e)); process.exit(1); }
+  const jobDir = path.join(dataDir, 'jobs');
+  fs.rmSync(jobDir, { recursive: true, force: true });       // file cấu hình tạm của lần chạy trước (có token cổng)
+  fs.mkdirSync(jobDir, { recursive: true, mode: 0o700 });
+
+  // Cô lập tiến trình AI (Linux + bubblewrap). Hồ sơ trình duyệt phải ghi được; dữ liệu bộ điều phối và /etc/agentos bị che.
+  const browserProfile = path.join(dataDir, 'browser-profile');
+  fs.mkdirSync(browserProfile, { recursive: true });
+  const sandbox = createSandbox({
+    mode: cfg.sandboxMode, log,
+    paths: { home: process.env.HOME || require('os').homedir(), workdir: cfg.workdir, dataDir, jobDir, rw: [browserProfile], hide: [...cfg.sandboxHide, path.join(__dirname, '..', '.env')] },
+  });
+  log('Cô lập tiến trình AI: ' + cfg.sandboxMode + ' · ' + (sandbox.enabled ? 'ĐANG BẬT' : 'KHÔNG bật (' + sandbox.info.reason + ')'));
+  if (cfg.sandboxMode === 'auto' && !sandbox.enabled) notices.push('⚠️ AI đang chạy KHÔNG có cô lập (' + sandbox.info.reason + ').');
+  if (cfg.sandboxMode === 'bwrap' && !sandbox.enabled) notices.push('⛔ SANDBOX=bwrap nhưng không dùng được (' + sandbox.info.reason + '): mọi việc sẽ báo lỗi cho tới khi sửa.');
+  log('Bộ công cụ: ' + Object.keys(tools.profiles).map((n) => n + (tools.profiles[n].mcp.length ? '(' + tools.profiles[n].mcp.join('+') + ')' : '') + (tools.profiles[n].adminOnly ? '[admin]' : '')).join(', ') + ' · mặc định: ' + tools.defaultName);
+
+  // Cổng duyệt: mọi lần AI dùng công cụ đều hỏi cổng; chính sách quyết định tự cho phép / hỏi qua Telegram / cấm.
+  const isAdmin = (uid) => cfg.adminUserIds.has(String(uid));
+  const approvals = createApprovals({
+    db, log, isAdmin, timeoutMs: cfg.approvalTimeoutMs,
+    ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
+    edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
+  });
+  const gate = createGate({ db, approvals, workdir: cfg.workdir, log });
+  const gatePort = await gate.listen(0);
+  log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
+
+  // File cấu hình riêng cho từng lần chạy: máy chủ MCP của bộ công cụ + cổng duyệt, và hook PreToolUse.
+  function gateFiles(job, profile) {
+    const env = { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(job.id) };
+    const mcpServers = Object.assign({}, tools.mcpServersFor(profile), {
+      agentos_gate: { command: process.execPath, args: [path.join(__dirname, 'gate-mcp.js')], env },
+    });
+    const waitSec = Math.ceil(cfg.approvalTimeoutMs / 1000) + 30;
+    const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
+    const settings = path.join(jobDir, 'job-' + job.id + '.settings.json');
+    fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers }), { mode: 0o600 });
+    fs.writeFileSync(settings, JSON.stringify({
+      hooks: { PreToolUse: [{ matcher: '.*', hooks: [{ type: 'command', timeout: waitSec,
+        command: quote(process.execPath) + ' ' + quote(path.join(__dirname, 'gate-hook.js')) }] }] },
+    }), { mode: 0o600 });
+    return { mcpConfig, settings, env: Object.assign({ AGENTOS_GATE_WAIT_SEC: String(waitSec) }, env) };
+  }
+
+  const factories = {
+    claude: ({ job, prompt, resumeId }) => {
+      const p = tools.profile(job.profile);
+      gate.begin(job, p);
+      let files;
+      try { files = gateFiles(job, p); } catch (e) { gate.end(job.id); throw e; }
+      const h = startClaude({
+        bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cfg.workdir,
+        prompt, resumeId, allowedTools: tools.allowFor(p).join(','),
+        mcpConfig: files.mcpConfig, settings: files.settings, env: files.env,
+        permissionPromptTool: 'mcp__agentos_gate__approve',   // dự phòng: công cụ nào hook bỏ sót vẫn bị cổng từ chối
+        appendSystemPrompt: p.hint, timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap,
+      });
+      const cleanup = () => { gate.end(job.id); for (const f of [files.mcpConfig, files.settings]) fs.rmSync(f, { force: true }); };
+      return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
+    },
+    // Codex KHÔNG đi qua cổng duyệt -> chỉ chạy bộ công cụ cho phép (engines) và sandbox chỉ đọc.
+    codex: ({ job, prompt, resumeId }) => {
+      const p = tools.profile(job.profile);
+      return startCodex({
+        bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir,
+        prompt: p.hint ? '[' + p.hint + ']\n\n' + prompt : prompt, resumeId,
+        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap,
+      });
+    },
+  };
+  const engines = {};
+  for (const e of cfg.engineOrder) engines[e] = { start: factories[e] };
+
+  const notify = (chatId, text) => tg.sendMessage(chatId, text);
+  const worker = createWorker({
+    db, log, notify, engines, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
+    outbox: createOutbox(outDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
+    engineFilter: (job) => tools.enginesFor(job.profile),
+    retryDelaysMs: cfg.retryDelaysMs,
+    // Ổ đĩa gần đầy thì không nhận việc (Chromium/AI ghi nhiều file tạm; đầy đĩa làm hỏng cả cơ sở dữ liệu).
+    preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB, cần ít nhất ' + cfg.minFreeMb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
+  });
+  const bot = createBot({ db, worker, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals });
+
+  // Việc đang chạy dở trước khi tắt máy: báo, không tự chạy lại.
+  const interrupted = db.markInterrupted();
+  for (const j of interrupted) {
+    log('việc #' + j.id + ' bị ngắt giữa chừng');
+    notify(j.chat_id, 'Việc #' + j.id + ' bị ngắt vì hệ thống khởi động lại. Gửi lại nếu cần làm tiếp.').catch(() => {});
+  }
+  worker.wake();
+  // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
+  const tick = setInterval(() => worker.wake(), 30000);
+
+  // Nhịp tim cho systemd watchdog + file heartbeat (scripts/healthcheck.js).
+  const health = createHealth({
+    db, log, file: path.join(dataDir, 'heartbeat.json'),
+    stats: () => ({ running: worker.currentJobId(), queued: db.queuedCount() }),
+  });
+  health.start();
+
+  // Bảo trì định kỳ: sao lưu hằng ngày, xóa dữ liệu/file cũ.
+  const DAYS = maint.DAY;
+  function maintenance() {
+    try {
+      const made = maint.backup(db, backupDir, { keep: cfg.backupKeep });
+      const pr = db.pruneOld(Date.now() - cfg.jobRetentionDays * DAYS, Date.now() - cfg.auditRetentionDays * DAYS);
+      const files = maint.pruneFiles(outDir, cfg.outRetentionDays * DAYS);
+      if (made || pr.jobs || pr.audit || files) log('bảo trì: sao lưu ' + (made || '(đã có hôm nay)') + ', xóa ' + pr.jobs + ' việc cũ, ' + pr.audit + ' dòng nhật ký, ' + files + ' file kết quả');
+    } catch (e) { log('bảo trì lỗi: ' + e.message); }
+  }
+  const maintFirst = setTimeout(maintenance, 60000);
+  const maintTimer = setInterval(maintenance, 6 * 3600 * 1000);
+
+  // Thông báo cho quản trị viên mỗi lần khởi động: máy có thể vừa mất điện/khởi động lại khi không ai ở đó.
+  if (cfg.bootNotice) {
+    const free = maint.diskFreeMb(cfg.workdir);
+    const lines = ['✅ AgentOS đã khởi động (' + new Date().toLocaleString('vi-VN') + ').'];
+    if (interrupted.length) lines.push('Việc bị ngắt: ' + interrupted.map((j) => '#' + j.id).join(', ') + '.');
+    if (free !== Infinity && free < cfg.minFreeMb * 3) lines.push('⚠️ Ổ đĩa còn ' + free + ' MB.');
+    for (const a of cfg.adminUserIds) notify(a, lines.concat(notices).join('\n')).catch((e) => log('không gửi được thông báo khởi động: ' + e.message));
+  } else if (notices.length) {
+    for (const a of cfg.adminUserIds) notify(a, notices.join('\n')).catch(() => {});
+  }
+
+  const ac = new AbortController();
+  let stopping = false;
+  const shutdown = async (sig) => {
+    if (stopping) return; stopping = true;
+    log('nhận ' + sig + ', đang dừng...');
+    clearInterval(tick); clearInterval(maintTimer); clearTimeout(maintFirst);
+    health.stop();
+    ac.abort();
+    await worker.stop();
+    await gate.close();
+    db.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  let offset = Number(db.kvGet('tg_offset')) || 0;
+  let backoff = 1000;
+  health.ready();                                  // READY=1 cho systemd: từ đây watchdog bắt đầu có nghĩa
+  while (!stopping) {
+    health.tickLoop();
+    try {
+      const updates = await tg.getUpdates(offset, 30, ac.signal);
+      health.markPoll();
+      backoff = 1000;
+      for (const u of updates) {
+        offset = u.update_id + 1;
+        db.kvSet('tg_offset', offset);
+        try {
+          if (u.callback_query) {
+            // Không chờ: phải trả lời được nút bấm khác trong lúc một việc đang chờ duyệt.
+            const cq = u.callback_query;
+            bot.handleCallback(cq).then((text) => tg.answerCallback(cq.id, text || '')).catch((e) => log('xử lý nút bấm lỗi: ' + e.message));
+          } else {
+            const reply = bot.handle(u.message);
+            if (reply) await tg.sendMessage(u.message.chat.id, reply);
+          }
+        } catch (e) { log('xử lý tin lỗi: ' + e.message); }
+      }
+    } catch (e) {
+      if (stopping) break;
+      const wait = e.retryAfter ? e.retryAfter * 1000 : backoff;
+      log('lỗi Telegram: ' + e.message + ' (thử lại sau ' + Math.round(wait / 1000) + 's)');
+      await new Promise((r) => setTimeout(r, wait));
+      backoff = Math.min(backoff * 2, 60000);
+    }
+  }
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

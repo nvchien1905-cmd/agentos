@@ -1,0 +1,27 @@
+# Bí mật và dữ liệu chạy thật: KHÔNG bao giờ đưa lên Git
+.env
+*.env
+!*.env.example
+orchestrator/data/
+orchestrator/work/
+*.db
+*.db-wal
+*.db-shm
+*.corrupt-*
+
+# Thư viện (cài lại bằng npm ci)
+node_modules/
+
+# Sản phẩm build của live-build
+*.iso
+iso/binary/
+iso/chroot/
+iso/cache/
+iso/.build/
+iso/live-image-*
+iso/*.log
+iso/config/binary
+iso/config/bootstrap
+iso/config/chroot
+iso/config/common
+iso/config/source

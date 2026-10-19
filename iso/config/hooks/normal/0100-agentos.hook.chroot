@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+chmod +x /usr/local/sbin/agentos-firstboot
+systemctl enable agentos-firstboot.service || true
+# Treo máy 24/7: không cho ngủ/hibernate
+systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target || true

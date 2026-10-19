@@ -1,0 +1,90 @@
+'use strict';
+const fs = require('fs');
+
+const MAX_LEN = 4000; // giới hạn Telegram là 4096
+
+function splitMessage(text, max) {
+  max = max || MAX_LEN;
+  text = String(text == null ? '' : text);
+  if (!text) return [''];
+  const parts = [];
+  while (text.length > max) {
+    let cut = text.lastIndexOf('\n', max);
+    if (cut < max * 0.5) cut = max; // không có xuống dòng hợp lý -> cắt cứng
+    parts.push(text.slice(0, cut));
+    text = text.slice(cut).replace(/^\n/, '');
+  }
+  parts.push(text);
+  return parts;
+}
+
+function createTelegram(token, fetchImpl) {
+  const f = fetchImpl || fetch;
+  const base = 'https://api.telegram.org/bot' + token + '/';
+
+  async function parse(r, method) {
+    let j;
+    try { j = await r.json(); } catch (e) { throw new Error('Telegram trả dữ liệu không đọc được (HTTP ' + r.status + ')'); }
+    if (!j.ok) {
+      const err = new Error('Telegram ' + method + ': ' + (j.description || r.status));
+      err.code = j.error_code;
+      err.retryAfter = j.parameters && j.parameters.retry_after;
+      throw err;
+    }
+    return j.result;
+  }
+
+  async function call(method, params, signal) {
+    const r = await f(base + method, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(params || {}),
+      signal,
+    });
+    return parse(r, method);
+  }
+
+  // Gửi file: { path, name, kind: 'photo' | 'document' }. Ảnh bị Telegram từ chối (kích thước lạ) -> gửi lại dạng tài liệu.
+  async function upload(chatId, file, asPhoto) {
+    const method = asPhoto ? 'sendPhoto' : 'sendDocument';
+    const form = new FormData();
+    form.set('chat_id', String(chatId));
+    form.set(asPhoto ? 'photo' : 'document', new Blob([fs.readFileSync(file.path)]), file.name);
+    return parse(await f(base + method, { method: 'POST', body: form }), method);
+  }
+
+  return {
+    call,
+    async sendFile(chatId, file) {
+      if (file.kind === 'photo') {
+        try { return await upload(chatId, file, true); } catch (e) { if (e.retryAfter) throw e; }
+      }
+      return upload(chatId, file, false);
+    },
+    getMe: () => call('getMe'),
+    // Có giới hạn thời gian phía máy mình (timeout của Telegram + 15 giây): kết nối treo ngầm không làm đứng vòng nhận tin.
+    getUpdates: (offset, timeoutSec, signal) => {
+      const guard = AbortSignal.timeout((timeoutSec + 15) * 1000);
+      return call('getUpdates', { offset, timeout: timeoutSec, allowed_updates: ['message', 'callback_query'] }, signal ? AbortSignal.any([signal, guard]) : guard);
+    },
+    // Tin có nút bấm. buttons: [[{ text, data }]]. Trả message_id để sửa lại sau khi người dùng quyết.
+    async sendButtons(chatId, text, buttons) {
+      const m = await call('sendMessage', {
+        chat_id: chatId, text, disable_web_page_preview: true,
+        reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => ({ text: b.text, callback_data: b.data }))) },
+      });
+      return m.message_id;
+    },
+    // Sửa nội dung tin và gỡ nút.
+    editMessage: (chatId, messageId, text) =>
+      call('editMessageText', { chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: [] } }),
+    answerCallback: (id, text) => call('answerCallbackQuery', { callback_query_id: id, text: text || '' }),
+    async sendMessage(chatId, text) {
+      for (const part of splitMessage(text)) {
+        await call('sendMessage', { chat_id: chatId, text: part || '(trống)', disable_web_page_preview: true });
+      }
+    },
+  };
+}
+
+module.exports = { createTelegram, splitMessage };

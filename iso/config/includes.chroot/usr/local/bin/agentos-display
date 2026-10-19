@@ -1,0 +1,41 @@
+#!/bin/sh
+# AgentOS: xử lý nhiều màn hình. Máy có thể báo "đã nối" màn hình mà người dùng không nhìn thấy (màn hình trong của laptop,
+# cổng HDMI/DP ảo...), khiến thanh công cụ và cửa sổ nằm ở màn hình vô hình. Cách xử lý: mọi màn hình đang nối được
+# NHÂN BẢN cùng một hình (độ phân giải chung cao nhất) nên màn hình nào đang nhìn cũng thấy đủ. Không có độ phân giải chung
+# thì chỉ dùng màn hình ngoài (HDMI/DP...) và tắt các màn hình còn lại. Chạy ở lightdm (trước đăng nhập) và khi vào phiên.
+# Cần AGENTOS_XRANDR=<lệnh> chỉ để thử nghiệm.
+XR=${AGENTOS_XRANDR:-xrandr}
+INFO=$($XR --query 2>/dev/null) || exit 0
+R=$(printf '%s\n' "$INFO" | awk '
+  /^[^ \t]/ { conn = ($2 == "connected"); if (conn) { n++; names[n] = $1 } next }
+  conn && /^[ \t]+[0-9]+x[0-9]+/ { cnt[$1]++ }
+  END {
+    best = ""; ba = 0
+    for (m in cnt) if (cnt[m] == n) { split(m, a, "x"); ar = a[1] * a[2]; if (ar > ba) { ba = ar; best = m } }
+    printf "%d %s", n, (best == "" ? "-" : best)
+    for (i = 1; i <= n; i++) printf " %s", names[i]
+    print ""
+  }')
+set -- $R
+N=$1; BEST=$2; shift 2
+[ "$N" -ge 1 ] 2>/dev/null || exit 0
+if [ "$N" -eq 1 ]; then $XR --output "$1" --auto --primary >/dev/null 2>&1; exit 0; fi
+
+# Màn hình chính = màn hình ngoài đầu tiên (không phải màn hình trong eDP/LVDS/DSI), không có thì cái đầu tiên
+PRIMARY=$1
+for o in "$@"; do
+  case "$o" in eDP*|LVDS*|DSI*) ;; *) PRIMARY=$o; break ;; esac
+done
+
+if [ "$BEST" != "-" ]; then
+  for o in "$@"; do
+    if [ "$o" = "$PRIMARY" ]; then $XR --output "$o" --mode "$BEST" --pos 0x0 --rotate normal --primary >/dev/null 2>&1
+    else $XR --output "$o" --mode "$BEST" --pos 0x0 --rotate normal >/dev/null 2>&1; fi
+  done
+else
+  for o in "$@"; do
+    if [ "$o" = "$PRIMARY" ]; then $XR --output "$o" --auto --pos 0x0 --primary >/dev/null 2>&1
+    else $XR --output "$o" --off >/dev/null 2>&1; fi
+  done
+fi
+exit 0

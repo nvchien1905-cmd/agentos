@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AgentOS - Man hinh
+Comment=Nhan ban cac man hinh dang noi de khong bi mat hinh
+Exec=/usr/local/bin/agentos-display
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Phase=Initialization

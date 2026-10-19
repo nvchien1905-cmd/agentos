@@ -26,6 +26,8 @@ agentos/
 - [x] GĐ 3: bộ công cụ MCP + Playwright (đã thử thật với Claude), hộp thư ra gửi file; dịch vụ Xvfb/systemd cho ISO viết nhưng chưa build
 - [x] GĐ 4: cổng duyệt (hook PreToolUse) + chính sách + phân quyền + chống prompt injection — 48 test, thử thật với Claude; xem docs/an-toan.md. Chưa thử nút bấm Telegram thật
 - [x] GĐ 5: độ bền — giết cả cây tiến trình, tự thử lại lỗi tạm thời, watchdog + heartbeat, khôi phục/sao lưu/dọn dữ liệu, chặn đầy ổ, thông báo khởi động, cô lập AI bằng bubblewrap, unit systemd/chống ngủ cho ISO; 67 test (1 bỏ qua trên Windows). Phần Linux/systemd/bwrap CHƯA chạy thử; xem docs/do-ben.md
+- [x] GĐ 6b (phần lớn): trình hướng dẫn lần đầu `wizard/` (8 test, đã thử thật trong máy ảo: tự hiện sau khi cài, cài Claude Code bằng npm, mở cửa sổ đăng nhập), Calamares mang thương hiệu AgentOS (bỏ trang bàn phím, mặc định xóa đĩa, múi giờ Việt Nam), SSH tắt mặc định. Chưa thử: bước Telegram/đăng nhập AI với tài khoản thật. Xem wizard/README.md
+- [ ] Cài đặt bằng điện thoại (hotspot + QR + mã ghép đôi): đã đề xuất, chờ user quyết đợt 1
 - [ ] GĐ 3b: điều khiển ứng dụng đồ họa (xdotool/scrot) — cần Linux để làm và kiểm
 - [ ] Calamares tùy biến (thương hiệu, mã hóa ổ đĩa)
 - [ ] Kho gói apt riêng + cập nhật tự động + snapshot quay lui

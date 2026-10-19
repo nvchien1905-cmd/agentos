@@ -2,7 +2,7 @@ name: build-iso
 on:
   workflow_dispatch:
   push:
-    paths: ['iso/**', 'orchestrator/**', '.github/workflows/build-iso.yml']
+    paths: ['iso/**', 'orchestrator/**', 'wizard/**', '.github/workflows/build-iso.yml']
 
 jobs:
   build:
@@ -22,6 +22,7 @@ jobs:
           cp -r orchestrator iso/config/includes.chroot/opt/agentos/orchestrator
           rm -rf iso/config/includes.chroot/opt/agentos/orchestrator/node_modules iso/config/includes.chroot/opt/agentos/orchestrator/data iso/config/includes.chroot/opt/agentos/orchestrator/work iso/config/includes.chroot/opt/agentos/orchestrator/.env
           cp orchestrator/tools.linux.json iso/config/includes.chroot/opt/agentos/orchestrator/tools.json
+          cp -r wizard iso/config/includes.chroot/opt/agentos/wizard
       - name: Đặt quyền thực thi (Git trên Windows không giữ bit thực thi)
         run: |
           chmod +x iso/auto/config

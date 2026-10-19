@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240">
+  <rect width="480" height="240" rx="20" fill="#0b3d5c"/>
+  <g transform="translate(40 52) scale(0.55)">
+    <rect x="16" y="16" width="224" height="224" rx="48" fill="#0b5c8f"/>
+    <circle cx="128" cy="104" r="40" fill="none" stroke="#ffffff" stroke-width="14"/>
+    <circle cx="128" cy="104" r="12" fill="#ffffff"/>
+    <path d="M64 176 H192" stroke="#ffffff" stroke-width="14" stroke-linecap="round"/>
+    <path d="M88 204 H168" stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.6"/>
+  </g>
+  <text x="196" y="118" font-family="DejaVu Sans, sans-serif" font-size="44" font-weight="bold" fill="#ffffff">AgentOS</text>
+  <text x="196" y="152" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#a9c9df">Nhắn Telegram, máy làm việc</text>
+</svg>

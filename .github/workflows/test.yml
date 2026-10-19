@@ -3,7 +3,7 @@ name: test
 on:
   workflow_dispatch:
   push:
-    paths: ['orchestrator/**', '.github/workflows/test.yml']
+    paths: ['orchestrator/**', 'wizard/**', '.github/workflows/test.yml']
 
 jobs:
   test:
@@ -16,6 +16,9 @@ jobs:
       - name: Cài thư viện
         working-directory: orchestrator
         run: npm ci
+      - name: Chạy test trình hướng dẫn lần đầu
+        working-directory: wizard
+        run: node --test test/*.test.js
       - name: Chạy test
         working-directory: orchestrator
         run: |

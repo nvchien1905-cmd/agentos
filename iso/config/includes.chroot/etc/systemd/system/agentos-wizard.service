@@ -1,0 +1,17 @@
+[Unit]
+Description=AgentOS - trình hướng dẫn cài đặt lần đầu (chỉ cục bộ 127.0.0.1)
+After=network.target NetworkManager.service
+# Không chạy ở bản live (đang cài đặt) và không chạy khi máy đã được cấu hình
+ConditionKernelCommandLine=!boot=live
+ConditionPathExists=!/etc/agentos/orchestrator.env
+
+[Service]
+# Chạy bằng root: ghi /etc/agentos/orchestrator.env, nối Wi-Fi, bật dịch vụ. Tự tắt và tự vô hiệu hóa khi hoàn tất.
+ExecStart=/usr/bin/node /opt/agentos/wizard/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

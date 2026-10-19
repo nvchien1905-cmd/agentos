@@ -1,0 +1,20 @@
+#!/bin/sh
+# Cấu hình trình cài đặt Calamares cho AgentOS. Chạy SAU khi các gói đã cài (hook), nên ghi đè được file của calamares-settings-debian
+# (includes.chroot thường được chép TRƯỚC gói, gói sẽ ghi đè lại). Nguồn: /usr/share/agentos/calamares (do includes.chroot chép vào).
+# Có thể chạy lại trong phiên live để thử: scripts/thu-calamares.sh
+set -e
+S=/usr/share/agentos/calamares
+[ -d "$S" ] || exit 0
+[ -d /etc/calamares ] || exit 0
+
+install -m 644 "$S/settings.conf" /etc/calamares/settings.conf
+install -m 644 "$S/modules/packages.conf" /etc/calamares/modules/packages.conf
+
+# Thương hiệu: sao chép thành phần "debian" (ảnh nền, ngôn ngữ) rồi đè chữ/hình của AgentOS
+rm -rf /etc/calamares/branding/agentos
+if [ -d /etc/calamares/branding/debian ]; then
+	cp -r /etc/calamares/branding/debian /etc/calamares/branding/agentos
+else
+	mkdir -p /etc/calamares/branding/agentos
+fi
+cp "$S"/branding/* /etc/calamares/branding/agentos/

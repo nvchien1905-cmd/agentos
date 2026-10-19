@@ -1,0 +1,41 @@
+---
+componentName:   agentos
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 800px,580px
+windowPlacement: center
+
+strings:
+    productName:         AgentOS
+    shortProductName:    AgentOS
+    version:             1.0
+    shortVersion:        1.0
+    versionedName:       AgentOS 1.0
+    shortVersionedName:  AgentOS 1.0
+    bootloaderEntryName: AgentOS
+    productUrl:          https://github.com/nvchien1905-cmd/agentos
+    supportUrl:          https://github.com/nvchien1905-cmd/agentos
+    knownIssuesUrl:      https://github.com/nvchien1905-cmd/agentos/issues
+    releaseNotesUrl:     https://github.com/nvchien1905-cmd/agentos
+    donateUrl:           https://github.com/nvchien1905-cmd/agentos
+
+sidebar: widget
+navigation: widget
+
+images:
+    productLogo:         "agentos-logo.svg"
+    productIcon:         "agentos-logo.svg"
+    productWelcome:      "agentos-welcome.svg"
+
+slideshow:               "show.qml"
+
+style:
+   SidebarBackground:    "#0b3d5c"
+   SidebarText:          "#FFFFFF"
+   SidebarTextCurrent:   "#fbfbfb"
+   SidebarBackgroundCurrent: "#0b5c8f"
+
+slideshowAPI: 2
+
+---

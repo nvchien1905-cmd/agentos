@@ -40,6 +40,11 @@ fonts-liberation
 # Biên dịch module gốc của Node (better-sqlite3) nếu không có bản dựng sẵn
 build-essential
 
+# Trình hướng dẫn lần đầu: xhost (mở cửa sổ đăng nhập AI), pkill, runuser
+x11-xserver-utils
+procps
+util-linux
+
 # Môi trường chạy bộ điều phối
 nodejs
 npm

@@ -31,9 +31,20 @@ jobs:
         continue-on-error: true
         working-directory: orchestrator
         run: |
-          apt-get install -y nodejs npm python3 build-essential
-          npm ci
-          npm test
+          set +e
+          apt-get install -y nodejs npm python3 build-essential > ../apt.log 2>&1
+          code=$?
+          if [ "$code" != "0" ]; then echo "::error title=apt-get that bai::$(tail -5 ../apt.log | sed ':a;N;$!ba;s/\n/%0A/g')"; exit $code; fi
+          npm ci > ../npm.log 2>&1
+          code=$?
+          if [ "$code" != "0" ]; then echo "::error title=npm ci that bai::$(tail -8 ../npm.log | sed ':a;N;$!ba;s/\n/%0A/g')"; exit $code; fi
+          npm test 2>&1 | tee ../test.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" != "0" ]; then
+            fails=$(sed -n '/failing tests:/,$p;/^not ok/p' ../test.log | head -60 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+            echo "::error title=Test loi trong container Debian::$fails"
+          fi
+          exit $code
       - name: Build ISO
         working-directory: iso
         run: |

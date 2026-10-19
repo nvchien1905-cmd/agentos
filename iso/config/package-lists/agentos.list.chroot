@@ -15,6 +15,13 @@ locales
 calamares
 calamares-settings-debian
 
+# Bootloader cho máy ĐÍCH (UEFI). live-build chỉ đặt GRUB vào đĩa ISO, không đưa vào hệ thống; thiếu các gói này thì
+# Calamares thất bại ở bước bootloader (lỗi 127, phát hiện khi cài thử 19/10/2026).
+grub-efi-amd64
+grub-efi-amd64-signed
+shim-signed
+efibootmgr
+
 # Giao diện tối thiểu (Calamares cần môi trường đồ họa trong chế độ live)
 xorg
 lightdm

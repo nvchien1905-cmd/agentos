@@ -244,7 +244,7 @@ function createWizard(options) {
       const env = eng === 'claude' && state.claudeToken ? { CLAUDE_CODE_OAUTH_TOKEN: state.claudeToken } : undefined;
       const v = await engines.verifyLogin(run, eng, env);
       state.engines[eng].loggedIn = v.ok;
-      return { installed: state.engines[eng].installed, loggedIn: v.ok, detail: v.detail };
+      return { installed: state.engines[eng].installed, loggedIn: v.ok, limited: !!v.limited, detail: v.detail };
     },
     // Đăng nhập qua điện thoại: chạy lệnh đăng nhập của hãng trong pty, trả link/mã để người dùng làm trên điện thoại.
     async loginStart(b) {

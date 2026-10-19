@@ -239,7 +239,7 @@
     msg('d-' + e, 'Đang kiểm tra (có thể mất ~1 phút)...', 'mute spin');
     api('POST', 'engine/check', { engine: e }).then(function (r) {
       S.engines[e] = { installed: r.installed, loggedIn: r.loggedIn }; updateEngine(e);
-      msg('d-' + e, r.loggedIn ? 'Dùng được.' : 'Chưa dùng được: ' + r.detail, r.loggedIn ? 'ok' : 'bad');
+      msg('d-' + e, r.loggedIn ? (r.limited ? '✔ Đã đăng nhập. Tài khoản đang hết hạn mức; vẫn dùng tiếp được khi hạn mức được cấp lại.' : 'Dùng được.') : 'Chưa dùng được: ' + r.detail, r.loggedIn ? 'ok' : 'bad');
     }).catch(function (x) { msg('d-' + e, x.message, 'bad'); });
   }
   // Khung đăng nhập qua điện thoại: link + (Claude) ô dán mã, hoặc (Codex) mã thiết bị.

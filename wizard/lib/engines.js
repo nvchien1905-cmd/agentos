@@ -38,6 +38,10 @@ async function verifyLogin(run, engine, extraEnv) {
   const r = await run(c.cmd, c.args, { timeoutMs: 120000, input: prompt, env: extraEnv });
   const text = String(r.out) + String(r.err);
   if (r.code === 0 && !/not logged in|please run .*login|invalid api key|unauthorized/i.test(text)) return { ok: true, detail: 'đăng nhập tốt' };
+  // Hết hạn mức (gói thuê bao dùng hết lượt): máy chủ của hãng đã nhận ra tài khoản => ĐÃ đăng nhập. Hệ thống tự đổi sang AI còn lại / chờ reset.
+  if (/usage limit|hit your (usage )?limit|limit reached|rate.?limit|quota|out of credits|purchase more credits|resets? (at|in|on)/i.test(text) && !/not logged in|please run .*login|invalid api key|unauthorized|401/i.test(text)) {
+    return { ok: true, limited: true, detail: 'đăng nhập tốt, nhưng tài khoản này đang hết hạn mức (tự dùng lại khi được cấp lại)' };
+  }
   return { ok: false, detail: /login|logged in|unauthorized|auth/i.test(text) ? 'chưa đăng nhập' : String(text).trim().split('\n').slice(-2).join(' ').slice(0, 160) };
 }
 

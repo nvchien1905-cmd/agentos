@@ -10,8 +10,8 @@ if (kind === 'claude-token') {
   let buf = '';
   process.stdin.on('data', (d) => {
     buf += d;
-    if (buf.includes('\n')) {
-      const code = buf.split('\n')[0].trim();
+    if (/[\r\n]/.test(buf)) {   // CLI thật nhận Enter là \r
+      const code = buf.split(/[\r\n]/)[0].trim();
       if (code === 'MA-DUNG') process.stdout.write('\r\nLogin successful. Your OAuth token (valid 1 year):\r\n' + ESC + '[32msk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789' + ESC + '[0m\r\n');
       else process.stdout.write('\r\nInvalid code\r\n');
       setTimeout(() => process.exit(code === 'MA-DUNG' ? 0 : 1), 50);

@@ -93,7 +93,11 @@ function createLogin(opts) {
       if (!PLANS[cur.engine].needsInput) throw new Error('Lần đăng nhập này không cần nhập mã');
       const t = String(text || '').trim();
       if (!t || t.length > 400 || /[\u0000-\u001f\u007f]/.test(t)) throw new Error('Mã không hợp lệ');
-      cur.child.stdin.write(t + '\n');
+      // Claude Code đọc phím bằng TUI: mã dán + Enter gửi cùng lúc thì Enter bị coi là một phần của đoạn dán và không được nhận
+      // (đã gặp trên máy thật: ô nhập hiện ****** rồi treo mãi). Gửi mã trước, ngắt một nhịp, rồi mới gửi Enter (\r như phím thật).
+      const s = cur;
+      s.child.stdin.write(t);
+      setTimeout(() => { if (!s.done) { try { s.child.stdin.write('\r'); } catch (e) { /* đã thoát */ } } }, opts.enterDelayMs == null ? 500 : opts.enterDelayMs).unref();
       return view(cur);
     },
     // Token Claude đã nhận (chỉ dùng nội bộ để ghi cấu hình); không bao giờ trả ra API.

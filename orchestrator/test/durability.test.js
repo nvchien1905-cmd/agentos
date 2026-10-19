@@ -19,7 +19,15 @@ const config = require('../src/config');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'agentos-d-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return false; } };
+// Tiến trình "zombie" (đã chết nhưng chưa được cha dọn) coi là đã chết: trong container Docker không có init, tiến trình mồ côi
+// bị giết vẫn nằm lại dạng zombie nên process.kill(pid, 0) vẫn thành công (phát hiện từ CI trong container Debian 19/10/2026).
+const alive = (pid) => {
+  try { process.kill(pid, 0); } catch (e) { return false; }
+  if (process.platform === 'linux') {
+    try { const s = fs.readFileSync('/proc/' + pid + '/stat', 'utf8'); return s.charAt(s.lastIndexOf(')') + 2) !== 'Z'; } catch (e) { return false; }
+  }
+  return true;
+};
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < (ms || 6000)) { const v = fn(); if (v) return v; await sleep(50); } return null; }
 
 // ---------- giết cả cây tiến trình ----------

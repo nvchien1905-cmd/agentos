@@ -42,7 +42,9 @@ async function verifyLogin(run, engine, extraEnv) {
   if (/usage limit|hit your (usage )?limit|limit reached|rate.?limit|quota|out of credits|purchase more credits|resets? (at|in|on)/i.test(text) && !/not logged in|please run .*login|invalid api key|unauthorized|401/i.test(text)) {
     return { ok: true, limited: true, detail: 'đăng nhập tốt, nhưng tài khoản này đang hết hạn mức (tự dùng lại khi được cấp lại)' };
   }
-  return { ok: false, detail: /login|logged in|unauthorized|auth/i.test(text) ? 'chưa đăng nhập' : String(text).trim().split('\n').slice(-2).join(' ').slice(0, 160) };
+  // Kèm nguyên văn lý do hãng báo (không chứa token) để biết lỗi thật thay vì chỉ "chưa đăng nhập"
+  const raw = String(text).replace(/sk-ant-[A-Za-z0-9_-]+/g, '[token]').replace(/\s+/g, ' ').trim().slice(-200);
+  return { ok: false, detail: (/login|logged in|unauthorized|auth/i.test(text) ? 'chưa đăng nhập' : 'lỗi') + (raw ? ' — ' + raw : '') };
 }
 
 module.exports = { PACKAGES, BIN, PREFIX, HOME, asAgentos, install, installed, verifyLogin };

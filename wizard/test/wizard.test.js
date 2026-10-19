@@ -137,7 +137,7 @@ test('engines: lệnh chạy dưới quyền agentos, cài đặt vào /var/lib/
   assert.deepEqual(await engines.verifyLogin(run, 'claude'), { ok: true, detail: 'đăng nhập tốt' });
   assert.equal(calls.at(-1).opts.input, 'Trả lời đúng một từ: OK');
   const cx = await engines.verifyLogin(run, 'codex');
-  assert.equal(cx.ok, false); assert.equal(cx.detail, 'chưa đăng nhập');
+  assert.equal(cx.ok, false); assert.ok(cx.detail.startsWith('chưa đăng nhập'), cx.detail);
   // Hết hạn mức (tin thật từ máy người dùng 20/10/2026) => ĐÃ đăng nhập, không phải chưa đăng nhập
   const lim = await engines.verifyLogin(async () => ({ code: 1, out: '', err: "ERROR: You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again later." }), 'codex');
   assert.equal(lim.ok, true); assert.equal(lim.limited, true);

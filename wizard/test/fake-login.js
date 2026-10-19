@@ -17,6 +17,14 @@ if (kind === 'claude-token') {
       setTimeout(() => process.exit(code === 'MA-DUNG' ? 0 : 1), 50);
     }
   });
+} else if (kind === 'claude-split') {
+  // Token in ra từng đoạn nhỏ cách nhau (như TUI thật): lấy lần khớp đầu tiên sẽ ra token THIẾU
+  process.stdout.write('Paste code here if prompted > ');
+  process.stdin.once('data', () => {
+    const T = 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789-FULLTOKEN';
+    let i = 0;
+    const t = setInterval(() => { process.stdout.write(T.slice(i, i + 25)); i += 25; if (i >= T.length) { clearInterval(t); process.stdout.write('\r\n'); setTimeout(() => process.exit(0), 30); } }, 30);
+  });
 } else if (kind === 'codex-device') {
   process.stdout.write('To sign in, open https://auth.openai.com/codex/device and enter code:\n\n    ABCD-1234\n\nWaiting for confirmation...\n');
   setTimeout(() => process.exit(0), 300);

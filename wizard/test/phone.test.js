@@ -115,7 +115,7 @@ test('store: ghi/đọc/xóa, bỏ khóa lạ; envfile thêm token Claude đúng
 
 // ---------- đăng nhập AI qua điện thoại (pty giả lập) ----------
 
-const wrapFake = (argv) => ({ cmd: process.execPath, args: [FAKE, argv[1] === 'setup-token' ? 'claude-token' : argv[1] === 'login' ? 'codex-device' : 'fail'] });
+const wrapFake = (argv) => ({ cmd: process.execPath, args: [FAKE, argv[1] === 'setup-token' ? (process.env.FAKE_SPLIT ? 'claude-split' : 'claude-token') : argv[1] === 'login' ? 'codex-device' : 'fail'] });
 
 test('login Claude: lấy link, nhận mã dán vào, bắt token, che token trong nội dung hiển thị', async () => {
   const L = createLogin({ wrap: wrapFake });
@@ -367,4 +367,16 @@ test('khởi động lại giữa chừng: đọc lại token đã lưu và ti�
     await until(() => (S.w.state.owner ? true : null));
     assert.equal(S.w.state.owner.id, '777');
   } finally { await S.w.close(); }
+});
+
+test('login Claude: token in ra từng đoạn thì vẫn lấy ĐỦ token (không lấy lần khớp đầu)', async () => {
+  process.env.FAKE_SPLIT = '1';
+  try {
+    const L = createLogin({ wrap: wrapFake, enterDelayMs: 10 });
+    L.start('claude'); await until(() => L.get().tail.includes('Paste code'));
+    L.input('MA-DUNG');
+    const done = await until(() => { const v = L.get(); return v.status === 'done' ? v : null; });
+    assert.equal(done.hasToken, true);
+    assert.equal(L.takeToken(), 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789-FULLTOKEN');
+  } finally { delete process.env.FAKE_SPLIT; }
 });

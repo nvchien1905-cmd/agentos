@@ -28,6 +28,13 @@ function defaultWrap(argv) {
 
 function clean(s) { return String(s).replace(ANSI, ''); }
 
+// Token Claude: CLI in ra từng đoạn/in lại nhiều lần, nên KHÔNG lấy lần khớp đầu tiên (có thể mới in nửa chừng -> token thiếu chữ -> bị từ chối).
+// Lấy bản DÀI NHẤT trong mọi lần xuất hiện.
+function bestToken(buf) {
+  const all = clean(buf).match(new RegExp(CLAUDE_TOKEN_RE.source, 'g'));
+  return all ? all.reduce((a, b) => (b.length > a.length ? b : a)) : null;
+}
+
 function createLogin(opts) {
   opts = opts || {};
   const spawn = opts.spawn || realSpawn;
@@ -71,7 +78,7 @@ function createLogin(opts) {
       const onData = (d) => {
         s.buf += d;
         if (s.buf.length > MAX_BUF) s.buf = s.buf.slice(-MAX_BUF);
-        if (plan.wantsToken && !s.token) { const m = clean(s.buf).match(CLAUDE_TOKEN_RE); if (m) s.token = m[0]; }
+        if (plan.wantsToken) s.token = bestToken(s.buf) || s.token;
       };
       child.stdout.on('data', onData);
       child.stderr.on('data', onData);
@@ -79,6 +86,7 @@ function createLogin(opts) {
       child.on('error', (e) => { s.status = 'error'; s.error = 'Không chạy được lệnh đăng nhập: ' + e.message; s.done = true; });
       child.on('close', (code) => {
         s.done = true; clearTimeout(s.timer);
+        if (plan.wantsToken) s.token = bestToken(s.buf) || s.token;   // lấy lại lần cuối từ toàn bộ nội dung đã nhận
         if (s.status === 'error') return;
         const ok = code === 0 && (!plan.wantsToken || s.token);
         s.status = ok ? 'done' : 'error';

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Cài Google Chrome (bản chính thức của Google; Debian chỉ có Chromium). Gói .deb của Google tự thêm kho apt của Google
+# nên Chrome tự cập nhật cùng hệ thống. Chromium vẫn giữ để trình hướng dẫn lần đầu dùng.
+set -e
+cd /tmp
+for i in 1 2 3; do
+	curl -fsSL -o google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && break
+	sleep 5
+done
+[ -s google-chrome.deb ] || { echo "[LOI] khong tai duoc Google Chrome"; exit 1; }
+apt-get install -y --no-install-recommends ./google-chrome.deb
+rm -f google-chrome.deb
+# Chrome mặc định cho "Trình duyệt web" của hệ thống
+update-alternatives --set x-www-browser /usr/bin/google-chrome-stable 2>/dev/null || true
+update-alternatives --set gnome-www-browser /usr/bin/google-chrome-stable 2>/dev/null || true
+test -x /usr/bin/google-chrome-stable
+exit 0

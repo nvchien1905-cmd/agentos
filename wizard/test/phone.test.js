@@ -144,6 +144,7 @@ test('login Claude: mã sai thì báo lỗi; Codex: link + mã thiết bị, kh�
   L.start('codex');
   const c = await until(() => { const v = L.get(); return v.url && /ABCD-1234/.test(v.tail) ? v : null; });
   assert.equal(c.url, 'https://auth.openai.com/codex/device'); assert.equal(c.needsInput, false);
+  assert.equal(c.code, 'ABCD-1234');   // mã thiết bị tách riêng để trang hiện to
   assert.throws(() => L.input('x'), /không cần nhập mã/);
   assert.equal((await until(() => { const v = L.get(); return v.status === 'done' ? v : null; })).status, 'done');
 

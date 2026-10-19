@@ -40,8 +40,10 @@ function createLogin(opts) {
     const text = clean(s.buf);
     const redacted = text.replace(new RegExp(CLAUDE_TOKEN_RE.source, 'g'), '[đã nhận token]');
     const m = text.match(URL_RE);
+    // Codex: mã thiết bị dùng một lần (VD 5X5H-X6VNW) để nhập trên trang OpenAI. Hiện riêng, to, thay vì chôn trong nội dung.
+    const dc = s.engine === 'codex' ? text.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4,6})\b/) : null;
     return {
-      id: s.id, engine: s.engine, status: s.status, url: m ? m[0].replace(/[).,]+$/, '') : null,
+      id: s.id, engine: s.engine, status: s.status, url: m ? m[0].replace(/[).,]+$/, '') : null, code: dc ? dc[1] : null,
       needsInput: PLANS[s.engine].needsInput, hasToken: !!s.token,
       tail: redacted.split('\n').map((l) => l.trimEnd()).filter(Boolean).slice(-12).join('\n').slice(-1500),
       error: s.error || null,

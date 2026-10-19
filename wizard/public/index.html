@@ -251,7 +251,7 @@
         if (v.url) h += '<p><a class="btn primary" href="' + esc(v.url) + '" target="_blank" rel="noopener">1. Mở trang đăng nhập</a></p>';
         else h += '<p class="mute spin">Đang chuẩn bị đường dẫn đăng nhập</p>';
         if (v.needsInput && v.url) h += '<p class="mute">2. Đăng nhập xong, trang sẽ hiện một <b>mã</b>. Sao chép và dán vào đây:</p><div class="row"><input id="lc" type="text" autocomplete="off" placeholder="Dán mã" style="flex:1"><button class="primary" id="ls">Gửi</button></div>';
-        if (!v.needsInput && v.url) h += '<p class="mute">2. Trên trang đó, nhập mã dưới đây rồi xác nhận. Máy sẽ tự nhận ra.</p>';
+        if (!v.needsInput && v.url) h += '<p class="mute">2. Trên trang đó, nhập <b>mã thiết bị</b> dưới đây vào các ô rồi bấm Tiếp tục. Máy sẽ tự nhận ra.</p>' + (v.code ? '<div class="code" style="text-align:center;margin:10px 0">' + esc(v.code) + '</div><p class="mute" style="text-align:center">Mã có hiệu lực 15 phút. Hết hạn thì bấm Hủy rồi Đăng nhập lại.</p>' : '');
         if (v.needsInput && /OAuth\s*error|Invalid|expired|failed/i.test(v.tail || '')) h += '<p class="bad">Mã chưa đúng hoặc đã hết hạn. Bấm <b>Hủy</b>, rồi bấm <b>Đăng nhập</b> để lấy trang và mã mới. Dán <b>nguyên cả mã</b> (không bỏ sót ký tự).</p>';
         if (v.tail && !v.needsInput) h += '<pre>' + esc(v.tail) + '</pre>';   // Codex: mã thiết bị nằm trong nội dung; Claude: nội dung chỉ lặp lại đường dẫn dài nên ẩn
         h += '<button id="lx">Hủy</button>';

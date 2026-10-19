@@ -1,0 +1,6 @@
+#!/bin/sh
+# Đổi chữ "Install Debian" của biểu tượng cài đặt trên màn hình live thành AgentOS (mọi tệp .desktop của trình cài đặt).
+for f in $(find /usr/share/applications /etc/skel /usr/share/calamares -name '*.desktop' 2>/dev/null | xargs grep -l -i 'install debian\|calamares' 2>/dev/null); do
+	sed -i -E '/^(Name|GenericName|Comment)(\[[^]]*\])?=/ s/Debian GNU\/Linux/AgentOS/g; /^(Name|GenericName|Comment)(\[[^]]*\])?=/ s/Debian/AgentOS/g' "$f"
+done
+exit 0

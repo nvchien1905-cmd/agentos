@@ -40,6 +40,22 @@ fonts-liberation
 # Biên dịch module gốc của Node (better-sqlite3) nếu không có bản dựng sẵn
 build-essential
 
+# Cài đặt bằng điện thoại: mã QR, tên máy.local (mDNS), Wi-Fi tạm (NetworkManager chế độ AP + dnsmasq + tường lửa NAT), công cụ Wi-Fi
+qrencode
+avahi-daemon
+libnss-mdns
+dnsmasq-base
+nftables
+iptables
+iw
+rfkill
+wpasupplicant
+wireless-regdb
+# Card Wi-Fi/Bluetooth thường gặp trên mini PC (Intel, Realtek đã có ở dưới)
+firmware-atheros
+firmware-mediatek
+firmware-brcm80211
+
 # Trình hướng dẫn lần đầu: xhost (mở cửa sổ đăng nhập AI), pkill, runuser
 x11-xserver-utils
 procps

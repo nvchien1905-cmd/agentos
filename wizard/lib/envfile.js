@@ -28,6 +28,11 @@ function build(cfg) {
     'SANDBOX=auto',
     'MIN_FREE_MB=500',
   ];
+  // Token dài hạn của Claude (claude setup-token) nếu người dùng đăng nhập qua điện thoại; Codex tự lưu đăng nhập trong thư mục của agentos.
+  if (cfg.claudeToken) {
+    if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(cfg.claudeToken)) throw new Error('Token Claude không đúng dạng');
+    lines.push('CLAUDE_CODE_OAUTH_TOKEN=' + cfg.claudeToken);
+  }
   for (const l of lines) if (!SAFE.test(l)) throw new Error('Giá trị cấu hình chứa ký tự không hợp lệ');
   return lines.join('\n') + '\n';
 }

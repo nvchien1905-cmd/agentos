@@ -1,6 +1,7 @@
 [Unit]
 Description=AgentOS - trình hướng dẫn cài đặt lần đầu (chỉ cục bộ 127.0.0.1)
-After=network.target NetworkManager.service
+After=network.target NetworkManager.service avahi-daemon.service
+Wants=NetworkManager.service
 # Không chạy ở bản live (đang cài đặt) và không chạy khi máy đã được cấu hình
 ConditionKernelCommandLine=!boot=live
 ConditionPathExists=!/etc/agentos/orchestrator.env

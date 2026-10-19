@@ -75,23 +75,28 @@ test('telegram: kiểm tra token đúng dạng, getMe, token sai bị từ chố
   await assert.rejects(() => tg.getMe(TOKEN, { fetch: bad.f }), /Token sai hoặc đã bị thu hồi/);
 });
 
-test('telegram: chờ chủ máy, bỏ qua bot/nhóm, đánh dấu đã đọc, hết giờ trả null', async () => {
+test('telegram: nhận diện mã ghép đôi', () => {
+  for (const t of ['/start 123456', '/start@cua_hang_bot 123456', '  123456 ', '/START 123456']) assert.equal(tg.isPairing(t, '123456'), true, t);
+  for (const t of ['xin chào', '/start', '/start 654321', '1234567', '', null]) assert.equal(tg.isPairing(t, '123456'), false, String(t));
+});
+
+test('telegram: chỉ người nhắn ĐÚNG MÃ thành chủ máy; người lạ/bot/nhóm bị bỏ qua; đánh dấu đã đọc', async () => {
   const updates = [
-    { update_id: 10, message: { chat: { type: 'group' }, from: { id: 1, first_name: 'Nhóm' } } },
-    { update_id: 11, message: { chat: { type: 'private' }, from: { id: 2, is_bot: true, first_name: 'Bot' } } },
-    { update_id: 12, message: { chat: { type: 'private' }, from: { id: 777, first_name: 'Huyền', last_name: 'Anh', username: 'huyenanh' } } },
+    { update_id: 10, message: { chat: { type: 'group' }, text: '/start 123456', from: { id: 1, first_name: 'Nhóm' } } },
+    { update_id: 11, message: { chat: { type: 'private' }, text: '/start 123456', from: { id: 2, is_bot: true, first_name: 'Bot' } } },
+    { update_id: 12, message: { chat: { type: 'private' }, text: 'chào bot', from: { id: 55, first_name: 'Người lạ' } } },
+    { update_id: 13, message: { chat: { type: 'private' }, text: '/start 123456', from: { id: 777, first_name: 'Huyền', last_name: 'Anh', username: 'huyenanh' } } },
   ];
-  let served = false;
-  const T = fakeTelegram((m, b) => {
-    if (m !== 'getUpdates') return { ok: true, result: {} };
-    if (!served && b.offset === undefined) { served = true; return { ok: true, result: updates }; }
-    return { ok: true, result: [] };
-  });
-  const owner = await tg.waitForOwner(TOKEN, { fetch: T.f, waitSec: 5 });
-  assert.deepEqual(owner, { id: '777', name: 'Huyền Anh', username: 'huyenanh' });
-  assert.equal(T.calls.at(-1).body.offset, 13);                                   // đã đánh dấu đọc tới update 12
+  const T = fakeTelegram((m, b) => (m === 'getUpdates' && b.timeout !== 0 ? { ok: true, result: updates } : { ok: true, result: [] }));
+  const r = await tg.pollOwner(TOKEN, { fetch: T.f, code: '123456', waitSec: 5 });
+  assert.deepEqual(r.owner, { id: '777', name: 'Huyền Anh', username: 'huyenanh' });
+  assert.deepEqual(r.strangers, ['55']);
+  assert.equal(T.calls.at(-1).body.offset, 14);                                   // đã đánh dấu đọc tới update 13
+  const wrong = await tg.pollOwner(TOKEN, { fetch: T.f, code: '000000', waitSec: 5 });
+  assert.equal(wrong.owner, null); assert.deepEqual(wrong.strangers.sort(), ['55', '777']);
   const none = fakeTelegram(() => ({ ok: true, result: [] }));
-  assert.equal(await tg.waitForOwner(TOKEN, { fetch: none.f, waitSec: 1 }), null);
+  const e = await tg.pollOwner(TOKEN, { fetch: none.f, code: '123456', waitSec: 1, offset: 9 });
+  assert.deepEqual(e, { owner: null, offset: 9, strangers: [] });
 });
 
 // ---------- file cấu hình ----------
@@ -144,9 +149,14 @@ async function boot(extra) {
   const envFile = path.join(dir, 'orchestrator.env');
   const calls = [];
   const sent = [];
+  let paired = false;
   const T = fakeTelegram((m, b) => {
     if (m === 'getMe') return { ok: true, result: { id: 9, username: 'cua_hang_bot', first_name: 'CH' } };
-    if (m === 'getUpdates') return b.offset === undefined ? { ok: true, result: [{ update_id: 5, message: { chat: { type: 'private' }, from: { id: 777, first_name: 'Chủ' } } }] } : { ok: true, result: [] };
+    if (m === 'getUpdates') {
+      if (b.timeout === 0 || paired) return { ok: true, result: [] };
+      paired = true;
+      return { ok: true, result: [{ update_id: 5, message: { chat: { type: 'private' }, text: '/start 123456', from: { id: 777, first_name: 'Chủ' } } }] };
+    }
     if (m === 'sendMessage') { sent.push(b); return { ok: true, result: {} }; }
     return { ok: true, result: {} };
   });
@@ -160,7 +170,10 @@ async function boot(extra) {
     if (args.includes('-p')) return { code: 0, out: '{"result":"OK"}', err: '' };
     return { code: 0, out: '', err: '' };
   };
-  const w = createWizard(Object.assign({ port: 0, envFile, run, fetch: T.f }, extra || {}));
+  const w = createWizard(Object.assign({
+    port: 0, host: '127.0.0.1', envFile, run, fetch: T.f, code: '123456', stateFile: path.join(dir, 'state.json'), hotspotFile: path.join(dir, 'hotspot.json'),
+    hotspotDelayMs: 0, captivePort: 0, pollPauseMs: 5, waitMs: 3000, finishDelayMs: 60000,
+  }, extra || {}));
   const port = await w.listen();
   const call = async (method, p, body, headers) => {
     const r = await fetch('http://127.0.0.1:' + port + p, { method, headers: Object.assign({ 'content-type': 'application/json', 'x-agentos-wizard': '1' }, headers || {}), body: body ? JSON.stringify(body) : undefined });
@@ -198,7 +211,7 @@ test('server: luồng đầy đủ Wi-Fi -> Telegram -> AI -> hoàn tất ghi c�
     assert.equal((await S.call('POST', '/api/telegram/token', { token: 'sai' })).status, 400);
     assert.equal((await S.call('POST', '/api/telegram/wait', {})).body.error, 'Chưa nhập token bot');
     const tk = await S.call('POST', '/api/telegram/token', { token: TOKEN });
-    assert.equal(tk.body.bot.username, 'cua_hang_bot');
+    assert.equal(tk.body.bot.username, 'cua_hang_bot'); assert.equal(tk.body.code, '123456');
     const ow = await S.call('POST', '/api/telegram/wait', {});
     assert.equal(ow.body.owner.id, '777');
 
@@ -217,7 +230,9 @@ test('server: luồng đầy đủ Wi-Fi -> Telegram -> AI -> hoàn tất ghi c�
     const env = fs.readFileSync(S.envFile, 'utf8');
     assert.match(env, /^TELEGRAM_TOKEN=123456789:/m); assert.match(env, /^ALLOWED_USER_IDS=777$/m); assert.match(env, /^ENGINE_ORDER=claude$/m);
     assert.ok(S.calls.some((c) => c[0] === 'systemctl' && c[1].join(' ') === 'enable --now agentos-orchestrator.service'));
-    assert.equal(S.sent.length, 1); assert.equal(S.sent[0].chat_id, '777'); assert.match(S.sent[0].text, /AgentOS đã sẵn sàng/);
+    const welcome = S.sent.filter((s) => /AgentOS đã sẵn sàng/.test(s.text));
+    assert.equal(welcome.length, 1); assert.equal(welcome[0].chat_id, '777');
+    assert.ok(S.sent.some((s) => /Đã ghép đôi với bạn \(Chủ\)/.test(s.text)));          // tin báo ghép đôi thành công
     assert.equal((await S.call('GET', '/api/state')).body.finished, true);
   } finally { await S.w.close(); }
 });

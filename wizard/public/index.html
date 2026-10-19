@@ -5,26 +5,32 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cài đặt AgentOS</title>
 <style>
-  :root { --bg:#f4f6f8; --card:#fff; --ink:#18232d; --mute:#5b6b79; --line:#dbe2e8; --brand:#0b5c8f; --brand-ink:#fff; --ok:#1a7f45; --bad:#b3261e; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0f161c; --card:#17212a; --ink:#e8eef3; --mute:#9bacba; --line:#2a3946; --brand:#4aa3df; --brand-ink:#08202f; --ok:#4cc380; --bad:#ff8a80; } }
+  :root { --bg:#f4f6f8; --card:#fff; --ink:#18232d; --mute:#5b6b79; --line:#dbe2e8; --brand:#0b5c8f; --brand-ink:#fff; --ok:#1a7f45; --bad:#b3261e; --soft:#eef3f7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f161c; --card:#17212a; --ink:#e8eef3; --mute:#9bacba; --line:#2a3946; --brand:#4aa3df; --brand-ink:#08202f; --ok:#4cc380; --bad:#ff8a80; --soft:#1d2a35; } }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:18px/1.5 system-ui,"Segoe UI",sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  main { width:100%; max-width:720px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:32px; }
-  h1 { margin:0 0 4px; font-size:28px; } h2 { margin:0 0 12px; font-size:22px; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:18px/1.5 system-ui,"Segoe UI",sans-serif; min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:20px 14px; }
+  main { width:100%; max-width:720px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px; margin:auto 0; }
+  h1 { margin:0 0 4px; font-size:26px; } h2 { margin:0 0 12px; font-size:22px; }
   p { margin:0 0 14px; } .mute { color:var(--mute); font-size:16px; }
-  .steps { display:flex; gap:8px; margin:0 0 24px; padding:0; list-style:none; }
+  .steps { display:flex; gap:8px; margin:0 0 20px; padding:0; list-style:none; }
   .steps li { flex:1; height:6px; border-radius:3px; background:var(--line); } .steps li.on { background:var(--brand); }
-  button { font:inherit; padding:12px 22px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
-  button.primary { background:var(--brand); color:var(--brand-ink); border-color:var(--brand); font-weight:600; }
+  button, .btn { font:inherit; padding:12px 20px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; text-decoration:none; display:inline-block; }
+  button.primary, .btn.primary { background:var(--brand); color:var(--brand-ink); border-color:var(--brand); font-weight:600; }
   button:disabled { opacity:.5; cursor:default; }
-  input[type=text], input[type=password] { width:100%; font:inherit; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  input[type=text], input[type=password], input[type=tel] { width:100%; font:inherit; padding:12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  label { display:block; margin:10px 0 4px; font-size:16px; color:var(--mute); }
   .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-  .nav { display:flex; justify-content:space-between; margin-top:24px; }
+  .nav { display:flex; justify-content:space-between; gap:10px; margin-top:22px; }
   .ok { color:var(--ok); } .bad { color:var(--bad); }
   .net { display:block; width:100%; text-align:left; margin:6px 0; }
   .card { border:1px solid var(--line); border-radius:12px; padding:16px; margin:12px 0; }
+  .banner { display:flex; gap:16px; align-items:center; background:var(--soft); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:0 0 18px; }
+  .banner img { width:120px; height:120px; background:#fff; border-radius:8px; padding:4px; flex:none; }
+  .code { font:700 34px/1.1 ui-monospace,Consolas,monospace; letter-spacing:5px; margin:2px 0; }
+  pre { background:var(--soft); border:1px solid var(--line); border-radius:10px; padding:10px; margin:8px 0; white-space:pre-wrap; word-break:break-all; font-size:15px; max-height:180px; overflow:auto; }
   ol { padding-left:22px; margin:0 0 14px; } li { margin:4px 0; }
   .spin::after { content:" ⏳"; }
+  @media (max-width:520px) { main { padding:18px; } .banner { flex-direction:column; align-items:flex-start; } }
 </style>
 </head>
 <body>
@@ -32,28 +38,51 @@
   <h1>Chào mừng đến với AgentOS</h1>
   <p class="mute">Cài đặt lần đầu, mất khoảng 5 phút. Sau đó bạn chỉ cần nhắn tin Telegram để giao việc cho máy.</p>
   <ul class="steps" id="steps"><li></li><li></li><li></li><li></li></ul>
+  <div id="banner"></div>
   <section id="view"></section>
 </main>
 <script>
 (function () {
   var view = document.getElementById('view');
+  var bannerEl = document.getElementById('banner');
   var stepsEl = document.getElementById('steps').children;
   var step = 0;                       // 0 mạng, 1 Telegram, 2 AI, 3 hoàn tất
-  var S = { net: null, bot: null, owner: null, engines: {}, jobs: {} };
-  var waitTimer = null;
+  var S = { net: null, bot: null, owner: null, engines: {}, jobs: {}, hotspot: { up: false }, lan: { ips: [] }, code: '' };
+  var timer = null;
 
   function api(method, path, body) {
     return fetch('/api/' + path, {
       method: method,
       headers: { 'content-type': 'application/json', 'x-agentos-wizard': '1' },
       body: method === 'POST' ? JSON.stringify(body || {}) : undefined
-    }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Lỗi'); return j; }); });
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (r.status === 401) { location.reload(); throw new Error('Cần mã cài đặt'); }
+        if (!r.ok) throw new Error(j.error || 'Lỗi'); return j;
+      });
+    });
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function setStep(n) { step = n; for (var i = 0; i < stepsEl.length; i++) stepsEl[i].className = i <= n ? 'on' : ''; stopWait(); render(); }
-  function stopWait() { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; } }
-  function refresh() { return api('GET', 'state').then(function (s) { S = s; }); }
+  function qrImg(text) { return '<img alt="Mã QR" src="/api/qr?text=' + encodeURIComponent(text) + '" onerror="this.style.display=\'none\'">'; }
+  function stopTimer() { if (timer) { clearTimeout(timer); timer = null; } }
+  function later(fn, ms) { stopTimer(); timer = setTimeout(fn, ms); }
+  function setStep(n) { step = n; for (var i = 0; i < stepsEl.length; i++) stepsEl[i].className = i <= n ? 'on' : ''; stopTimer(); render(); }
+  function refresh() { return api('GET', 'state').then(function (s) { S = s; renderBanner(); }); }
   function msg(id, text, cls) { var e = document.getElementById(id); if (e) { e.className = cls || ''; e.textContent = text; } }
+  function host() { return S.lan && S.lan.ips && S.lan.ips[0] ? S.lan.ips[0].address : null; }
+  function setupUrl() { var ip = host(); return ip ? 'http://' + ip + ':' + (S.lan.port || 8088) + '/?k=' + S.code : null; }
+
+  // Khung "cài bằng điện thoại": chỉ hiện trên MÀN HÌNH máy (người đang ngồi trước máy).
+  function renderBanner() {
+    if (!S.local || S.finished) { bannerEl.innerHTML = ''; return; }
+    var h = '';
+    if (S.hotspot && S.hotspot.up) {
+      h = '<div class="banner">' + qrImg(S.hotspot.qr) + '<div><b>Cài bằng điện thoại, không cần dây mạng</b><p class="mute" style="margin:4px 0">Quét mã bằng camera điện thoại để vào Wi-Fi <b>' + esc(S.hotspot.ssid) + '</b> (mật khẩu: <b>' + esc(S.hotspot.psk) + '</b>), trang cài đặt sẽ tự mở.</p><div class="mute">Mã cài đặt</div><div class="code">' + esc(S.code) + '</div></div></div>';
+    } else if (setupUrl()) {
+      h = '<div class="banner">' + qrImg(setupUrl()) + '<div><b>Hoặc cài bằng điện thoại</b><p class="mute" style="margin:4px 0">Điện thoại cần dùng chung Wi-Fi với máy. Quét mã, hoặc mở <b>http://' + esc(host()) + ':' + esc(S.lan.port || 8088) + '</b>' + (S.lan.host ? ' (hoặc <b>' + esc(S.lan.host) + ':' + esc(S.lan.port || 8088) + '</b>)' : '') + '.</p><div class="mute">Mã cài đặt</div><div class="code">' + esc(S.code) + '</div></div></div>';
+    }
+    bannerEl.innerHTML = h;
+  }
 
   function render() {
     if (step === 0) return renderNet();
@@ -66,6 +95,7 @@
   function renderNet() {
     refresh().then(function () {
       var n = S.net || {};
+      if (S.hotspot && S.hotspot.up && !n.online) return renderQuick();
       var h = '<h2>1. Kết nối mạng</h2>';
       if (n.online) {
         h += '<p class="ok">✔ Máy đã có mạng Internet.</p>';
@@ -76,32 +106,60 @@
       } else {
         h += '<p class="bad">Máy chưa có mạng. Hãy cắm dây mạng (LAN) vào máy rồi bấm "Kiểm tra lại".</p>';
       }
+      if (S.hotspot && S.hotspot.error && !n.online) h += '<p class="mute">Wi-Fi tạm không bật được: ' + esc(S.hotspot.error) + '</p>';
       h += '<div class="nav"><button id="re">Kiểm tra lại</button><button class="primary" id="next"' + (n.online ? '' : ' disabled') + '>Tiếp theo</button></div>';
       view.innerHTML = h;
       document.getElementById('re').onclick = renderNet;
       document.getElementById('next').onclick = function () { setStep(1); };
-      if (!n.online && n.hasWifi) scanWifi();
-    });
+      if (!n.online && n.hasWifi) scanWifi('nets', 'go', 'pw', function () { renderNet(); });
+      else if (!n.online) later(renderNet, 5000);
+    }).catch(function () { later(renderNet, 3000); });
   }
-  function scanWifi() {
+  function scanWifi(boxId, goId, pwId, done, getToken) {
     var chosen = null;
     api('POST', 'wifi/scan').then(function (r) {
-      var box = document.getElementById('nets'); if (!box) return;
+      var box = document.getElementById(boxId); if (!box) return;
       if (!r.networks.length) { box.textContent = 'Không thấy mạng Wi-Fi nào. Thử lại sau vài giây.'; return; }
       box.innerHTML = '';
       r.networks.slice(0, 8).forEach(function (w) {
         var b = document.createElement('button'); b.className = 'net';
         b.textContent = (w.secured ? '🔒 ' : '') + w.ssid + '  (' + w.signal + '%)';
-        b.onclick = function () { chosen = w; var all = box.children; for (var i = 0; i < all.length; i++) all[i].className = 'net'; b.className = 'net primary'; document.getElementById('go').disabled = false; };
+        b.onclick = function () { chosen = w; var all = box.children; for (var i = 0; i < all.length; i++) all[i].className = 'net'; b.className = 'net primary'; document.getElementById(goId).disabled = false; };
         box.appendChild(b);
       });
-      document.getElementById('go').onclick = function () {
-        if (!chosen) return;
-        msg('m', 'Đang kết nối...', 'mute spin');
-        api('POST', 'wifi/connect', { ssid: chosen.ssid, password: document.getElementById('pw').value || null })
-          .then(function () { renderNet(); }).catch(function (e) { msg('m', e.message, 'bad'); });
-      };
-    }).catch(function (e) { msg('nets', e.message, 'bad'); });
+      document.getElementById(goId).onclick = function () { if (chosen) done(chosen, document.getElementById(pwId).value || null); };
+    }).catch(function (e) { msg(boxId, e.message, 'bad'); });
+  }
+  // Cài nhanh trên điện thoại khi đang vào Wi-Fi tạm của máy: Wi-Fi cửa hàng + token bot MỘT LẦN (vì điện thoại sẽ rời Wi-Fi tạm).
+  function renderQuick() {
+    var off = S.offline || {};
+    if (off.status === 'working' || off.status === 'done') return renderQuickWait();
+    view.innerHTML = '<h2>1. Cài đặt nhanh bằng điện thoại</h2>' +
+      '<p>Điền một lần. Sau khi bấm "Bắt đầu", máy tự đổi sang Wi-Fi cửa hàng và điện thoại của bạn sẽ rời mạng này: đó là bình thường.</p>' +
+      (off.status === 'error' ? '<p class="bad">Lần trước chưa được: ' + esc(off.error) + '</p>' : '') +
+      '<label>Wi-Fi của cửa hàng</label><div id="nets" class="mute">Đang tìm mạng...</div>' +
+      '<label>Mật khẩu Wi-Fi</label><input id="pw" type="password" autocomplete="off">' +
+      '<label>Token bot Telegram (mở Telegram, tìm @BotFather, gõ /newbot rồi sao chép token)</label><input id="tok" type="text" autocomplete="off" placeholder="123456789:AAH...">' +
+      '<p id="m" class="bad"></p><div class="nav"><span></span><button class="primary" id="go" disabled>Bắt đầu</button></div>';
+    scanWifi('nets', 'go', 'pw', function (net, pw) {
+      var tok = document.getElementById('tok').value.trim();
+      if (!tok) return msg('m', 'Chưa dán token bot', 'bad');
+      document.getElementById('go').disabled = true; msg('m', 'Đang gửi...', 'mute spin');
+      api('POST', 'setup/offline', { ssid: net.ssid, password: pw, token: tok }).then(function () { renderQuickWait(); }).catch(function (e) { document.getElementById('go').disabled = false; msg('m', e.message, 'bad'); });
+    });
+  }
+  function renderQuickWait() {
+    view.innerHTML = '<h2>Đang cài đặt...</h2><p id="w" class="mute spin">Máy đang nối Wi-Fi cửa hàng</p>' +
+      '<div class="card"><p><b>Sau khoảng 1 phút:</b></p><ol><li>Điện thoại tự quay về Wi-Fi hoặc 4G của bạn.</li><li>Mở Telegram, vào bot vừa tạo, nhắn:</li></ol><div class="code">/start ' + esc(S.code) + '</div>' +
+      '<p class="mute" style="margin-top:10px">Bot sẽ trả lời kèm đường dẫn để đăng nhập AI. Nếu điện thoại tự vào lại Wi-Fi <b>' + esc((S.hotspot && S.hotspot.ssid) || 'AgentOS-...') + '</b> và thấy báo lỗi ở đây, hãy sửa và thử lại (sai mật khẩu Wi-Fi hoặc token).</p></div>';
+    (function poll() {
+      api('GET', 'state').then(function (s) {
+        S = s;
+        if ((s.offline || {}).status === 'error') return renderQuick();
+        if ((s.offline || {}).status === 'done') msg('w', '✔ Máy đã nối Wi-Fi cửa hàng và đang chờ bạn nhắn tin cho bot.', 'ok');
+        later(poll, 3000);
+      }).catch(function () { later(poll, 3000); });          // mất kết nối khi máy đổi Wi-Fi là bình thường
+    })();
   }
 
   // ---- 2. Telegram ----
@@ -117,17 +175,17 @@
     document.getElementById('chk').onclick = function () {
       msg('m', 'Đang kiểm tra...', 'mute spin');
       api('POST', 'telegram/token', { token: document.getElementById('tok').value }).then(function (r) {
-        S.bot = r.bot; msg('m', '✔ Bot hợp lệ: @' + r.bot.username, 'ok'); askOwner();
+        S.bot = r.bot; S.code = r.code || S.code; msg('m', '✔ Bot hợp lệ: @' + r.bot.username, 'ok'); askOwner();
       }).catch(function (e) { msg('m', e.message, 'bad'); });
     };
-    if (S.owner) { msg('m', '✔ Bot @' + (S.bot && S.bot.username) + ' đã sẵn sàng', 'ok'); showOwner(); }
+    if (S.bot) { msg('m', '✔ Bot @' + S.bot.username + ' hợp lệ', 'ok'); if (S.owner) showOwner(); else askOwner(); }
   }
   function askOwner() {
-    var own = document.getElementById('own');
-    own.innerHTML = '<div class="card"><p>Bây giờ mở Telegram, tìm <b>@' + esc(S.bot.username) + '</b> rồi nhắn cho nó một tin bất kỳ (ví dụ "xin chào"). Máy sẽ nhận ra bạn là chủ.</p><p id="w" class="mute spin">Đang chờ tin nhắn của bạn</p></div>';
+    var own = document.getElementById('own'); if (!own) return;
+    own.innerHTML = '<div class="card"><p>Bây giờ mở Telegram, vào <b>@' + esc(S.bot.username) + '</b> rồi nhắn đúng dòng này (mã chỉ chủ máy mới thấy):</p><div class="code">/start ' + esc(S.code) + '</div><p id="w" class="mute spin">Đang chờ tin nhắn của bạn</p></div>';
     (function poll() {
       api('POST', 'telegram/wait').then(function (r) {
-        if (r.owner) { S.owner = r.owner; showOwner(); } else { waitTimer = setTimeout(poll, 300); }
+        if (r.owner) { S.owner = r.owner; showOwner(); } else { later(poll, 300); }
       }).catch(function (e) { msg('w', e.message, 'bad'); });
     })();
   }
@@ -139,16 +197,18 @@
 
   // ---- 3. AI ----
   var NAMES = { claude: 'Claude (Anthropic)', codex: 'Codex (OpenAI)' };
+  var loginEng = null;
   function renderEngines() {
     refresh().then(function () {
-      var h = '<h2>3. Đăng nhập AI</h2><p>Dùng tài khoản <b>của chính bạn</b> (gói thuê bao hoặc khóa API). Máy không lưu mật khẩu của bạn, chỉ dùng chương trình chính thức của hãng. Cần ít nhất một AI.</p>';
+      var h = '<h2>3. Đăng nhập AI</h2><p>Dùng tài khoản <b>của chính bạn</b>. Cần ít nhất một AI. Bấm "Cài đặt" (vài phút) rồi "Đăng nhập": trang sẽ đưa bạn một đường dẫn để mở và đăng nhập ngay trên điện thoại.</p>';
       ['claude', 'codex'].forEach(function (e) {
         var st = S.engines[e] || {}; var job = S.jobs['install-' + e];
-        h += '<div class="card"><div class="row"><b style="flex:1">' + NAMES[e] + '</b><span id="s-' + e + '"></span></div><div class="row">';
+        h += '<div class="card"><div class="row" style="margin-top:0"><b style="flex:1">' + NAMES[e] + '</b><span id="s-' + e + '"></span></div><div class="row" style="margin:0">';
         h += '<button data-a="install" data-e="' + e + '">' + (st.installed ? 'Cài lại' : 'Cài đặt') + '</button>';
         h += '<button data-a="login" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Đăng nhập</button>';
-        h += '<button class="primary" data-a="check" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Kiểm tra</button></div>';
-        h += '<p class="mute" id="d-' + e + '">' + (job && job.status === 'running' ? 'Đang cài đặt (vài phút)...' : job && job.status === 'error' ? esc(job.error) : '') + '</p></div>';
+        h += '<button class="primary" data-a="check" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Kiểm tra</button>';
+        if (S.local) h += '<button data-a="term" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Mở trên màn hình máy</button>';
+        h += '</div><p class="mute" id="d-' + e + '" style="margin-top:10px">' + (job && job.status === 'running' ? 'Đang cài đặt (vài phút)...' : job && job.status === 'error' ? esc(job.error) : '') + '</p><div id="l-' + e + '"></div></div>';
       });
       h += '<div class="nav"><button id="back">Quay lại</button><button class="primary" id="next" disabled>Tiếp theo</button></div>';
       view.innerHTML = h;
@@ -157,9 +217,10 @@
       ['claude', 'codex'].forEach(updateEngine);
       var btns = view.querySelectorAll('button[data-a]');
       for (var i = 0; i < btns.length; i++) btns[i].onclick = onEngineBtn;
-      var running = S.jobs['install-claude'] && S.jobs['install-claude'].status === 'running' || S.jobs['install-codex'] && S.jobs['install-codex'].status === 'running';
-      if (running) waitTimer = setTimeout(renderEngines, 3000);
-    });
+      var running = (S.jobs['install-claude'] && S.jobs['install-claude'].status === 'running') || (S.jobs['install-codex'] && S.jobs['install-codex'].status === 'running');
+      if (running) later(renderEngines, 3000);
+      else if (loginEng) pollLogin(loginEng);
+    }).catch(function () { later(renderEngines, 3000); });
   }
   function updateEngine(e) {
     var st = S.engines[e] || {}; var el = document.getElementById('s-' + e);
@@ -169,15 +230,44 @@
   }
   function onEngineBtn(ev) {
     var a = ev.target.getAttribute('data-a'), e = ev.target.getAttribute('data-e');
-    if (a === 'install') { api('POST', 'engine/install', { engine: e }).then(function () { setTimeout(renderEngines, 500); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
-    if (a === 'login') { api('POST', 'engine/login', { engine: e }).then(function () { msg('d-' + e, 'Đã mở cửa sổ đăng nhập. Làm theo hướng dẫn trong đó, xong rồi bấm "Kiểm tra".', 'mute'); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
-    if (a === 'check') {
-      msg('d-' + e, 'Đang kiểm tra (có thể mất ~1 phút)...', 'mute spin');
-      api('POST', 'engine/check', { engine: e }).then(function (r) {
-        S.engines[e] = { installed: r.installed, loggedIn: r.loggedIn }; updateEngine(e);
-        msg('d-' + e, r.loggedIn ? 'Dùng được.' : 'Chưa dùng được: ' + r.detail, r.loggedIn ? 'ok' : 'bad');
-      }).catch(function (x) { msg('d-' + e, x.message, 'bad'); });
-    }
+    if (a === 'install') { api('POST', 'engine/install', { engine: e }).then(function () { later(renderEngines, 500); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
+    if (a === 'term') { api('POST', 'engine/login', { engine: e }).then(function () { msg('d-' + e, 'Đã mở cửa sổ đăng nhập trên màn hình máy. Xong rồi bấm "Kiểm tra".', 'mute'); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
+    if (a === 'login') { loginEng = e; api('POST', 'login/start', { engine: e }).then(function () { pollLogin(e); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
+    if (a === 'check') checkEngine(e);
+  }
+  function checkEngine(e) {
+    msg('d-' + e, 'Đang kiểm tra (có thể mất ~1 phút)...', 'mute spin');
+    api('POST', 'engine/check', { engine: e }).then(function (r) {
+      S.engines[e] = { installed: r.installed, loggedIn: r.loggedIn }; updateEngine(e);
+      msg('d-' + e, r.loggedIn ? 'Dùng được.' : 'Chưa dùng được: ' + r.detail, r.loggedIn ? 'ok' : 'bad');
+    }).catch(function (x) { msg('d-' + e, x.message, 'bad'); });
+  }
+  // Khung đăng nhập qua điện thoại: link + (Claude) ô dán mã, hoặc (Codex) mã thiết bị.
+  function pollLogin(e) {
+    api('GET', 'login/state').then(function (v) {
+      var box = document.getElementById('l-' + e); if (!box || v.engine !== e) return;
+      var h = '';
+      if (v.status === 'running') {
+        if (v.url) h += '<p><a class="btn primary" href="' + esc(v.url) + '" target="_blank" rel="noopener">1. Mở trang đăng nhập</a></p>';
+        else h += '<p class="mute spin">Đang chuẩn bị đường dẫn đăng nhập</p>';
+        if (v.needsInput && v.url) h += '<p class="mute">2. Đăng nhập xong, trang sẽ hiện một <b>mã</b>. Sao chép và dán vào đây:</p><div class="row"><input id="lc" type="text" autocomplete="off" placeholder="Dán mã" style="flex:1"><button class="primary" id="ls">Gửi</button></div>';
+        if (!v.needsInput && v.url) h += '<p class="mute">2. Trên trang đó, nhập mã dưới đây rồi xác nhận. Máy sẽ tự nhận ra.</p>';
+        if (v.tail) h += '<pre>' + esc(v.tail) + '</pre>';
+        h += '<button id="lx">Hủy</button>';
+      } else if (v.status === 'done') {
+        h += '<p class="ok">✔ Đăng nhập xong, đang kiểm tra...</p>'; loginEng = null; box.innerHTML = h; checkEngine(e); return;
+      } else if (v.status === 'error') {
+        h += '<p class="bad">Chưa được: ' + esc(v.error || 'lỗi không rõ') + '</p>' + (v.tail ? '<pre>' + esc(v.tail) + '</pre>' : ''); loginEng = null;
+      }
+      var keep = document.getElementById('lc') ? document.getElementById('lc').value : '';
+      var focused = document.activeElement && document.activeElement.id === 'lc';
+      if (box.getAttribute('data-h') !== h) { box.innerHTML = h; box.setAttribute('data-h', h); if (document.getElementById('lc')) { document.getElementById('lc').value = keep; if (focused) document.getElementById('lc').focus(); } }
+      var ls = document.getElementById('ls'); if (ls) ls.onclick = function () {
+        api('POST', 'login/input', { text: document.getElementById('lc').value }).then(function () { msg('d-' + e, 'Đã gửi mã, đang chờ...', 'mute spin'); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); });
+      };
+      var lx = document.getElementById('lx'); if (lx) lx.onclick = function () { api('POST', 'login/cancel').then(function () { loginEng = null; box.setAttribute('data-h', ''); pollLogin(e); }); };
+      if (v.status === 'running') later(function () { pollLogin(e); }, 2000);
+    }).catch(function () { later(function () { pollLogin(e); }, 3000); });
   }
 
   // ---- 4. Hoàn tất ----
@@ -185,18 +275,20 @@
     var ok = ['claude', 'codex'].filter(function (x) { return S.engines[x] && S.engines[x].loggedIn; }).map(function (x) { return NAMES[x]; });
     view.innerHTML = '<h2>4. Sẵn sàng</h2><p>Đã chuẩn bị xong:</p><ul>' +
       '<li>Mạng: <b class="ok">có</b></li><li>Telegram: bot <b>@' + esc(S.bot && S.bot.username) + '</b>, chủ máy <b>' + esc(S.owner && (S.owner.name || S.owner.id)) + '</b></li><li>AI: <b>' + esc(ok.join(', ')) + '</b></li></ul>' +
-      '<p class="mute">Bấm "Bắt đầu" để máy chạy. Bạn sẽ nhận một tin nhắn xác nhận trên Telegram. Có thể tắt hoặc để máy ở nguyên chỗ, không cần màn hình nữa.</p><p id="m"></p>' +
+      '<p class="mute">Bấm "Bắt đầu" để máy chạy. Bạn sẽ nhận một tin nhắn xác nhận trên Telegram. Sau đó không cần màn hình nữa.</p><p id="m"></p>' +
       '<div class="nav"><button id="back">Quay lại</button><button class="primary" id="go">Bắt đầu</button></div>';
     document.getElementById('back').onclick = function () { setStep(2); };
     document.getElementById('go').onclick = function () {
       msg('m', 'Đang khởi động...', 'mute spin'); document.getElementById('go').disabled = true;
       api('POST', 'finish').then(function () {
+        bannerEl.innerHTML = '';
         view.innerHTML = '<h2>Xong rồi 🎉</h2><p>Mở Telegram: bot đã nhắn tin cho bạn. Từ giờ chỉ cần nhắn việc cho bot.</p><p class="mute">Cửa sổ này sẽ tự đóng sau vài giây.</p>';
       }).catch(function (e) { msg('m', e.message, 'bad'); document.getElementById('go').disabled = false; });
     };
   }
 
-  setStep(0);
+  // Mở trang: nếu máy đã ghép đôi xong (ví dụ mở từ link trong tin Telegram) thì nhảy thẳng tới bước AI.
+  refresh().then(function () { setStep(S.owner && S.net && S.net.online ? 2 : 0); }).catch(function () { setStep(0); });
 })();
 </script>
 </body>

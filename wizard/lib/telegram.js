@@ -1,6 +1,7 @@
 'use strict';
 
-// Bước Telegram: kiểm tra token bot (getMe) rồi chờ người dùng nhắn tin cho bot để LẤY ID của họ (không phải tự tìm ID).
+// Bước Telegram: kiểm tra token bot (getMe), rồi chờ chủ máy nhắn "/start <mã cài đặt>" cho bot để LẤY ID của họ.
+// Mã cài đặt (hiện trên màn hình/trang cài đặt) ngăn người lạ biết tên bot chiếm quyền chủ máy.
 const TOKEN_RE = /^\d{6,}:[A-Za-z0-9_-]{30,}$/;
 
 function api(token, base, f) {
@@ -28,31 +29,37 @@ async function getMe(token, opts) {
   }
 }
 
-// Chờ tối đa `waitSec` giây tới khi có người nhắn riêng cho bot. Trả { id, name, username } hoặc null nếu hết giờ.
-// Gọi lặp lại được (mỗi lần cắt thành các lượt long-poll ngắn). Tin đã nhận được đánh dấu đã đọc.
-async function waitForOwner(token, opts) {
+// Tin có đúng mã cài đặt không: "/start 123456", "/start@ten_bot 123456", hoặc chỉ "123456".
+function isPairing(text, code) {
+  const t = String(text || '').trim().replace(/^\/start(@\w+)?\s*/i, '').trim();
+  return t.length > 0 && t === String(code);
+}
+
+// Một lượt chờ (long-poll tối đa waitSec giây). Trả { owner|null, offset, strangers:[id] }.
+// owner: người nhắn đúng mã; strangers: người khác nhắn riêng cho bot (để nhắc họ cách ghép đôi). Tin đã xử lý được đánh dấu qua offset.
+async function pollOwner(token, opts) {
   opts = opts || {};
   const call = api(token.trim(), opts.base, opts.fetch);
-  const deadline = Date.now() + (opts.waitSec || 25) * 1000;
-  let offset;
-  while (Date.now() < deadline) {
-    const left = Math.max(1, Math.min(10, Math.floor((deadline - Date.now()) / 1000)));
-    const ups = await call('getUpdates', { offset, timeout: left, allowed_updates: ['message'] }, AbortSignal.timeout((left + 10) * 1000));
-    for (const u of ups) {
-      offset = u.update_id + 1;
-      const m = u.message;
-      if (m && m.chat && m.chat.type === 'private' && m.from && !m.from.is_bot) {
-        await call('getUpdates', { offset, timeout: 0 }, AbortSignal.timeout(10000)).catch(() => {});   // đánh dấu đã đọc
-        return { id: String(m.from.id), name: [m.from.first_name, m.from.last_name].filter(Boolean).join(' '), username: m.from.username || '' };
-      }
+  const waitSec = Math.max(1, Math.min(opts.waitSec || 20, 50));
+  const ups = await call('getUpdates', { offset: opts.offset, timeout: waitSec, allowed_updates: ['message'] }, AbortSignal.timeout((waitSec + 10) * 1000));
+  let offset = opts.offset, owner = null; const strangers = [];
+  for (const u of ups) {
+    offset = u.update_id + 1;
+    const m = u.message;
+    if (!m || !m.chat || m.chat.type !== 'private' || !m.from || m.from.is_bot) continue;
+    if (isPairing(m.text, opts.code)) {
+      owner = { id: String(m.from.id), name: [m.from.first_name, m.from.last_name].filter(Boolean).join(' '), username: m.from.username || '' };
+      break;
     }
+    strangers.push(String(m.from.id));
   }
-  return null;
+  if (owner && offset !== undefined) await call('getUpdates', { offset, timeout: 0 }, AbortSignal.timeout(10000)).catch(() => {});   // đánh dấu đã đọc
+  return { owner, offset, strangers };
 }
 
 async function send(token, chatId, text, opts) {
   opts = opts || {};
-  await api(token.trim(), opts.base, opts.fetch)('sendMessage', { chat_id: chatId, text }, AbortSignal.timeout(15000));
+  await api(token.trim(), opts.base, opts.fetch)('sendMessage', { chat_id: chatId, text, disable_web_page_preview: true }, AbortSignal.timeout(15000));
 }
 
-module.exports = { TOKEN_RE, getMe, waitForOwner, send };
+module.exports = { TOKEN_RE, getMe, isPairing, pollOwner, send };

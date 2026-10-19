@@ -2,5 +2,8 @@
 set -e
 chmod +x /usr/local/sbin/agentos-firstboot
 systemctl enable agentos-firstboot.service || true
+# SSH: mặc định TẮT. Máy cửa sổ chứa tài khoản AI của chủ cửa hàng; mật khẩu SSH qua mạng LAN là rủi ro không cần thiết.
+# Kỹ thuật viên bật khi cần hỗ trợ: sudo systemctl enable --now ssh (khóa máy chủ được tự tạo, xem ssh.service.d).
+systemctl disable ssh.service ssh.socket || true
 # Treo máy 24/7: không cho ngủ/hibernate
 systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target || true

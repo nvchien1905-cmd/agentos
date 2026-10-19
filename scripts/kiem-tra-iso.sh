@@ -35,6 +35,7 @@ chk "Chromium co mat" which chromium
 chk "thu muc /var/lib/agentos thuoc agentos" bash -c '[ "$(stat -c %U /var/lib/agentos)" = agentos ]'
 chk "tools.json co mat" test -f "$ORCH/tools.json"
 chk "khong co unit nao bi loi (systemctl --failed)" bash -c 'test "$(systemctl --failed --no-legend | wc -l)" = 0'
+chk "SSH tat mac dinh (an toan)" bash -c '! systemctl is-enabled --quiet ssh 2>/dev/null'
 
 echo "--- ban DA CAI (bo qua o ban live)"
 if grep -q boot=live /proc/cmdline; then

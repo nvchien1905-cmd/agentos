@@ -30,6 +30,7 @@ jobs:
       - name: Chạy test bộ điều phối (trên Linux; test lỗi không chặn build ISO, xem log)
         continue-on-error: true
         working-directory: orchestrator
+        shell: bash
         run: |
           set +e
           apt-get install -y nodejs npm python3 build-essential > ../apt.log 2>&1

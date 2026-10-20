@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.20.1",
-  "file": "agentos-update-2026.10.20.1.tar.gz",
-  "size": 114716,
-  "sha256": "1328a18d5322379d887a9587330d2d0dd2a6c7ea3f8f5cae9767d464dd584f17",
+  "version": "2026.10.20.2",
+  "file": "agentos-update-2026.10.20.2.tar.gz",
+  "size": 115184,
+  "sha256": "16a504d0536fa7458e9ee24b0d1a8853db975ab7d3f811b03913d0653756390a",
   "date": "2026-10-20",
-  "notes": "Bản đầu có cập nhật từ xa: /capnhat, khóa API, công cụ văn phòng/giọng nói/Tailscale/in/sao lưu"
+  "notes": "Sửa màn hình trắng ở trình hướng dẫn lần đầu trên một số card đồ họa (tắt tăng tốc GPU của Chromium)"
 }

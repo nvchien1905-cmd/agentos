@@ -41,6 +41,7 @@ const ALLOW = [
   /^etc\/systemd\/system\/(agentos-[\w.-]+|onedrive-agentos\.[\w.-]+)$/,
   /^etc\/systemd\/system\/tailscaled\.service\.d\/[\w.-]+$/,
   /^usr\/share\/applications\/agentos-[\w-]+\.desktop$/,
+  /^etc\/xdg\/autostart\/agentos-[\w-]+\.desktop$/,
   /^usr\/share\/icons\/hicolor\/scalable\/apps\/agentos-[\w-]+\.svg$/,
   /^etc\/agentos\/(update-pubkey\.pem|apps\.conf)$/,         // pubkey: cho phép xoay khóa (bản mới vẫn phải ký bằng khóa CŨ)
   /^apply\.sh$/,                                              // tập lệnh sau cập nhật (chạy bằng root, nằm TRONG phần được ký)

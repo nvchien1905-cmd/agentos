@@ -2,6 +2,6 @@
 Type=Application
 Name=AgentOS - Cai dat lan dau
 Comment=Hien trinh huong dan cai dat o lan dang nhap dau tien (chi khi may chua duoc cau hinh va khong o ban live)
-Exec=sh -c 'grep -q boot=live /proc/cmdline && exit 0; test -f /etc/agentos/orchestrator.env && exit 0; sleep 3; exec chromium --kiosk --no-first-run --disable-infobars --disable-features=Translate --lang=vi --password-store=basic --user-data-dir=$HOME/.cache/agentos-wizard http://127.0.0.1:8088/'
+Exec=sh -c 'grep -q boot=live /proc/cmdline && exit 0; test -f /etc/agentos/orchestrator.env && exit 0; sleep 3; exec chromium --kiosk --disable-gpu --disable-gpu-compositing --no-first-run --disable-infobars --disable-features=Translate --lang=vi --password-store=basic --user-data-dir=$HOME/.cache/agentos-wizard http://127.0.0.1:8088/'
 Terminal=false
 X-GNOME-Autostart-enabled=true

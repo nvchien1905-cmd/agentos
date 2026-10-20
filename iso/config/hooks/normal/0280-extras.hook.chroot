@@ -4,7 +4,7 @@
 set -e
 id agentos >/dev/null 2>&1
 
-chmod 0755 /usr/local/bin/agentos-stt /usr/local/bin/agentos-sao-luu /usr/local/bin/agentos-key
+chmod 0755 /usr/local/bin/agentos-stt /usr/local/bin/agentos-sao-luu /usr/local/bin/agentos-key /usr/local/bin/agentos-update
 
 # --- Nhận dạng giọng nói: faster-whisper trong môi trường riêng. Ghim phiên bản (av mới nhất không khớp). Mô hình tải ở lần dùng đầu (~500MB).
 python3 -m venv /opt/agentos/stt-venv
@@ -29,6 +29,10 @@ fi
 
 # --- Sao lưu hằng ngày
 systemctl enable agentos-sao-luu.timer || true
+
+# --- Cập nhật phần mềm không cần boot lại (bản cập nhật phải có chữ ký khớp /etc/agentos/update-pubkey.pem)
+systemctl enable agentos-update.path || true
+test -s /etc/agentos/update-pubkey.pem || { echo "[LOI] thieu khoa cong khai cap nhat"; exit 1; }
 
 # Kiểm tra các lệnh AI sẽ dùng
 for c in soffice pdftotext tesseract convert ffmpeg jq sqlite3 lp; do

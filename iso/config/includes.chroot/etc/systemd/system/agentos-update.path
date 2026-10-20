@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - có yêu cầu cập nhật phần mềm (từ Telegram /capnhat co)
+
+[Path]
+PathExists=/var/lib/agentos/update-request
+Unit=agentos-update.service
+
+[Install]
+WantedBy=multi-user.target

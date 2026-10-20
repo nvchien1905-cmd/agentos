@@ -43,6 +43,7 @@ chk "thu vien Python van phong (pandas openpyxl docx xlsxwriter odf reportlab)" 
 chk "giong noi: venv faster-whisper + agentos-stt" bash -c 'test -x /usr/local/bin/agentos-stt && /opt/agentos/stt-venv/bin/python -c "import faster_whisper, av"'
 chk "Tailscale: goi + dich vu bat + operator agentos" bash -c 'test -x /usr/bin/tailscale && systemctl is-enabled --quiet tailscaled && grep -q operator=agentos /etc/systemd/system/tailscaled.service.d/10-agentos-operator.conf'
 chk "in an: CUPS bat, lp co mat, nguoi dung may thuoc lpadmin khi cai (users.conf)" bash -c 'command -v lp >/dev/null && systemctl is-enabled --quiet cups && { ! test -f /etc/calamares/modules/users.conf || grep -q "^    - lpadmin" /etc/calamares/modules/users.conf; }'
+chk "cap nhat tu xa: agentos-update + khoa cong khai + VERSION + path unit bat" bash -c 'test -x /usr/local/bin/agentos-update && test -s /etc/agentos/update-pubkey.pem && test -s /opt/agentos/VERSION && test -f /opt/agentos/update/updater.js && systemctl is-enabled --quiet agentos-update.path'
 chk "sao luu hang ngay: timer 02:30 bat + script chay duoc" bash -c 'systemctl is-enabled --quiet agentos-sao-luu.timer && test -x /usr/local/bin/agentos-sao-luu && bash -n /usr/local/bin/agentos-sao-luu'
 if [ $SUDO = 1 ]; then
   chk "sao luu thu: tao agentos-<ngay>.tar.gz co KHOI-PHUC.txt" bash -c 'T=$(mktemp -d); sudo ONEDRIVE_DIR=$T /usr/local/bin/agentos-sao-luu >/dev/null && f=$(ls $T/AgentOS/sao-luu/agentos-*.tar.gz) && tar tzf "$f" | grep -q KHOI-PHUC.txt; r=$?; sudo rm -rf $T; exit $r'

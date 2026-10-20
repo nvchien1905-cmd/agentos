@@ -83,3 +83,10 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - **DeepSeek (API)** là engine `deepseekapi`: chạy Claude Code trỏ sang điểm cuối tương thích Anthropic của DeepSeek (cách DeepSeek hướng dẫn; mô hình `deepseek-flash`, đổi bằng `DEEPSEEK_MODEL=deepseek-v4-pro`). Khác lệnh `/deepseek` (mở DeepSeek WEB trên màn hình, vì điều khoản web cấm robot); dùng API là hợp lệ. Ép dùng bằng `/deepseekapi <việc>`.
 - Gemini: Gemini CLI đọc kiểu đăng nhập từ `~/.gemini/settings.json` trước biến môi trường, nên bộ điều phối tự đặt `gemini-api-key` khi có khóa và `oauth-personal` khi không.
 - Sao lưu hằng ngày KHÔNG chứa khóa API (đã che).
+
+## Cập nhật phần mềm không cần boot lại
+- Máy tự hỏi GitHub mỗi 3 giờ; có bản mới thì bot nhắn quản trị viên. `/capnhat` xem, `/capnhat co` cài (đang có việc AI thì cần `/capnhat co ep`), `/capnhat tudong bat` để tự cài trong khung 02:00-05:00 giờ VN lúc máy rảnh (mặc định TẮT). Máy cũng chạy được bằng tay: `sudo agentos-update check|apply`.
+- **Chữ ký**: mọi bản cập nhật được ký Ed25519 bằng khóa riêng của chủ dự án (giữ ở máy chủ dự án, KHÔNG lên GitHub). Máy khách chỉ có khóa công khai (`/etc/agentos/update-pubkey.pem`) nên ai chiếm được tài khoản GitHub cũng không đưa được mã vào máy khách. Chữ ký ký lên `manifest.json` (số phiên bản + sha256 + kích thước gói) nên sửa gói hoặc hạ phiên bản đều bị bắt.
+- **Phạm vi**: gói chỉ ghi được vào danh sách đường dẫn cố định (mã bộ điều phối, trình hướng dẫn, trợ lý màn hình, các lệnh `agentos-*`, dịch vụ/biểu tượng của AgentOS); chặn `..`, đường dẫn tuyệt đối, liên kết, tệp hệ thống. Gói có thể kèm `apply.sh` (chạy bằng root, nằm trong phần được ký) cho việc cài thêm gói phần mềm.
+- **Hoàn tác**: trước khi ghi, tệp cũ được sao lưu; sau khi khởi động lại dịch vụ, máy kiểm dịch vụ còn chạy ổn (2 lần, cách ~25 giây); lỗi bất kỳ bước nào thì khôi phục bản cũ và bot báo. Đã thử thật trên máy ảo: bản hỏng bị phát hiện và tự khôi phục.
+- Không cập nhật được: nhân Linux, gói apt hệ thống, Calamares/trình cài đặt (cần ISO mới). Mất khóa riêng = không phát hành cập nhật được nữa (phải ghi lại ISO mới có khóa công khai mới), nên sao lưu khóa.

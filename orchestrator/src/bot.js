@@ -13,6 +13,7 @@ function helpText(profiles) {
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
+    '/capnhat [co|tudong bat|tudong tat] - cập nhật phần mềm khi có bản mới (không cần boot lại)\n' +
     '/tailscale [ketnoi|ngat co] - đường vào dự phòng khi Telegram/mạng lỗi · /in <tệp trong OneDrive> [may <tên>] - in qua máy in của máy\n' +
     '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +

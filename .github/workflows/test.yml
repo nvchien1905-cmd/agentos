@@ -3,7 +3,7 @@ name: test
 on:
   workflow_dispatch:
   push:
-    paths: ['orchestrator/**', 'wizard/**', '.github/workflows/test.yml']
+    paths: ['orchestrator/**', 'wizard/**', 'update/**', '.github/workflows/test.yml']
 
 jobs:
   test:
@@ -20,6 +20,8 @@ jobs:
         run: node --test desk/test/desk.test.js desk/test/session.test.js
       - name: Chạy test xử lý nhiều màn hình
         run: bash scripts/test-man-hinh.sh
+      - name: Chạy test cập nhật phần mềm (chữ ký, hoàn tác)
+        run: node --test update/test/update.test.js
       - name: Chạy test trình hướng dẫn lần đầu
         working-directory: wizard
         run: node --test test/*.test.js

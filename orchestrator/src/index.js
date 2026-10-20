@@ -24,6 +24,7 @@ const { createQuick } = require('./quick');
 const { createOneDrive } = require('./onedrive');
 const { createVoice } = require('./voice');
 const apikeys = require('./apikeys');
+const { createUpdateWatcher } = require('./update');
 const { createSchedule } = require('./schedule');
 const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
@@ -218,10 +219,14 @@ async function main() {
     db, log, kiotviet, notify, admins: [...cfg.adminUserIds], oneDriveDir: cfg.oneDriveDir, diskFreeMb: () => maint.diskFreeMb(cfg.workdir), defaultReportTime: cfg.reportTime,
     submitJob: (chatId, text) => { db.addJob(chatId, text, null, null); setImmediate(() => worker.wake()); },
   });
+  const updates = createUpdateWatcher({
+    db, log, notify, admins: [...cfg.adminUserIds], url: cfg.updateUrl || undefined,
+    idle: () => !worker.currentJobId() && !db.queuedCount(),
+  });
   const bot = createBot({
     db, worker, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
     voice: createVoice({ tg, log, bin: process.env.STT_BIN || undefined }),
-    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), printing: createPrinting({ dir: cfg.oneDriveDir }) }),
+    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), update: updates, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));
@@ -234,7 +239,7 @@ async function main() {
   }
   worker.wake();
   // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
-  const tick = setInterval(() => { worker.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); }, 30000);
+  const tick = setInterval(() => { worker.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); updates.tick().catch((e) => log('kiểm bản cập nhật lỗi: ' + e.message)); updates.autoTick().catch((e) => log('tự cập nhật lỗi: ' + e.message)); updates.announceResult().catch((e) => log('báo kết quả cập nhật lỗi: ' + e.message)); }, 30000);
 
   // Nhịp tim cho systemd watchdog + file heartbeat (scripts/healthcheck.js).
   const health = createHealth({

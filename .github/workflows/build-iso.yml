@@ -2,7 +2,7 @@ name: build-iso
 on:
   workflow_dispatch:
   push:
-    paths: ['iso/**', 'orchestrator/**', 'wizard/**', 'desk/**', '.github/workflows/build-iso.yml']
+    paths: ['iso/**', 'orchestrator/**', 'wizard/**', 'desk/**', 'update/**', '.github/workflows/build-iso.yml']
 
 jobs:
   build:
@@ -24,12 +24,15 @@ jobs:
           cp orchestrator/tools.linux.json iso/config/includes.chroot/opt/agentos/orchestrator/tools.json
           cp -r wizard iso/config/includes.chroot/opt/agentos/wizard
           cp -r desk iso/config/includes.chroot/opt/agentos/desk
+          mkdir -p iso/config/includes.chroot/opt/agentos/update
+          cp update/lib.js update/updater.js iso/config/includes.chroot/opt/agentos/update/
+          cp VERSION iso/config/includes.chroot/opt/agentos/VERSION
       - name: Đặt quyền thực thi (Git trên Windows không giữ bit thực thi)
         run: |
           chmod +x iso/auto/config
           chmod +x iso/config/hooks/normal/*.hook.chroot
           chmod +x iso/config/includes.chroot/usr/local/sbin/agentos-firstboot
-          chmod +x iso/config/includes.chroot/usr/local/bin/agentos-desk iso/config/includes.chroot/usr/local/bin/agentos-app iso/config/includes.chroot/usr/local/bin/agentos-ai iso/config/includes.chroot/usr/local/bin/agentos-display
+          chmod +x iso/config/includes.chroot/usr/local/bin/agentos-desk iso/config/includes.chroot/usr/local/bin/agentos-app iso/config/includes.chroot/usr/local/bin/agentos-ai iso/config/includes.chroot/usr/local/bin/agentos-display iso/config/includes.chroot/usr/local/bin/agentos-update
       - name: Chạy test bộ điều phối (trên Linux; test lỗi không chặn build ISO, xem log)
         continue-on-error: true
         working-directory: orchestrator

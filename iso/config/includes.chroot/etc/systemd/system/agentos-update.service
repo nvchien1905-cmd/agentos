@@ -1,0 +1,10 @@
+[Unit]
+Description=AgentOS - cập nhật phần mềm (chỉ cài gói có chữ ký của nhà phát hành; lỗi thì tự khôi phục)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/agentos-update apply --from-request
+TimeoutStartSec=1200
+Nice=10

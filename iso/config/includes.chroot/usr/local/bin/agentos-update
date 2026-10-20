@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+'use strict';
+// Cập nhật phần mềm AgentOS khi có phiên bản mới, KHÔNG cần boot lại (chạy bằng root).
+//   sudo agentos-update status     phiên bản đang cài
+//   sudo agentos-update check      hỏi xem có bản mới không (kiểm chữ ký)
+//   sudo agentos-update apply      cài bản mới (nếu có); lỗi thì tự khôi phục bản cũ
+// Bot Telegram: /capnhat (xem), /capnhat co (cài). Chi tiết an toàn: docs/an-toan.md (mục Cập nhật).
+const fs = require('fs');
+const LIB = process.env.AGENTOS_UPDATE_LIB || '/opt/agentos/update';
+const { createUpdater } = require(LIB + '/updater');
+
+const u = createUpdater({
+  url: process.env.AGENTOS_UPDATE_URL || undefined,
+  root: process.env.AGENTOS_ROOT || '/',
+  stateDir: process.env.AGENTOS_UPDATE_STATE || undefined,
+  resultFile: process.env.AGENTOS_UPDATE_RESULT || undefined,
+  systemd: !process.env.AGENTOS_NO_SYSTEMD,
+});
+const REQUEST = process.env.AGENTOS_UPDATE_REQUEST || '/var/lib/agentos/update-request';
+
+async function main() {
+  const [cmd, ...rest] = process.argv.slice(2);
+  if (typeof process.getuid === 'function' && process.getuid() !== 0 && !process.env.AGENTOS_ROOT) { console.error('Cần chạy bằng quyền quản trị: sudo agentos-update ' + (cmd || 'status')); return 1; }
+  if (cmd === 'status' || !cmd) { console.log('Phiên bản đang cài: ' + u.installed()); return 0; }
+  if (cmd === 'check') {
+    const r = await u.check();
+    console.log('Đang cài: ' + r.installed + ' · mới nhất: ' + r.latest + (r.newer ? '  → CÓ BẢN MỚI' : '  (đã mới nhất)'));
+    if (r.newer && r.notes) console.log('Nội dung: ' + r.notes);
+    return 0;
+  }
+  if (cmd === 'apply') {
+    if (rest.includes('--from-request')) { try { fs.rmSync(REQUEST, { force: true }); } catch (e) { /* không có */ } }
+    const r = await u.apply({ force: rest.includes('--force') });
+    if (r.upToDate) { console.log('Đã là bản mới nhất (' + r.from + ').'); return 0; }
+    if (r.ok) { console.log('✅ Đã cập nhật ' + r.from + ' → ' + r.to + ' (' + r.files + ' tệp).'); return 0; }
+    console.error('⚠️  Cập nhật không thành công: ' + r.error + (r.rolledBack ? ' (đã khôi phục bản cũ)' : ''));
+    return rest.includes('--from-request') ? 0 : 1;      // chạy từ yêu cầu của bot: lỗi đã ghi vào tệp kết quả, đừng để systemd đánh dấu dịch vụ hỏng
+  }
+  console.error('Dùng: agentos-update [status | check | apply [--force]]');
+  return 2;
+}
+main().then((c) => process.exit(c || 0), (e) => { console.error('Lỗi: ' + e.message); process.exit(1); });

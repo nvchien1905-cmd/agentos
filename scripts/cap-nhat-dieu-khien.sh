@@ -16,7 +16,7 @@ apt-get install -y --no-install-recommends xclip scrot xdotool >/dev/null 2>&1 |
 echo "== 2/4 Mã bộ điều phối + trợ lý màn hình"
 B=/root/agentos-bak-$(date +%Y%m%d-%H%M%S); mkdir -p "$B"; cp -a /opt/agentos/orchestrator/src "$B/"; [ -d /opt/agentos/desk ] && cp -a /opt/agentos/desk "$B/" || true
 echo "Đã sao lưu mã cũ vào $B"
-ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js voice.js schedule.js tailscale.js printing.js apikeys.js engines/claude.js engines/gemini.js"
+ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js voice.js schedule.js tailscale.js printing.js apikeys.js update.js engines/claude.js engines/gemini.js"
 for f in $ORCH; do
   mkdir -p "$T/orchestrator/src/$(dirname "$f")"
   curl -fsSL "$R/orchestrator/src/$f" -o "$T/orchestrator/src/$f" || { echo "Không tải được orchestrator/src/$f"; exit 1; }
@@ -147,6 +147,23 @@ for h in /home/*; do u=$(basename "$h"); id "$u" >/dev/null 2>&1 || continue; [ 
   mkdir -p "$h/Desktop"; cp /usr/share/applications/agentos-apikey.desktop "$h/Desktop/"; chmod 755 "$h/Desktop/agentos-apikey.desktop"; chown "$u:$(id -gn "$u")" "$h/Desktop/agentos-apikey.desktop"; done
 gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 echo "Thêm khóa API: bấm biểu tượng 'Khóa API (AI)' trên màn hình chính, hoặc: sudo agentos-key"
+
+echo "== Cập nhật phần mềm không cần boot lại (agentos-update + /capnhat trong Telegram)"
+mkdir -p /opt/agentos/update
+for f in update/lib.js update/updater.js; do
+  curl -fsSL "$R/$f" -o "$T/u-$(basename "$f")" || { echo "Không tải được $f"; exit 1; }
+  node --check "$T/u-$(basename "$f")" || { echo "$f lỗi cú pháp"; exit 1; }
+  cat "$T/u-$(basename "$f")" > "/opt/agentos/update/$(basename "$f")"
+done
+for f in usr/local/bin/agentos-update etc/systemd/system/agentos-update.path etc/systemd/system/agentos-update.service etc/agentos/update-pubkey.pem; do
+  mkdir -p "/$(dirname "$f")"; curl -fsSL "$R/$CI/$f" -o "/$f" || { echo "Không tải được $f"; exit 1; }
+done
+chmod 755 /usr/local/bin/agentos-update
+# Phiên bản đang cài = phiên bản của mã vừa chép (kho mã: tệp VERSION); các bản cập nhật sau này có chữ ký mới cài được
+[ -s /opt/agentos/VERSION ] || curl -fsSL "$R/VERSION" -o /opt/agentos/VERSION || echo "0" > /opt/agentos/VERSION
+systemctl daemon-reload
+systemctl enable --now agentos-update.path >/dev/null 2>&1 || true
+echo "Phiên bản đang cài: $(cat /opt/agentos/VERSION). Từ giờ: nhắn bot /capnhat để xem, /capnhat co để cài bản mới (không cần boot lại)."
 
 echo "== 4/4 Khởi động lại bộ điều phối"
 systemctl restart agentos-orchestrator || true

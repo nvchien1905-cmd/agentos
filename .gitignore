@@ -25,3 +25,7 @@ iso/config/bootstrap
 iso/config/chroot
 iso/config/common
 iso/config/source
+
+# Khóa riêng ký bản cập nhật: TUYỆT ĐỐI không đưa lên Git
+*private*.pem
+signing-*.pem

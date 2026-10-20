@@ -22,6 +22,10 @@ const { createDeskClient } = require('./desk');
 const { createKiotViet } = require('./kiotviet');
 const { createQuick } = require('./quick');
 const { createOneDrive } = require('./onedrive');
+const { createVoice } = require('./voice');
+const { createSchedule } = require('./schedule');
+const { createTailscale } = require('./tailscale');
+const { createPrinting } = require('./printing');
 
 const log = (m) => console.log(new Date().toISOString() + ' ' + m);
 const fwd = (p) => String(p).replace(/\\/g, '/');
@@ -59,7 +63,9 @@ async function main() {
     'với DeepSeek web chỉ chép câu lệnh vào bộ nhớ tạm (`clip`) rồi để chủ máy tự dán và Gửi (điều khoản DeepSeek cấm robot tự gửi); ' +
     'với KiotViet đừng nhập/sửa dữ liệu bán hàng nếu chủ máy không yêu cầu rõ (xem doanh số/tồn đã có lệnh /doanhso, /ton).';
   // OneDrive: nơi chủ máy để dữ liệu cho AI dùng và nơi AI lưu kết quả + trí nhớ lâu dài (đồng bộ hai chiều, tự động).
-  const ONEDRIVE_HINT = 'Dữ liệu và trí nhớ của chủ máy nằm ở OneDrive, tự đồng bộ hai chiều với thư mục ' + cfg.oneDriveDir + '. ' +
+  const OFFICE_HINT = 'Máy có sẵn công cụ văn phòng chạy không cần màn hình: LibreOffice (soffice --headless --convert-to pdf|xlsx|docx <tệp>), Python có pandas/openpyxl/python-docx/xlsxwriter/reportlab, ' +
+    'pdftotext/pdftoppm (đọc PDF), tesseract -l vie (đọc chữ trong ảnh), ImageMagick (convert), ffmpeg, jq, sqlite3. Cần đọc/tạo Excel, Word, PDF, ảnh hóa đơn thì dùng chúng.';
+  const ONEDRIVE_HINT = OFFICE_HINT + ' Dữ liệu và trí nhớ của chủ máy nằm ở OneDrive, tự đồng bộ hai chiều với thư mục ' + cfg.oneDriveDir + '. ' +
     'Hãy đọc dữ liệu cần thiết từ đó. Lưu kết quả, báo cáo và điều đáng nhớ vào ' + cfg.oneDriveDir + '/AgentOS/ (tạo nếu chưa có). ' +
     'Đầu mỗi việc hãy đọc ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md nếu có (trí nhớ lâu dài về chủ máy và cửa hàng), cuối việc thêm vào tệp đó những điều mới đáng nhớ (ngắn gọn, có ngày). ' +
     'Không xóa và không ghi đè tệp của chủ máy: chỉ tạo tệp mới (tên có ngày giờ) hoặc thêm vào cuối tệp trong thư mục AgentOS. Tệp lên OneDrive sau khoảng 2 phút. ' +
@@ -199,9 +205,15 @@ async function main() {
     // Ổ đĩa gần đầy thì không nhận việc (Chromium/AI ghi nhiều file tạm; đầy đĩa làm hỏng cả cơ sở dữ liệu).
     preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB, cần ít nhất ' + cfg.minFreeMb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
   });
+  const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
+  const schedule = createSchedule({
+    db, log, kiotviet, notify, admins: [...cfg.adminUserIds], oneDriveDir: cfg.oneDriveDir, diskFreeMb: () => maint.diskFreeMb(cfg.workdir), defaultReportTime: cfg.reportTime,
+    submitJob: (chatId, text) => { db.addJob(chatId, text, null, null); setImmediate(() => worker.wake()); },
+  });
   const bot = createBot({
     db, worker, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet: createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer }) }),
+    voice: createVoice({ tg, log, bin: process.env.STT_BIN || undefined }),
+    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));
@@ -214,7 +226,7 @@ async function main() {
   }
   worker.wake();
   // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
-  const tick = setInterval(() => worker.wake(), 30000);
+  const tick = setInterval(() => { worker.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); }, 30000);
 
   // Nhịp tim cho systemd watchdog + file heartbeat (scripts/healthcheck.js).
   const health = createHealth({

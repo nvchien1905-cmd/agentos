@@ -85,3 +85,32 @@ firmware-linux
 firmware-iwlwifi
 firmware-realtek
 firmware-misc-nonfree
+
+# Văn phòng cho AI: đọc/tạo Word, Excel, PDF; đọc chữ trong ảnh (OCR tiếng Việt); xử lý ảnh, âm thanh, dữ liệu
+libreoffice-writer
+libreoffice-calc
+libreoffice-l10n-vi
+python3-pandas
+python3-openpyxl
+python3-xlsxwriter
+python3-docx
+python3-odf
+python3-reportlab
+python3-venv
+poppler-utils
+tesseract-ocr
+tesseract-ocr-vie
+imagemagick
+ffmpeg
+jq
+sqlite3
+zip
+unzip
+p7zip-full
+
+# In ấn (CUPS + trình điều khiển phổ biến + công cụ thêm máy in bằng giao diện)
+cups
+cups-client
+cups-filters
+printer-driver-all
+system-config-printer

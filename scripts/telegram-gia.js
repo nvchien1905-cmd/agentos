@@ -19,6 +19,9 @@ function takeInput() {
     if (line.startsWith('@duyet')) {
       if (lastBtnMsg) { ups.push({ update_id: ++uid, callback_query: { id: 'cb' + uid, from: { id: OWNER, first_name: 'Chu' }, message: { message_id: lastBtnMsg.mid, chat: { id: OWNER, type: 'private' } }, data: lastBtnMsg.btns[0].callback_data } }); log('[CHU bam nut] ' + lastBtnMsg.btns[0].text); }
       else log('[CHU] không có lời hỏi duyệt nào để bấm');
+    } else if (line.startsWith('@thoai ')) {                       // "@thoai /duong/dan/am-thanh.ogg" = chủ máy gửi tin nhắn thoại (file_id = đường dẫn tệp)
+      ups.push({ update_id: ++uid, message: { message_id: ++mid, from: { id: OWNER, first_name: 'Chu', is_bot: false }, chat: { id: OWNER, type: 'private' }, date: Math.floor(Date.now() / 1000), voice: { file_id: line.slice(7).trim(), duration: 4 } } });
+      log('[CHU thoại] ' + line.slice(7).trim());
     } else {
       ups.push({ update_id: ++uid, message: { message_id: ++mid, from: { id: OWNER, first_name: 'Chu', is_bot: false }, chat: { id: OWNER, type: 'private' }, date: Math.floor(Date.now() / 1000), text: line } });
       log('[CHU] ' + line);
@@ -30,6 +33,8 @@ function takeInput() {
 globalThis.fetch = async function (url, opts) {
   const u = String(url);
   if (!u.startsWith('https://api.telegram.org/')) return real(url, opts);
+  const fileAt = u.indexOf('/file/bot');
+  if (fileAt > 0) { const rest = u.slice(fileAt + 9); const p = '/' + rest.slice(rest.indexOf('/') + 1).replace(/^\/+/, ''); try { return new Response(fs.readFileSync(p)); } catch (e) { return new Response('', { status: 404 }); } }
   const method = u.split('/').pop();
   let body = {};
   try { if (opts && typeof opts.body === 'string') body = JSON.parse(opts.body); } catch (e) { /* form */ }
@@ -50,6 +55,7 @@ globalThis.fetch = async function (url, opts) {
     log('[BOT gửi ' + (method === 'sendPhoto' ? 'ẢNH' : 'FILE') + '] ' + info);
     return ok({ message_id: ++mid });
   }
+  if (method === 'getFile') return ok({ file_id: body.file_id, file_path: String(body.file_id).replace(/^\/+/, '') });
   if (method === 'answerCallbackQuery') return ok(true);
   log('[?] ' + method + ' ' + JSON.stringify(body).slice(0, 200));
   return ok(true);

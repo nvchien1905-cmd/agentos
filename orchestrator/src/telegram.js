@@ -62,6 +62,15 @@ function createTelegram(token, fetchImpl) {
       return upload(chatId, file, false);
     },
     getMe: () => call('getMe'),
+    // Tải tệp người dùng gửi (tin nhắn thoại...) về `dest`. Giới hạn 20MB của Telegram Bot API.
+    async downloadFile(fileId, dest) {
+      const info = await call('getFile', { file_id: fileId });
+      if (!info.file_path) throw new Error('Telegram không cho tải tệp này (quá 20MB?)');
+      const r = await f('https://api.telegram.org/file/bot' + token + '/' + info.file_path);
+      if (!r.ok) throw new Error('Tải tệp lỗi HTTP ' + r.status);
+      fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer()), { mode: 0o600 });
+      return dest;
+    },
     // Có giới hạn thời gian phía máy mình (timeout của Telegram + 15 giây): kết nối treo ngầm không làm đứng vòng nhận tin.
     getUpdates: (offset, timeoutSec, signal) => {
       const guard = AbortSignal.timeout((timeoutSec + 15) * 1000);

@@ -67,3 +67,11 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - Chế độ bảo vệ: chạy `--approval-mode plan` (CHỈ ĐỌC) trong hộp cát; không có cổng duyệt/MCP như Claude, nên Gemini không sửa tệp hay chạy lệnh.
 - Chế độ toàn quyền (`/toanquyen`): chạy `yolo`, không hộp cát.
 - Bản miễn phí của Google có hạn mức; hết hạn mức bộ điều phối tự chuyển sang AI khác. Tài khoản Workspace có thể cần `GOOGLE_CLOUD_PROJECT`.
+
+## Bộ công cụ mở rộng (văn phòng, giọng nói, hẹn giờ, Tailscale, in ấn, sao lưu)
+- **Văn phòng/OCR**: AI dùng LibreOffice, Python (pandas…), pdftotext, tesseract tiếng Việt ngay trên máy; không gửi tệp ra ngoài.
+- **Tin nhắn thoại**: âm thanh được nhận dạng trên máy (faster-whisper), không gửi cho dịch vụ nào. Chỉ quản trị viên dùng được. Chữ nghe được không bao giờ biến thành lệnh `/…`; `/tatmay`, `/khoimay`, `/toanquyen` chỉ gõ chữ mới làm được. Câu không khớp cụm quen thuộc đi qua AI như tin chữ thường (hiện kèm dòng "Em nghe được: …" để chủ máy kiểm tra).
+- **Báo cáo / hẹn giờ** (`/baocao`, `/hen`): lưu trong cơ sở dữ liệu máy; việc hẹn giờ chạy với đúng chế độ (bảo vệ/toàn quyền) đang bật lúc đó. Báo cáo cũng lưu ở `OneDrive/AgentOS/bao-cao/`.
+- **Tailscale**: đường vào dự phòng đi qua mạng riêng của chủ máy (không mở cổng ra Internet); đăng nhập bằng tài khoản của chủ máy; bật Tailscale SSH. Đăng xuất bằng `/tailscale ngat co`.
+- **In ấn** (`/in`): chỉ in được tệp nằm trong thư mục OneDrive của AgentOS; Word/Excel được đổi sang PDF trước. CUPS chỉ nghe ở `localhost:631`.
+- **Sao lưu 02:30 hằng ngày** lên `OneDrive/AgentOS/sao-luu/`, giữ 14 bản: cơ sở dữ liệu bộ điều phối + cấu hình đã **che** token/mật khẩu + danh sách phần mềm. Không có tài khoản AI, token Telegram, khóa KiotViet. Đây là sao lưu DỮ LIỆU/CẤU HÌNH, không phải ảnh nguyên ổ đĩa: ổ hỏng thì cài lại máy rồi nhập lại bí mật.

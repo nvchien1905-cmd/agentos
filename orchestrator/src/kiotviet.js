@@ -75,6 +75,26 @@ function createKiotViet(o) {
         'Tính theo tiền hàng sau giảm giá của hóa đơn hoàn thành.'].join('\n');
     },
 
+    // Sản phẩm sắp hết: tổng tồn các chi nhánh <= mức tồn tối thiểu đã đặt trong KiotViet (chỉ tính sản phẩm có đặt mức tối thiểu > 0).
+    async lowStock(limit, maxPages) {
+      const out = [];
+      for (let page = 0, cur = 0; page < (maxPages || 60); page++, cur += 100) {
+        const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), includeInventory: 'true', isActive: 'true' });
+        const d = await get('/products?' + qs.toString());
+        const items = d.data || [];
+        for (const p of items) {
+          const inv = p.inventories || [];
+          const min = inv.reduce((m, x) => Math.max(m, Number(x.minQuantity) || 0), 0);
+          if (min <= 0) continue;
+          const sum = inv.reduce((s, x) => s + (Number(x.onHand) || 0), 0);
+          if (sum <= min) out.push({ name: p.name || '?', code: p.code || '?', onHand: sum, min });
+        }
+        if (items.length < 100 || cur + 100 >= (d.total || 0)) break;
+      }
+      out.sort((a, b) => (a.onHand - a.min) - (b.onHand - b.min));
+      return { total: out.length, items: out.slice(0, limit || 15) };
+    },
+
     async stock(query) {
       const q = String(query || '').trim();
       if (q.length < 2) return 'Cách dùng: /ton <tên hoặc mã sản phẩm>, ví dụ /ton nồi chiên';

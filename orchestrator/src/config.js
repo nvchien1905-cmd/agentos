@@ -58,6 +58,7 @@ function load(env) {
     oneDriveDir: env.ONEDRIVE_DIR || '/srv/onedrive',
     // KiotViet API chính thức (chỉ đọc) cho /doanhso và /ton
     kiotviet: { clientId: env.KIOTVIET_CLIENT_ID || '', clientSecret: env.KIOTVIET_CLIENT_SECRET || '', retailer: env.KIOTVIET_RETAILER || '' },
+    reportTime: /^\d{2}:\d{2}$/.test(env.REPORT_TIME || '') ? env.REPORT_TIME : '21:30',      // giờ gửi báo cáo hằng ngày (giờ VN); đổi bằng /baocao gio
     toolsFile: env.TOOLS_FILE ? path.resolve(env.TOOLS_FILE) : '',
     chromePath: env.CHROME_PATH || '',
     display: env.DISPLAY || ':99',

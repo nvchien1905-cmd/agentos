@@ -16,7 +16,7 @@ apt-get install -y --no-install-recommends xclip scrot xdotool >/dev/null 2>&1 |
 echo "== 2/4 Mã bộ điều phối + trợ lý màn hình"
 B=/root/agentos-bak-$(date +%Y%m%d-%H%M%S); mkdir -p "$B"; cp -a /opt/agentos/orchestrator/src "$B/"; [ -d /opt/agentos/desk ] && cp -a /opt/agentos/desk "$B/" || true
 echo "Đã sao lưu mã cũ vào $B"
-ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js engines/claude.js engines/gemini.js"
+ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js voice.js schedule.js tailscale.js printing.js engines/claude.js engines/gemini.js"
 for f in $ORCH; do
   mkdir -p "$T/orchestrator/src/$(dirname "$f")"
   curl -fsSL "$R/orchestrator/src/$f" -o "$T/orchestrator/src/$f" || { echo "Không tải được orchestrator/src/$f"; exit 1; }
@@ -102,6 +102,34 @@ else
   echo "Gemini đã cài, CHƯA đăng nhập: mở biểu tượng Gemini trên màn hình chính → chọn 'Sign in with Google' (nếu hỏi) → mở đường dẫn trên điện thoại/Chrome, đăng nhập, dán mã vào cửa sổ."
   echo "Xong thì chạy lại lệnh cập nhật này một lần nữa để bật Gemini trong danh sách AI."
 fi
+
+echo "== Bộ công cụ cho AI: văn phòng, OCR, in ấn, giọng nói, Tailscale, sao lưu"
+apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc python3-pandas python3-openpyxl python3-xlsxwriter python3-docx python3-odf python3-reportlab python3-venv \
+  poppler-utils tesseract-ocr tesseract-ocr-vie imagemagick ffmpeg jq sqlite3 zip unzip p7zip-full cups cups-client cups-filters printer-driver-all >/dev/null 2>&1 \
+  || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends libreoffice-writer libreoffice-calc python3-pandas python3-openpyxl python3-xlsxwriter python3-docx python3-odf python3-reportlab python3-venv \
+       poppler-utils tesseract-ocr tesseract-ocr-vie imagemagick ffmpeg jq sqlite3 zip unzip p7zip-full cups cups-client cups-filters printer-driver-all; }
+for f in usr/local/bin/agentos-stt usr/local/bin/agentos-sao-luu etc/systemd/system/agentos-sao-luu.service etc/systemd/system/agentos-sao-luu.timer etc/systemd/system/tailscaled.service.d/10-agentos-operator.conf; do
+  mkdir -p "/$(dirname "$f")"
+  curl -fsSL "$R/$CI/$f" -o "/$f" || { echo "Không tải được $f"; exit 1; }
+done
+chmod 755 /usr/local/bin/agentos-stt /usr/local/bin/agentos-sao-luu
+# Giọng nói: faster-whisper trong môi trường riêng (ghim phiên bản; mô hình ~500MB tải ở lần dùng tin nhắn thoại đầu tiên)
+if [ ! -x /opt/agentos/stt-venv/bin/python3 ]; then python3 -m venv /opt/agentos/stt-venv; fi
+/opt/agentos/stt-venv/bin/pip install -q --no-cache-dir "faster-whisper==1.2.1" "av==16.1.0"
+mkdir -p /var/lib/agentos/whisper; chown -R agentos:agentos /var/lib/agentos/whisper
+# Tailscale (kho chính thức)
+if ! command -v tailscale >/dev/null 2>&1; then
+  curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+  curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list
+  apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends tailscale
+fi
+systemctl daemon-reload
+systemctl enable --now tailscaled >/dev/null 2>&1 || true
+systemctl restart tailscaled >/dev/null 2>&1 || true
+systemctl enable --now agentos-sao-luu.timer >/dev/null 2>&1 || true
+systemctl enable --now cups >/dev/null 2>&1 || true
+for h in /home/*; do u=$(basename "$h"); id "$u" >/dev/null 2>&1 || continue; [ "$(id -u "$u")" -ge 1000 ] || continue; usermod -aG lpadmin "$u"; done
+echo "Đã cài: văn phòng/OCR, in ấn (CUPS), giọng nói, Tailscale, sao lưu 02:30 hằng ngày. Sao lưu thử ngay: sudo systemctl start agentos-sao-luu"
 
 echo "== 4/4 Khởi động lại bộ điều phối"
 systemctl restart agentos-orchestrator || true

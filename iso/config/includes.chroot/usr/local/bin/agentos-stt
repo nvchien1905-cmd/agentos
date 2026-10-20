@@ -1,0 +1,30 @@
+#!/opt/agentos/stt-venv/bin/python3
+# Nhận dạng giọng nói TRÊN MÁY (faster-whisper, tiếng Việt): agentos-stt <tệp âm thanh>  -> in chữ nghe được ra màn hình.
+# Lần đầu dùng tự tải mô hình (small ~500MB) về $HF_HOME/models, các lần sau chạy offline. Đổi mô hình: STT_MODEL=base|small|medium.
+# Âm thanh không rời khỏi máy.
+import os
+import sys
+
+if len(sys.argv) < 2:
+    sys.stderr.write("Cach dung: agentos-stt <tep am thanh>\n")
+    sys.exit(2)
+
+from faster_whisper import WhisperModel  # noqa: E402
+
+root = os.environ.get("HF_HOME", "/var/lib/agentos/whisper")
+os.makedirs(root, exist_ok=True)
+model = WhisperModel(
+    os.environ.get("STT_MODEL", "small"),
+    device="cpu",
+    compute_type="int8",
+    download_root=os.path.join(root, "models"),
+    cpu_threads=int(os.environ.get("STT_THREADS", "0")),
+)
+segments, _info = model.transcribe(
+    sys.argv[1],
+    language=os.environ.get("STT_LANG", "vi"),
+    beam_size=1,
+    vad_filter=True,
+    initial_prompt="Doanh số hôm nay, tồn kho, KiotViet, Zalo, hóa đơn, báo cáo, chụp màn hình.",
+)
+print(" ".join(s.text.strip() for s in segments).strip())

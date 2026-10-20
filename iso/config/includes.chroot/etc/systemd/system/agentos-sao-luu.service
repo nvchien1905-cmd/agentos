@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentOS - sao lưu cấu hình và dữ liệu vào OneDrive
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/agentos/orchestrator.env
+ExecStart=/usr/local/bin/agentos-sao-luu
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=600

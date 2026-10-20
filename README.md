@@ -12,6 +12,7 @@ agentos/
   docs/ke-hoach.md              kế hoạch các giai đoạn
   docs/gd0-phap-ly.md           danh sách việc phải kết luận về điều khoản TRƯỚC khi nhúng CLI vào máy bán
   docs/thu-tren-may-ao.md       cách build ISO và thử trên VirtualBox
+  docs/giao-may.md              việc phải làm trước khi giao máy (BIOS bật lại khi mất điện, đăng nhập, máy in)
   iso/                          cấu hình live-build (ISO cài bằng USB)
   .github/workflows/build-iso.yml   build ISO trên máy chủ Linux (GitHub Actions)
   orchestrator/                 bộ điều phối: bot Telegram, hàng đợi, Claude + Codex, chuyển engine khi hết hạn mức,

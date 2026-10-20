@@ -38,6 +38,15 @@ chk "OneDrive: goi onedrive + dich vu dong bo + thu muc /srv/onedrive (2775, nho
 chk "OneDrive: bieu tuong man hinh chinh + lien ket ~/OneDrive trong skel" bash -c 'test -x /etc/skel/Desktop/agentos-onedrive.desktop && [ "$(readlink /etc/skel/OneDrive)" = /srv/onedrive ]'
 chk "tro ly man hinh dang chay va nghe o /run/agentos/desk.sock" bash -c 'systemctl is-active --quiet agentos-deskd && test -S /run/agentos/desk.sock'
 chk "RustDesk (dieu khien tu xa) co mat" test -x /usr/bin/rustdesk
+chk "cong cu van phong cho AI: soffice pdftotext tesseract(vie) convert ffmpeg jq sqlite3" bash -c 'command -v soffice pdftotext tesseract convert ffmpeg jq sqlite3 >/dev/null && tesseract --list-langs 2>&1 | grep -qx vie'
+chk "thu vien Python van phong (pandas openpyxl docx xlsxwriter odf reportlab)" python3 -c 'import pandas, openpyxl, docx, xlsxwriter, odf, reportlab'
+chk "giong noi: venv faster-whisper + agentos-stt" bash -c 'test -x /usr/local/bin/agentos-stt && /opt/agentos/stt-venv/bin/python -c "import faster_whisper, av"'
+chk "Tailscale: goi + dich vu bat + operator agentos" bash -c 'test -x /usr/bin/tailscale && systemctl is-enabled --quiet tailscaled && grep -q operator=agentos /etc/systemd/system/tailscaled.service.d/10-agentos-operator.conf'
+chk "in an: CUPS bat, lp co mat, nguoi dung may thuoc lpadmin khi cai (users.conf)" bash -c 'command -v lp >/dev/null && systemctl is-enabled --quiet cups && { ! test -f /etc/calamares/modules/users.conf || grep -q "^    - lpadmin" /etc/calamares/modules/users.conf; }'
+chk "sao luu hang ngay: timer 02:30 bat + script chay duoc" bash -c 'systemctl is-enabled --quiet agentos-sao-luu.timer && test -x /usr/local/bin/agentos-sao-luu && bash -n /usr/local/bin/agentos-sao-luu'
+if [ $SUDO = 1 ]; then
+  chk "sao luu thu: tao agentos-<ngay>.tar.gz co KHOI-PHUC.txt" bash -c 'T=$(mktemp -d); sudo ONEDRIVE_DIR=$T /usr/local/bin/agentos-sao-luu >/dev/null && f=$(ls $T/AgentOS/sao-luu/agentos-*.tar.gz) && tar tzf "$f" | grep -q KHOI-PHUC.txt; r=$?; sudo rm -rf $T; exit $r'
+fi
 chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex agentos-gemini; do test -f /usr/share/applications/$f.desktop || exit 1; done'
 chk "bieu tuong man hinh chinh (skel) co 7 ung dung va chay duoc (x)" bash -c 'for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex; do test -x /etc/skel/Desktop/$f.desktop || exit 1; done'
 chk "sudoers mo Claude/Codex duoi agentos hop le (0440), KHONG phai root" bash -c 'sudo -n visudo -cf /etc/sudoers.d/91-agentos-desktop >/dev/null 2>&1 && grep -q "(agentos)" /etc/sudoers.d/91-agentos-desktop && ! grep -q "ALL=(ALL" /etc/sudoers.d/91-agentos-desktop'

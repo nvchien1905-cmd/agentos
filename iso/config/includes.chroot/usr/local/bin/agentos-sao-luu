@@ -1,0 +1,38 @@
+#!/bin/bash
+# Sao lưu cấu hình + dữ liệu AgentOS vào OneDrive (tự đồng bộ lên mạng): /srv/onedrive/AgentOS/sao-luu/agentos-YYYY-MM-DD.tar.gz, giữ 14 bản.
+# KHÔNG sao lưu mật khẩu/token/khóa API (Telegram, KiotViet, đăng nhập Claude/Codex/Gemini): các dòng đó bị che. Chạy bằng root, mỗi ngày 02:30.
+set -euo pipefail
+OD=${ONEDRIVE_DIR:-/srv/onedrive}
+DEST=$OD/AgentOS/sao-luu
+KEEP=${BACKUP_KEEP_DAYS:-14}
+DB=${DB_PATH:-/var/lib/agentos/data/agentos.db}
+[ -d "$OD" ] || { echo "Chưa có $OD, bỏ qua"; exit 0; }
+install -d -m 2775 -o agentos -g agentos "$OD/AgentOS" "$DEST"
+
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+R=$T/agentos-sao-luu; mkdir -p "$R"
+
+# Cơ sở dữ liệu bộ điều phối (lịch sử việc, nhật ký duyệt, hẹn giờ, cài đặt): chụp nhất quán dù đang ghi
+if [ -f "$DB" ]; then
+	if command -v sqlite3 >/dev/null 2>&1; then sqlite3 "$DB" ".backup '$R/agentos.db'"; else cp "$DB" "$R/agentos.db"; fi
+fi
+# Cấu hình (che mọi giá trị trông như bí mật)
+if [ -f /etc/agentos/orchestrator.env ]; then
+	sed -E 's/^([A-Za-z_]*(TOKEN|SECRET|KEY|PASSWORD|PASS|CODE)[A-Za-z_]*=).*/\1***da-che***/I' /etc/agentos/orchestrator.env > "$R/orchestrator.env.da-che"
+fi
+[ -f /etc/agentos/apps.conf ] && cp /etc/agentos/apps.conf "$R/"
+[ -f /etc/hostname ] && cp /etc/hostname "$R/"
+apt-mark showmanual > "$R/phan-mem-da-cai.txt" 2>/dev/null || true
+cat > "$R/KHOI-PHUC.txt" <<EOF
+Bản sao lưu AgentOS ngày $(date +%F). Gồm: agentos.db (dữ liệu bộ điều phối), orchestrator.env.da-che (cấu hình, đã che bí mật),
+apps.conf, phan-mem-da-cai.txt. KHÔNG có mật khẩu/token: cài lại máy rồi nhập lại bằng trình hướng dẫn lần đầu.
+Khôi phục dữ liệu: dừng bộ điều phối (sudo systemctl stop agentos-orchestrator), chép agentos.db vào $DB, chown agentos:agentos, rồi start lại.
+EOF
+
+OUT=$DEST/agentos-$(date +%F).tar.gz
+tar czf "$OUT.tmp" -C "$T" agentos-sao-luu
+mv "$OUT.tmp" "$OUT"
+chown agentos:agentos "$OUT"; chmod 664 "$OUT"
+# Giữ $KEEP bản mới nhất
+ls -1t "$DEST"/agentos-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -f
+echo "Đã sao lưu: $OUT ($(du -h "$OUT" | cut -f1))"

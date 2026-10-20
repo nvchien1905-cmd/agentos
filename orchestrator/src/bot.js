@@ -12,6 +12,9 @@ function helpText(profiles) {
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
+    '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
+    '/tailscale [ketnoi|ngat co] - đường vào dự phòng khi Telegram/mạng lỗi · /in <tệp trong OneDrive> [may <tên>] - in qua máy in của máy\n' +
+    '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +
     '/nhatky - nhật ký các lần AI xin dùng công cụ (cho phép/từ chối)\n' +
     '/trangthai - hàng đợi và tình trạng hạn mức\n' +
@@ -29,7 +32,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `profiles`: [{ name, description, adminOnly }] các bộ công cụ chọn bằng lệnh /<tên> (ví dụ /web).
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice }) {
   profiles = profiles || [];
   isAdmin = isAdmin || (() => true);
   const profileByName = new Map(profiles.map((p) => [p.name, p]));
@@ -55,7 +58,23 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     }
     // Chỉ nhận chat riêng với người được phép (không nhận trong nhóm).
     if (msg.chat.type && msg.chat.type !== 'private') return null;
-    if (!text) return 'Hiện chỉ nhận tin nhắn chữ.';
+    // Tin nhắn thoại / file âm thanh: nghe thành chữ rồi xử lý như chủ máy vừa gõ (trừ lệnh nguy hiểm: không có "/" nên không bao giờ thành /tatmay...)
+    const media = msg.voice || msg.audio;
+    if (!text && media && voice) {
+      if (!isAdmin(uid)) return 'Tin nhắn thoại chỉ dành cho quản trị viên.';
+      if (media.duration && media.duration > 180) return 'Tin nhắn thoại dài quá 3 phút, anh chia nhỏ giúp em.';
+      return (async () => {
+        const r = await voice.transcribe(media.file_id);
+        if (!r.ok) return '🎙 ' + r.error;
+        const said = r.text.replace(/^[\/\s]+/, '');                         // chữ nghe được không bao giờ thành lệnh "/..." tự do
+        const cmdText = voice.spoken(said);
+        const reply = await handle(Object.assign({}, msg, { voice: undefined, audio: undefined, text: cmdText || said }));
+        const head = '🎙 Em nghe được: "' + r.text + '"' + (cmdText ? '  → ' + cmdText : '');
+        if (reply && typeof reply === 'object') return Object.assign({}, reply, { text: head + (reply.text ? '\n' + reply.text : '') });
+        return head + (reply ? '\n' + reply : '');
+      })();
+    }
+    if (!text) return 'Hiện chỉ nhận tin nhắn chữ' + (voice ? ' và tin nhắn thoại' : '') + '.';
 
     // Địa chỉ đăng nhập OneDrive dán thẳng (không có lệnh): chuyển cho lệnh /onedrive
     const pending = quick && quick.match && quick.match(text);
@@ -71,7 +90,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
       // Lệnh nhanh không qua AI (màn hình, mở/đóng ứng dụng, DeepSeek web, KiotViet): trả về Promise
       if (quick && quick.has(name)) {
         if (!isAdmin(uid)) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên.';
-        return quick.run(name, cmd[3]);
+        return quick.run(name, cmd[3], { chatId, uid });
       }
       if (profileByName.has(name)) {
         if (profileByName.get(name).adminOnly && !isAdmin(uid)) return 'Bộ công cụ /' + name + ' chỉ dành cho quản trị viên.';

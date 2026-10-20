@@ -5,17 +5,17 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing;
   const clock = () => { const d = new Date(Date.now() + 7 * 3600 * 1000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
 
-  async function run(name, arg) {
+  async function run(name, arg, ctx) {
     arg = String(arg || '').trim();
     try {
       switch (name) {
@@ -79,6 +79,24 @@ function createQuick(o) {
           if (!kv || !kv.configured()) return '⚠️ Chưa cấu hình KiotViet. Thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào /etc/agentos/orchestrator.env rồi khởi động lại bộ điều phối.';
           return name === 'doanhso' ? await kv.revenue(arg) : await kv.stock(arg);
         }
+        case 'baocao': case 'hen': return sched ? await sched.command(name, arg, ctx) : '⚠️ Máy này chưa có tính năng hẹn giờ.';
+        case 'tailscale': {
+          if (!ts) return '⚠️ Máy này chưa có Tailscale.';
+          const w = noAccent(arg.split(/\s+/)[0] || '').replace(/ /g, '');
+          if (!w) return await ts.status();
+          if (/^(ketnoi|ket|login|dangnhap)$/.test(w)) {
+            const r = await ts.connect();
+            if (!r.ok) return '⚠️ ' + r.error;
+            if (r.already) return await ts.status();
+            return '🔑 Kết nối Tailscale (làm trong 10 phút): mở link này trên điện thoại hoặc máy tính, đăng nhập (Google/Microsoft/Apple...) và bấm Connect:\n' + r.url + '\nXong gõ /tailscale để xem địa chỉ.';
+          }
+          if (/^(ngat|logout|dangxuat)$/.test(w)) {
+            if (!/\b(co|xacnhan|ok)\b/.test(noAccent(arg))) return '⚠️ Đăng xuất Tailscale: máy mất đường vào dự phòng. Gõ /tailscale ngat co để xác nhận.';
+            const r = await ts.disconnect(); return r.code === 0 ? '✅ Đã đăng xuất Tailscale.' : '⚠️ ' + (r.err || r.out).trim().slice(0, 150);
+          }
+          return 'Cách dùng: /tailscale (tình trạng) · /tailscale ketnoi · /tailscale ngat co';
+        }
+        case 'in': return printing ? await printing.print(arg) : '⚠️ Máy này chưa có tính năng in.';
         default: return null;
       }
     } catch (e) { return '⚠️ Lỗi: ' + e.message; }

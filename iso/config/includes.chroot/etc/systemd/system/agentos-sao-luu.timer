@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentOS - sao lưu hằng ngày lúc 02:30
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+# Máy tắt đúng giờ -> chạy bù ngay khi bật lại
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

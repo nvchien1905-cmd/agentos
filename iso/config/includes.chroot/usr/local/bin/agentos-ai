@@ -1,0 +1,10 @@
+#!/bin/sh
+# Mở Claude Code / Codex trong cửa sổ dòng lệnh, dưới tài khoản hệ thống `agentos`: CÙNG tài khoản AI mà bot Telegram đang dùng.
+case "$1" in claude|codex) ;; *) echo "Dùng: agentos-ai claude|codex"; exit 1 ;; esac
+AI="$1"
+RUN='B=/var/lib/agentos/.local/bin
+if [ ! -x "$B/'"$AI"'" ]; then echo "Chưa cài '"$AI"' trên máy này. Hãy chạy trình hướng dẫn cài đặt (bước Đăng nhập AI) trước."; echo; echo "Bấm Enter để đóng."; read x; exit 1; fi
+cd /var/lib/agentos/work 2>/dev/null || cd /var/lib/agentos
+PATH="$B:$PATH" exec "$B/'"$AI"'"'
+if [ "$(id -un)" = agentos ]; then exec xfce4-terminal --title "$AI" -x bash -c "$RUN"; fi
+exec xfce4-terminal --title "$AI (tài khoản agentos)" -x sudo -n -u agentos -H bash -c "$RUN"

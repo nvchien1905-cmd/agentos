@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Codex
+Comment=Codex - cùng tài khoản với bot Telegram
+Exec=/usr/local/bin/agentos-ai codex
+Icon=agentos-codex
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=xfce4-terminal

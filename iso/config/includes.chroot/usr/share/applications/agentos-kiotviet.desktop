@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KiotViet
+Comment=KiotViet quản lý bán hàng (bản web)
+Exec=/usr/local/bin/agentos-app kiotviet
+Icon=agentos-kiotviet
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=kiotviet.vn

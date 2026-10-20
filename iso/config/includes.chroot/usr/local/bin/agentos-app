@@ -1,0 +1,12 @@
+#!/bin/sh
+# Mở ứng dụng web thành cửa sổ riêng (như ứng dụng cài sẵn) bằng Google Chrome: zalo | kiotviet
+# Địa chỉ sửa được ở /etc/agentos/apps.conf (VD KIOTVIET_URL=https://tencuahang.kiotviet.vn).
+[ -f /etc/agentos/apps.conf ] && . /etc/agentos/apps.conf
+case "$1" in
+  zalo) URL="${ZALO_URL:-https://chat.zalo.me}"; NAME=zalo ;;
+  kiotviet) URL="${KIOTVIET_URL:-https://www.kiotviet.vn/}"; NAME=kiotviet ;;
+  *) echo "Dùng: agentos-app zalo|kiotviet"; exit 1 ;;
+esac
+BROWSER=/usr/bin/google-chrome-stable; [ -x "$BROWSER" ] || BROWSER=/usr/bin/chromium
+# Mỗi ứng dụng một hồ sơ riêng: đăng nhập giữ lại, không lẫn với trình duyệt thường
+exec "$BROWSER" --app="$URL" --user-data-dir="$HOME/.config/agentos-app-$NAME" --password-store=basic --no-first-run --no-default-browser-check --lang=vi "$@"

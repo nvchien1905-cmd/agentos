@@ -1,0 +1,3 @@
+# Người dùng máy (nhóm sudo) mở Claude Code / Codex dưới tài khoản hệ thống `agentos` (cùng tài khoản AI với bot Telegram) mà không hỏi mật khẩu.
+# Chỉ chuyển sang người dùng agentos, KHÔNG phải root.
+%sudo ALL=(agentos) NOPASSWD: ALL

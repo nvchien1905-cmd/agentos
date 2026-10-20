@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Claude Code
+Comment=Claude Code - cùng tài khoản với bot Telegram
+Exec=/usr/local/bin/agentos-ai claude
+Icon=agentos-claude
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=xfce4-terminal

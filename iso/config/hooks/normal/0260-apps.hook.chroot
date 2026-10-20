@@ -1,0 +1,45 @@
+#!/bin/sh
+# Ứng dụng trên màn hình chính: Google Chrome (hook 0250), Zalo + KiotViet (cửa sổ web riêng), RustDesk (điều khiển từ xa, thay cho
+# UltraViewer vốn chỉ có bản Windows), Claude Code + Codex (mở dưới tài khoản `agentos`, cùng tài khoản với bot).
+set -e
+
+chmod 0755 /usr/local/bin/agentos-app /usr/local/bin/agentos-ai /usr/local/bin/agentos-display 2>/dev/null || true
+
+# sudo: người dùng máy (nhóm sudo) chuyển sang `agentos` (KHÔNG phải root) không hỏi mật khẩu. Tệp sudoers sai làm hỏng sudo cả máy nên phải kiểm.
+chmod 0440 /etc/sudoers.d/91-agentos-desktop
+chown root:root /etc/sudoers.d/91-agentos-desktop
+visudo -cf /etc/sudoers.d/91-agentos-desktop
+
+# RustDesk: bản .deb chính thức trên GitHub của dự án (mã nguồn mở). Lấy bản mới nhất, thử lại vài lần.
+cd /tmp
+URL=""
+for i in 1 2 3 4 5; do
+	URL=$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest | grep -o 'https://[^"]*rustdesk-[0-9][0-9.]*-x86_64\.deb' | head -n 1) && [ -n "$URL" ] && break
+	sleep 10
+done
+[ -n "$URL" ] || { echo "[LOI] khong tim duoc ban RustDesk moi nhat"; exit 1; }
+for i in 1 2 3; do curl -fsSL -o rustdesk.deb "$URL" && break; sleep 5; done
+[ -s rustdesk.deb ] || { echo "[LOI] khong tai duoc RustDesk"; exit 1; }
+apt-get update
+apt-get install -y --no-install-recommends ./rustdesk.deb
+rm -f rustdesk.deb
+test -x /usr/bin/rustdesk
+
+# Biểu tượng trên màn hình chính của MỌI người dùng mới (Calamares tạo người dùng từ /etc/skel; phiên live cũng vậy)
+# Chrome không hỏi "mật khẩu kho khóa mới" (gnome-keyring) lần đầu mở: dùng kho mật khẩu của Chrome (--password-store=basic) cho mọi lối mở
+# và gỡ gnome-keyring để các ứng dụng khác khỏi hiện hộp hỏi đó (người dùng bình thường không cần).
+sed -i 's|^Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --password-store=basic|' /usr/share/applications/google-chrome.desktop
+apt-get purge -y gnome-keyring libpam-gnome-keyring 2>/dev/null || true
+
+mkdir -p /etc/skel/Desktop
+for f in google-chrome agentos-zalo agentos-kiotviet rustdesk agentos-claude agentos-codex; do
+	src=/usr/share/applications/$f.desktop
+	[ -f "$src" ] || { echo "[CANH BAO] thieu $src"; continue; }
+	cp "$src" /etc/skel/Desktop/$f.desktop
+done
+sed -i 's|^Name=RustDesk$|Name=RustDesk (điều khiển từ xa)|' /etc/skel/Desktop/rustdesk.desktop 2>/dev/null || true
+chmod 0755 /etc/skel/Desktop/*.desktop      # Xfce chỉ cho mở biểu tượng nếu tệp có quyền thực thi
+
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+update-desktop-database /usr/share/applications 2>/dev/null || true
+exit 0

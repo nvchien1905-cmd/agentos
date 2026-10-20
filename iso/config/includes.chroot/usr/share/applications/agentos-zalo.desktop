@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Zalo
+Comment=Zalo (bản web, đăng nhập bằng mã QR)
+Exec=/usr/local/bin/agentos-app zalo
+Icon=agentos-zalo
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=chat.zalo.me

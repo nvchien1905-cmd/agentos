@@ -36,3 +36,11 @@ cat /etc/systemd/logind.conf.d/10-agentos.conf; sysctl kernel.panic
 
 ## Tiêu chí 6a
 ISO boot được trên VM (UEFI) và vào được môi trường live; cài xong boot lại được.
+
+## Thử giao việc thật cho AI (không cần Telegram)
+
+`scripts/telegram-gia.js` là Telegram GIẢ chạy ngay trong bộ điều phối: nạp bằng `node -r telegram-gia.js src/index.js`, đặt `GIA_DIR=<thư mục>` (thư mục của người dùng `agentos`).
+Ghi lệnh của "chủ máy" vào `$GIA_DIR/tg-vao.txt` (mỗi dòng một tin; dòng `@duyet` = bấm nút đầu tiên của lời hỏi duyệt gần nhất), xem trả lời ở `$GIA_DIR/tg-ra.log`. AI chạy là AI thật (cần đã đăng nhập).
+Đã thử thật 20/10/2026 trên máy ảo với tài khoản Claude: hỏi đáp (5 giây), `/web` mở trang + chụp ảnh gửi về, `/lam` ghi file qua cổng duyệt, lệnh xóa phải hỏi duyệt, đọc file khóa/token bị chặn cứng.
+Đăng nhập AI trên máy ảo: dùng `scripts/thu-ssh.sh` bật SSH, chạy trình hướng dẫn (`node wizard/server.js`), `POST /api/login/start` rồi mở link trong trình duyệt đã đăng nhập, dán mã vào `/api/login/input`.
+Sau khi thử: `claude auth logout`, `codex logout`, xóa `/var/lib/agentos/.claude*` và `.codex` (không để token lại trên máy ảo).

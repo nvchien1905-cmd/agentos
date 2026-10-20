@@ -43,7 +43,7 @@ async function verifyLogin(run, engine, extraEnv) {
   const text = String(r.out) + String(r.err);
   if (r.code === 0 && !/not logged in|please run .*login|invalid api key|unauthorized/i.test(text)) return { ok: true, detail: 'đăng nhập tốt' };
   // Hết hạn mức (gói thuê bao dùng hết lượt): máy chủ của hãng đã nhận ra tài khoản => ĐÃ đăng nhập. Hệ thống tự đổi sang AI còn lại / chờ reset.
-  if (/usage limit|hit your (usage )?limit|limit reached|rate.?limit|quota|out of credits|purchase more credits|resets? (at|in|on)|exhausted your capacity|RESOURCE_EXHAUSTED/i.test(text) && !/not logged in|please run .*login|invalid api key|unauthorized|401/i.test(text)) {
+  if (/usage limit|hit your (usage )?limit|limit reached|rate.?limit|quota|out of credits|purchase more credits|insufficient balance|credit balance is too low|resets? (at|in|on)|exhausted your capacity|RESOURCE_EXHAUSTED/i.test(text) && !/not logged in|please run .*login|invalid api key|unauthorized|401/i.test(text)) {
     return { ok: true, limited: true, detail: 'đăng nhập tốt, nhưng tài khoản này đang hết hạn mức (tự dùng lại khi được cấp lại)' };
   }
   // Kèm nguyên văn lý do hãng báo (không chứa token) để biết lỗi thật thay vì chỉ "chưa đăng nhập"

@@ -105,3 +105,12 @@ test('server: /api/apikey kiểm với hãng rồi lưu, state chỉ trả khóa
     assert.deepEqual((await call('GET', '/api/state')).body.apiKeys, {});
   } finally { await w.close(); }
 });
+
+test('engines.verifyLogin: khóa đúng nhưng hết số dư (402 Insufficient Balance) tính là đã đăng nhập, ở trạng thái hết hạn mức', async () => {
+  const engines = require('../lib/engines');
+  const run = async () => ({ code: 1, out: '{"is_error":true,"result":"API Error: 402 Insufficient Balance"}', err: '' });
+  const v = await engines.verifyLogin(run, 'deepseekapi', {});
+  assert.deepEqual([v.ok, v.limited], [true, true]);
+  const bad = await engines.verifyLogin(async () => ({ code: 1, out: 'Invalid API key', err: '' }), 'deepseekapi', {});
+  assert.equal(bad.ok, false);
+});

@@ -13,7 +13,9 @@ const CLAUDE_TOKEN_RE = /sk-ant-[A-Za-z0-9_-]{20,}/;
 const MAX_BUF = 20000;
 
 const PLANS = {
-  claude: { argv: () => [engines.BIN.claude, 'setup-token'], needsInput: true, wantsToken: true },
+  // 'auth login' (KHÔNG dùng 'setup-token'): CLI tự lưu đăng nhập vào thư mục của agentos nên trình hướng dẫn không phải đọc/giữ token.
+  // (Đã thử thật 20/10/2026: đọc token từ giao diện của setup-token bị MẤT chữ vì TUI vẽ lại màn hình từng phần -> token sai -> 'Not logged in'.)
+  claude: { argv: () => [engines.BIN.claude, 'auth', 'login', '--claudeai'], needsInput: true, wantsToken: false },
   codex: { argv: () => [engines.BIN.codex, 'login', '--device-auth'], needsInput: false, wantsToken: false },
 };
 

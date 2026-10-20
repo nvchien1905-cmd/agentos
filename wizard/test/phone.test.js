@@ -115,7 +115,7 @@ test('store: ghi/đọc/xóa, bỏ khóa lạ; envfile thêm token Claude đúng
 
 // ---------- đăng nhập AI qua điện thoại (pty giả lập) ----------
 
-const wrapFake = (argv) => ({ cmd: process.execPath, args: [FAKE, argv[1] === 'setup-token' ? (process.env.FAKE_SPLIT ? 'claude-split' : 'claude-token') : argv[1] === 'login' ? 'codex-device' : 'fail'] });
+const wrapFake = (argv) => ({ cmd: process.execPath, args: [FAKE, argv[1] === 'auth' ? 'claude-token' : argv[1] === 'login' ? 'codex-device' : 'fail'] });
 
 test('login Claude: lấy link, nhận mã dán vào, bắt token, che token trong nội dung hiển thị', async () => {
   const L = createLogin({ wrap: wrapFake });
@@ -128,9 +128,9 @@ test('login Claude: lấy link, nhận mã dán vào, bắt token, che token tro
   assert.throws(() => L.input(''), /Mã không hợp lệ/);
   L.input('MA-DUNG');
   const done = await until(() => { const v = L.get(); return v.status === 'done' ? v : null; });
-  assert.equal(done.hasToken, true);
-  assert.doesNotMatch(done.tail, /sk-ant-oat01-AbCdEf/); assert.match(done.tail, /\[đã nhận token\]/);
-  assert.equal(L.takeToken(), 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789');
+  assert.equal(done.hasToken, false);   // 'auth login': CLI tự lưu đăng nhập, trình hướng dẫn không giữ token
+  assert.doesNotMatch(done.tail, /sk-ant-oat01-AbCdEf/); assert.match(done.tail, /\[đã nhận token\]/);   // nếu CLI lỡ in token thì vẫn bị che
+  assert.equal(L.takeToken(), null);
   assert.throws(() => L.input('x'), /Không có lần đăng nhập đang chạy/);
 });
 
@@ -329,7 +329,7 @@ test('cài đặt bằng điện thoại: sai mật khẩu Wi-Fi hoặc sai toke
   } finally { await B.w.close(); }
 });
 
-test('đăng nhập AI qua API: Claude -> token được giữ, truyền cho bước kiểm tra qua môi trường và ghi vào cấu hình; Codex tự lưu', async () => {
+test('đăng nhập AI qua API: Claude (auth login) tự lưu đăng nhập, không giữ token; Codex tự lưu', async () => {
   const L = createLogin({ wrap: wrapFake });
   const S = await boot({ sim: { pairing: true }, opts: { trustLoopback: true, login: L } });
   try {
@@ -338,22 +338,21 @@ test('đăng nhập AI qua API: Claude -> token được giữ, truyền cho bư
     assert.match(v.url, /^https:\/\/claude\.ai\/oauth/);
     assert.equal((await S.call('POST', '/api/login/input', { text: 'MA-DUNG' })).status, 200);
     const done = await until(async () => { const s = (await S.call('GET', '/api/login/state')).body; return s.status === 'done' ? s : null; });
-    assert.equal(done.hasToken, true); assert.doesNotMatch(JSON.stringify(done), /sk-ant-oat01-AbCdEf/);   // API không bao giờ trả token
-    assert.equal((await S.call('GET', '/api/state')).body.hasClaudeToken, true);
-    assert.equal(store.load(path.join(S.dir, 'state.json')).claudeToken, 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789');
+    assert.equal(done.hasToken, false); assert.doesNotMatch(JSON.stringify(done), /sk-ant-oat01-AbCdEf/);   // API không bao giờ trả token
+    assert.ok(!store.load(path.join(S.dir, 'state.json')).claudeToken, 'không giữ token Claude');
 
     S.calls.length = 0;
     const ck = await S.call('POST', '/api/engine/check', { engine: 'claude' });
     assert.equal(ck.body.loggedIn, true);
     const verify = S.calls.find((c) => c[1] && c[1].includes('-p'));
-    assert.equal(verify[2].env.CLAUDE_CODE_OAUTH_TOKEN, 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789');
+    assert.ok(!verify[2].env, 'Claude dùng đăng nhập CLI đã lưu, không truyền token');
     assert.ok(!verify[1].join(' ').includes('sk-ant-'), 'token không được nằm trên dòng lệnh');
 
     await S.call('POST', '/api/telegram/token', { token: TOKEN });
     await S.call('POST', '/api/telegram/wait', {});
     await S.call('POST', '/api/finish', {});
     const env = fs.readFileSync(path.join(S.dir, 'orchestrator.env'), 'utf8');
-    assert.match(env, /^CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-AbCdEf/m); assert.match(env, /^ENGINE_ORDER=claude$/m);
+    assert.doesNotMatch(env, /CLAUDE_CODE_OAUTH_TOKEN/); assert.match(env, /^ENGINE_ORDER=claude$/m);
     assert.deepEqual(store.load(path.join(S.dir, 'state.json')), {});                // đã xóa bản sao trạng thái sau khi hoàn tất
   } finally { await S.w.close(); }
 });
@@ -369,14 +368,3 @@ test('khởi động lại giữa chừng: đọc lại token đã lưu và ti�
   } finally { await S.w.close(); }
 });
 
-test('login Claude: token in ra từng đoạn thì vẫn lấy ĐỦ token (không lấy lần khớp đầu)', async () => {
-  process.env.FAKE_SPLIT = '1';
-  try {
-    const L = createLogin({ wrap: wrapFake, enterDelayMs: 10 });
-    L.start('claude'); await until(() => L.get().tail.includes('Paste code'));
-    L.input('MA-DUNG');
-    const done = await until(() => { const v = L.get(); return v.status === 'done' ? v : null; });
-    assert.equal(done.hasToken, true);
-    assert.equal(L.takeToken(), 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789-FULLTOKEN');
-  } finally { delete process.env.FAKE_SPLIT; }
-});

@@ -5,7 +5,8 @@
 case "$1" in
   zalo) URL="${ZALO_URL:-https://chat.zalo.me}"; NAME=zalo ;;
   kiotviet) URL="${KIOTVIET_URL:-https://www.kiotviet.vn/}"; NAME=kiotviet ;;
-  *) echo "Dùng: agentos-app zalo|kiotviet"; exit 1 ;;
+  deepseek) URL="${DEEPSEEK_URL:-https://chat.deepseek.com}"; NAME=deepseek ;;
+  *) echo "Dùng: agentos-app zalo|kiotviet|deepseek"; exit 1 ;;
 esac
 BROWSER=/usr/bin/google-chrome-stable; [ -x "$BROWSER" ] || BROWSER=/usr/bin/chromium
 # Mỗi ứng dụng một hồ sơ riêng: đăng nhập giữ lại, không lẫn với trình duyệt thường

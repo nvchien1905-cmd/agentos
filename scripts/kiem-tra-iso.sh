@@ -34,8 +34,8 @@ chk "journald co gioi han dung luong" grep -q SystemMaxUse /etc/systemd/journald
 chk "Chromium co mat" which chromium
 chk "Google Chrome co mat" test -x /usr/bin/google-chrome-stable
 chk "RustDesk (dieu khien tu xa) co mat" test -x /usr/bin/rustdesk
-chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-claude agentos-codex; do test -f /usr/share/applications/$f.desktop || exit 1; done'
-chk "bieu tuong man hinh chinh (skel) co 6 ung dung va chay duoc (x)" bash -c 'for f in google-chrome agentos-zalo agentos-kiotviet rustdesk agentos-claude agentos-codex; do test -x /etc/skel/Desktop/$f.desktop || exit 1; done'
+chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex; do test -f /usr/share/applications/$f.desktop || exit 1; done'
+chk "bieu tuong man hinh chinh (skel) co 7 ung dung va chay duoc (x)" bash -c 'for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex; do test -x /etc/skel/Desktop/$f.desktop || exit 1; done'
 chk "sudoers mo Claude/Codex duoi agentos hop le (0440), KHONG phai root" bash -c 'sudo -n visudo -cf /etc/sudoers.d/91-agentos-desktop >/dev/null 2>&1 && grep -q "(agentos)" /etc/sudoers.d/91-agentos-desktop && ! grep -q "ALL=(ALL" /etc/sudoers.d/91-agentos-desktop'
 chk "thu muc /var/lib/agentos thuoc agentos" bash -c '[ "$(stat -c %U /var/lib/agentos)" = agentos ]'
 chk "tools.json co mat" test -f "$ORCH/tools.json"

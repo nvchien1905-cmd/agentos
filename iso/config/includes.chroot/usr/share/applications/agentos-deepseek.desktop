@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DeepSeek
+Comment=DeepSeek chat (bản web, tự đăng nhập tài khoản của bạn)
+Exec=/usr/local/bin/agentos-app deepseek
+Icon=agentos-deepseek
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=chat.deepseek.com

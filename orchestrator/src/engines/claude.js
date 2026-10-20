@@ -20,6 +20,8 @@ function parseOutput(stdout) {
 // Kết quả: { ok, text, sessionId, costUsd, limit, resetAt, cancelled, timedOut, error }
 function startClaude(opts) {
   const args = [].concat(opts.binArgs || [], ['-p', '--output-format', 'json']);
+  // Chế độ toàn quyền: bỏ mọi bước hỏi xin phép của Claude Code (chỉ dùng cho máy cá nhân của chủ, xem index.js FULL_HINT)
+  if (opts.skipPermissions) args.push('--dangerously-skip-permissions');
   if (opts.allowedTools) args.push('--allowedTools', opts.allowedTools);
   // Công cụ MCP trả lời mọi câu hỏi xin quyền (cổng duyệt của AgentOS), ví dụ mcp__agentos_gate__approve
   if (opts.permissionPromptTool) args.push('--permission-prompt-tool', opts.permissionPromptTool);

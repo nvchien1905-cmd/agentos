@@ -325,3 +325,38 @@ test('bot: /huy hủy việc đang chạy, việc chờ và việc đang chờ h
   assert.equal(db.getJob(w).status, 'cancelled');
   await worker.stop();
 });
+
+// ---------- chế độ TOÀN QUYỀN ----------
+
+test('toàn quyền: config đọc FULL_ACCESS; Claude chạy với --dangerously-skip-permissions và không còn allowedTools/cổng duyệt', async () => {
+  const ok = { TELEGRAM_TOKEN: 't', ALLOWED_USER_IDS: '1' };
+  assert.equal(config.load(ok).fullAccess, false);
+  for (const v of ['1', 'true', 'ON', 'yes']) assert.equal(config.load(Object.assign({ FULL_ACCESS: v }, ok)).fullAccess, true, v);
+  assert.equal(config.load(Object.assign({ FULL_ACCESS: '0' }, ok)).fullAccess, false);
+
+  const full = await run('làm đi', { allowedTools: undefined, skipPermissions: true }).done;
+  assert.match(full.text, /--dangerously-skip-permissions/);
+  assert.doesNotMatch(full.text, /--allowedTools|--permission-prompt-tool|--settings/);
+  const prot = await run('làm đi').done;
+  assert.doesNotMatch(prot.text, /--dangerously-skip-permissions/);     // chế độ bảo vệ không bao giờ có cờ này
+});
+
+test('toàn quyền: /toanquyen và /baove chỉ quản trị viên, đổi chế độ, /trangthai hiện chế độ', () => {
+  const db = openDb(':memory:');
+  const worker = createWorker({ db, engines: { claude: { start: () => { throw new Error('không chạy'); } } }, order: ['claude'], notify: async () => {} });
+  let on = false;
+  const fullAccess = { get: () => on, set: (v) => { on = v; } };
+  const admins = new Set(['1']);
+  const bot = createBot({ db, worker, allowed: new Set(['1', '2']), isAdmin: (u) => admins.has(String(u)), fullAccess });
+  const m = (text, uid) => ({ from: { id: uid || 1 }, chat: { id: uid || 1, type: 'private' }, text });
+  assert.match(bot.handle(m('/trangthai')), /Chế độ: 🛡️ bảo vệ/);
+  assert.match(bot.handle(m('/toanquyen', 2)), /Chỉ quản trị viên/);
+  assert.equal(on, false);                                   // người được phép nhưng không phải admin: không đổi được
+  assert.match(bot.handle(m('/toanquyen')), /ĐÃ BẬT chế độ TOÀN QUYỀN/);
+  assert.equal(on, true);
+  assert.match(bot.handle(m('/trangthai')), /Chế độ: ⚡ TOÀN QUYỀN/);
+  assert.match(bot.handle(m('/baove')), /chế độ bảo vệ/);
+  assert.equal(on, false);
+  assert.match(bot.handle(m('/baove', 99)) || 'null', /null/);   // người lạ: im lặng
+  assert.match(createBot({ db, worker, allowed: new Set(['1']) }).handle(m('/toanquyen')), /chưa hỗ trợ/);   // không có bộ nhớ chế độ
+});

@@ -35,3 +35,11 @@ mà người dùng không biết. Không có lớp nào đủ một mình; các 
 - Bash chạy được lệnh mà cổng chỉ thấy dưới dạng chuỗi; mẫu cấm không thể bắt mọi cách viết lệnh (đó là lý do mặc định luôn hỏi và hiển thị nguyên lệnh).
 - Chưa có sandbox hệ điều hành (cô lập người dùng, namespace, mạng) quanh tiến trình AI: thuộc GĐ 5/6 (người dùng `agentos` riêng, hạn chế quyền systemd).
 - Chưa thử với Telegram thật (nút bấm) và chưa thử trên Linux.
+
+## Chế độ TOÀN QUYỀN (chủ máy tự chọn, mặc định TẮT)
+
+Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerously-skip-permissions`, Codex `danger-full-access`) tự làm một mạch, **không** cổng duyệt, **không** sandbox, trình duyệt có sẵn cho mọi việc, và người dùng hệ thống `agentos` có sudo không mật khẩu.
+- Bật bằng cách chủ máy **tự tích ô** "Cho bot toàn quyền" ở bước cuối trình hướng dẫn (có cảnh báo rủi ro), hoặc chạy `scripts/bat-toan-quyen.sh` trên máy đã cài (`... | sudo bash -s tat` để tắt hẳn). Bản ISO KHÔNG có sẵn sudo cho bot.
+- Cài gồm: `/etc/sudoers.d/90-agentos-toan-quyen` (kiểm bằng `visudo -cf` trước khi có hiệu lực), drop-in systemd gỡ `NoNewPrivileges`/`ProtectSystem` (NoNewPrivileges chặn sudo), `FULL_ACCESS=1` và `JOB_TIMEOUT_SEC=3600` trong `orchestrator.env`.
+- Đổi lúc đang chạy qua Telegram (chỉ quản trị viên): `/baove` = AI hỏi trước + sandbox; `/toanquyen` = không hỏi. `/trangthai` hiện chế độ. Lựa chọn lưu trong cơ sở dữ liệu, ưu tiên hơn `FULL_ACCESS`.
+- **Rủi ro còn lại:** AI đọc nội dung web/email/tệp có thể gặp lệnh giả cài sẵn (prompt injection); ở chế độ này lệnh đó chạy với quyền cao, không ai duyệt. Chỉ tài khoản Telegram trong `ALLOWED_USER_IDS` ra lệnh được; hệ thống nhắc AI coi nội dung ngoài là dữ liệu, không làm theo, và sao lưu trước khi làm việc phá hủy — nhưng đó là lời nhắc cho AI, không phải rào chắn cứng.

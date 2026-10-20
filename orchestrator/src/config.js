@@ -39,6 +39,8 @@ function load(env) {
     limitCooldownMs: (Number(env.LIMIT_COOLDOWN_MIN) || 60) * 60 * 1000,
     dbPath: path.resolve(env.DB_PATH || './data/agentos.db'),
     // Độ bền (GĐ 5)
+    // Chế độ TOÀN QUYỀN (máy cá nhân của chủ): AI chạy không hỏi xin phép, không sandbox, có sudo. Chủ đổi lúc đang chạy bằng /toanquyen và /baove (lưu trong cơ sở dữ liệu, ưu tiên hơn giá trị này).
+    fullAccess: ['1', 'true', 'yes', 'on'].includes(String(env.FULL_ACCESS || '').toLowerCase()),
     sandboxMode: (env.SANDBOX || 'off').toLowerCase(),                 // off | auto | bwrap (xem sandbox.js)
     sandboxHide: list(env.SANDBOX_HIDE === undefined ? '/etc/agentos' : env.SANDBOX_HIDE),
     minFreeMb: env.MIN_FREE_MB === undefined ? 300 : Number(env.MIN_FREE_MB),

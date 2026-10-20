@@ -27,6 +27,10 @@ function build(cfg) {
     'CODEX_SANDBOX=read-only',
     'SANDBOX=auto',
     'MIN_FREE_MB=500',
+    // Chế độ TOÀN QUYỀN chỉ BẬT khi chủ máy đã tự tích ô ở trình hướng dẫn (cfg.fullAccess === true); mặc định TẮT.
+    // Chủ đổi lúc đang chạy bằng /toanquyen và /baove trong Telegram.
+    'FULL_ACCESS=' + (cfg.fullAccess === true ? '1' : '0'),
+    'JOB_TIMEOUT_SEC=' + (cfg.fullAccess === true ? '3600' : '900'),
   ];
   // Token dài hạn của Claude (claude setup-token) nếu người dùng đăng nhập qua điện thoại; Codex tự lưu đăng nhập trong thư mục của agentos.
   if (cfg.claudeToken) {

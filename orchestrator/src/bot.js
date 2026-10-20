@@ -9,6 +9,8 @@ function helpText(profiles) {
     '/nhatky - nhật ký các lần AI xin dùng công cụ (cho phép/từ chối)\n' +
     '/trangthai - hàng đợi và tình trạng hạn mức\n' +
     '/huy - hủy việc đang chạy và các việc đang chờ\n' +
+    '/toanquyen - bật chế độ TOÀN QUYỀN: AI tự làm một mạch, không hỏi xin phép, có sudo (chỉ quản trị viên)\n' +
+    '/baove - quay về chế độ bảo vệ: AI hỏi trước khi ghi file/chạy lệnh (chỉ quản trị viên)\n' +
     '/moi - bắt đầu cuộc trò chuyện mới (quên ngữ cảnh cũ)\n' +
     '/id - xem ID Telegram của bạn';
 }
@@ -20,7 +22,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `profiles`: [{ name, description, adminOnly }] các bộ công cụ chọn bằng lệnh /<tên> (ví dụ /web).
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess }) {
   profiles = profiles || [];
   isAdmin = isAdmin || (() => true);
   const profileByName = new Map(profiles.map((p) => [p.name, p]));
@@ -71,7 +73,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals }) {
         case 'trangthai': {
           const cur = worker.currentJobId();
           const eng = worker.engineStatus().map((e) => e.label + ': ' + (e.until ? 'hết hạn mức, hồi khoảng ' + fmtTime(e.until) : 'sẵn sàng')).join('\n');
-          return 'Đang chạy: ' + (cur ? '#' + cur : 'không có') + '\nĐang chờ: ' + db.queuedCount() +
+          return (fullAccess ? 'Chế độ: ' + (fullAccess.get() ? '⚡ TOÀN QUYỀN (không hỏi, có sudo)' : '🛡️ bảo vệ (có hỏi duyệt)') + '\n' : '') +
+            'Đang chạy: ' + (cur ? '#' + cur : 'không có') + '\nĐang chờ: ' + db.queuedCount() +
             ' việc' + (db.waitingCount() ? ' (trong đó ' + db.waitingCount() + ' chờ hạn mức hồi)' : '') + '\n' + eng;
         }
         case 'viec': {
@@ -89,6 +92,15 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals }) {
             return p(d.getHours()) + ':' + p(d.getMinutes()) + ' #' + a.job_id + ' ' + (MARK[a.decision] || '?') + ' ' + (SRC[a.source] || a.source) +
               ' · ' + a.tool + ': ' + String(a.summary || '').replace(/\s+/g, ' ').slice(0, 70);
           }).join('\n');
+        }
+        case 'toanquyen': case 'baove': {
+          if (!fullAccess) return 'Máy này chưa hỗ trợ chế độ toàn quyền.';
+          if (!isAdmin(uid)) return 'Chỉ quản trị viên được đổi chế độ.';
+          const on = name === 'toanquyen';
+          fullAccess.set(on);
+          return on
+            ? '⚡ ĐÃ BẬT chế độ TOÀN QUYỀN. AI tự làm một mạch, không hỏi xin phép, được dùng sudo trên máy này. Gõ /baove để quay về chế độ có hỏi.'
+            : '🛡️ ĐÃ BẬT chế độ bảo vệ: AI hỏi bạn trước khi ghi file hoặc chạy lệnh, chạy trong hộp cô lập. Gõ /toanquyen để bật lại toàn quyền.';
         }
         case 'huy': {
           const queued = db.cancelQueued(chatId);

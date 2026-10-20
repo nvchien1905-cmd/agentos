@@ -178,6 +178,8 @@ async function boot(extra) {
   const w = createWizard(Object.assign({
     port: 0, host: '127.0.0.1', envFile, run, fetch: T.f, code: '123456', stateFile: path.join(dir, 'state.json'), hotspotFile: path.join(dir, 'hotspot.json'),
     hotspotDelayMs: 0, captivePort: 0, pollPauseMs: 5, waitMs: 3000, finishDelayMs: 60000,
+    // Không bao giờ đụng /etc thật khi test
+    fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-agentos-toan-quyen'), dropin: path.join(dir, 'dropin', '10-toan-quyen.conf') },
   }, extra || {}));
   const port = await w.listen();
   const call = async (method, p, body, headers) => {
@@ -240,4 +242,57 @@ test('server: luồng đầy đủ Wi-Fi -> Telegram -> AI -> hoàn tất ghi c�
     assert.ok(S.sent.some((s) => /Đã ghép đôi với bạn \(Chủ\)/.test(s.text)));          // tin báo ghép đôi thành công
     assert.equal((await S.call('GET', '/api/state')).body.finished, true);
   } finally { await S.w.close(); }
+});
+
+// ---------- chế độ TOÀN QUYỀN (chủ máy tự tích) ----------
+
+const fullaccess = require('../lib/fullaccess');
+const fapaths = (S) => ({ sudoers: path.join(path.dirname(S.envFile), 'sudoers.d', '90-agentos-toan-quyen'), dropin: path.join(path.dirname(S.envFile), 'dropin', '10-toan-quyen.conf') });
+async function toFinish(S) {
+  await S.call('POST', '/api/telegram/token', { token: TOKEN });
+  await S.call('POST', '/api/telegram/wait', {});
+  await S.call('POST', '/api/engine/install', { engine: 'claude' });
+  for (let i = 0; i < 40; i++) { const s = await S.call('GET', '/api/state'); if (s.body.jobs['install-claude'].status !== 'running') break; await new Promise((r) => setTimeout(r, 25)); }
+  await S.call('POST', '/api/engine/check', { engine: 'claude' });
+}
+
+test('toàn quyền: mặc định TẮT - hoàn tất không cài sudo, FULL_ACCESS=0', async () => {
+  const S = await boot();
+  try {
+    assert.equal((await S.call('GET', '/api/state')).body.fullAccess, false);
+    await toFinish(S);
+    assert.equal((await S.call('POST', '/api/finish', {})).body.ok, true);
+    const env = fs.readFileSync(S.envFile, 'utf8');
+    assert.match(env, /^FULL_ACCESS=0$/m); assert.match(env, /^JOB_TIMEOUT_SEC=900$/m);
+    assert.ok(!S.calls.some((c) => c[0] === 'visudo'), 'không đụng tới sudo khi chủ máy không tích');
+  } finally { await S.w.close(); }
+});
+
+test('toàn quyền: chủ máy tích -> hoàn tất cài sudo không mật khẩu (qua visudo -cf), gỡ giới hạn systemd, FULL_ACCESS=1', async () => {
+  const S = await boot();
+  const paths = fapaths(S);
+  try {
+    assert.equal((await S.call('POST', '/api/fullaccess', { on: 'true' })).body.fullAccess, false);   // chỉ nhận đúng true (không nhận chuỗi)
+    assert.equal((await S.call('POST', '/api/fullaccess', { on: true })).body.fullAccess, true);
+    assert.equal((await S.call('GET', '/api/state')).body.fullAccess, true);
+    await toFinish(S);
+    assert.ok(!fs.existsSync(paths.sudoers), 'chưa bấm Hoàn tất thì chưa cài gì');
+    assert.equal((await S.call('POST', '/api/finish', {})).body.ok, true);
+    assert.match(fs.readFileSync(paths.sudoers, 'utf8'), /^agentos ALL=\(ALL:ALL\) NOPASSWD: ALL$/m);
+    assert.match(fs.readFileSync(paths.dropin, 'utf8'), /NoNewPrivileges=no[\s\S]*ProtectSystem=no/);
+    const vi = S.calls.find((c) => c[0] === 'visudo'); assert.ok(vi && vi[1][0] === '-cf');
+    assert.ok(S.calls.findIndex((c) => c[0] === 'visudo') < S.calls.findIndex((c) => c[0] === 'systemctl' && c[1][0] === 'enable'), 'sudo cài TRƯỚC khi bật dịch vụ');
+    assert.ok(S.calls.some((c) => c[0] === 'systemctl' && c[1].join(' ') === 'daemon-reload'));
+    const env = fs.readFileSync(S.envFile, 'utf8');
+    assert.match(env, /^FULL_ACCESS=1$/m); assert.match(env, /^JOB_TIMEOUT_SEC=3600$/m);
+  } finally { await S.w.close(); }
+});
+
+test('toàn quyền: tệp sudo không hợp lệ thì KHÔNG cài (visudo từ chối), gỡ bằng disable', async () => {
+  const dir = tmp(); const o = { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'd', '10-x.conf') };
+  await assert.rejects(() => fullaccess.enable(async () => ({ code: 1, out: '', err: 'syntax error near line 3' }), o), /không hợp lệ/);
+  assert.ok(!fs.existsSync(o.sudoers) && !fs.existsSync(o.sudoers + '.tmp') && !fs.existsSync(o.dropin));
+  const ok = async () => ({ code: 0, out: '', err: '' });
+  await fullaccess.enable(ok, o); assert.ok(fullaccess.isEnabled(o));
+  await fullaccess.disable(ok, o); assert.ok(!fullaccess.isEnabled(o) && !fs.existsSync(o.dropin));
 });

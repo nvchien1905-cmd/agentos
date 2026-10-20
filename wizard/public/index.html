@@ -276,8 +276,13 @@
     var ok = ['claude', 'codex'].filter(function (x) { return S.engines[x] && S.engines[x].loggedIn; }).map(function (x) { return NAMES[x]; });
     view.innerHTML = '<h2>4. Sẵn sàng</h2><p>Đã chuẩn bị xong:</p><ul>' +
       '<li>Mạng: <b class="ok">có</b></li><li>Telegram: bot <b>@' + esc(S.bot && S.bot.username) + '</b>, chủ máy <b>' + esc(S.owner && (S.owner.name || S.owner.id)) + '</b></li><li>AI: <b>' + esc(ok.join(', ')) + '</b></li></ul>' +
+      '<div class="card"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="fa"' + (S.fullAccess ? ' checked' : '') + ' style="width:22px;height:22px;margin-top:3px;flex:none">' +
+      '<span><b>Cho bot toàn quyền trên máy này</b> (sudo, không hỏi xin phép)<br><span class="mute">Nếu tích: AI tự làm một mạch, không hỏi bạn trước khi ghi file, cài phần mềm, chạy lệnh quản trị. ' +
+      'Chỉ tài khoản Telegram của bạn ra lệnh được. <b>Rủi ro:</b> nếu AI đọc phải trang web hay tệp có cài lệnh giả thì lệnh đó cũng chạy với quyền cao. ' +
+      'Không tích thì AI luôn hỏi bạn trước (an toàn hơn). Đổi bất cứ lúc nào bằng lệnh <b>/baove</b> (hỏi trước) và <b>/toanquyen</b> (không hỏi) trong Telegram.</span></span></label></div>' +
       '<p class="mute">Bấm "Bắt đầu" để máy chạy. Bạn sẽ nhận một tin nhắn xác nhận trên Telegram. Sau đó không cần màn hình nữa.</p><p id="m"></p>' +
       '<div class="nav"><button id="back">Quay lại</button><button class="primary" id="go">Bắt đầu</button></div>';
+    document.getElementById('fa').onchange = function () { api('POST', 'fullaccess', { on: this.checked }).then(function (r) { S.fullAccess = r.fullAccess; }).catch(function (e) { msg('m', e.message, 'bad'); }); };
     document.getElementById('back').onclick = function () { setStep(2); };
     document.getElementById('go').onclick = function () {
       msg('m', 'Đang khởi động...', 'mute spin'); document.getElementById('go').disabled = true;

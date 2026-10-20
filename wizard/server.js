@@ -14,6 +14,7 @@ const envfile = require('./lib/envfile');
 const engines = require('./lib/engines');
 const hotspot = require('./lib/hotspot');
 const store = require('./lib/store');
+const fullaccess = require('./lib/fullaccess');
 const qr = require('./lib/qr');
 const netinfo = require('./lib/netinfo');
 const { createAuth, parseCookies } = require('./lib/auth');
@@ -86,6 +87,7 @@ function createWizard(options) {
   const state = {
     token: persisted.token || null, bot: persisted.bot || null, owner: persisted.owner || null,
     claudeToken: persisted.claudeToken || null, lastError: persisted.lastError || null,
+    fullAccess: persisted.fullAccess === true,                   // chủ máy TỰ tích ô "toàn quyền" (mặc định tắt)
     engines: { claude: { installed: null, loggedIn: false }, codex: { installed: null, loggedIn: false } },
     jobs: {}, finished: false,
     hotspot: { ssid: null, up: false, error: null },
@@ -198,9 +200,11 @@ function createWizard(options) {
         net, bot: state.bot, owner: state.owner, engines: state.engines, jobs: state.jobs, finished: state.finished,
         code: auth.code(), lan: { ips: netinfo.lanAddresses(o.ifaces), host: netinfo.hostLabel(o.hostname), port: boundPort },
         hotspot: state.hotspot.up ? { ssid: state.hotspot.ssid, up: true, qr: hotspot.wifiQrText(state.hotspot.ssid, hotspot.credentials(o.hotspotFile).psk), psk: hotspot.credentials(o.hotspotFile).psk } : { up: false, error: state.hotspot.error },
-        offline: state.offline, lastError: state.lastError, hasClaudeToken: !!state.claudeToken,
+        offline: state.offline, lastError: state.lastError, hasClaudeToken: !!state.claudeToken, fullAccess: state.fullAccess,
       };
     },
+    // Ô tích "Cho bot toàn quyền": chỉ ghi nhớ lựa chọn của chủ máy; sudo + cấu hình chỉ được cài khi bấm Hoàn tất (finish).
+    async setFullAccess(b) { state.fullAccess = b && b.on === true; persist(); return { fullAccess: state.fullAccess }; },
     async wifiScan() { return { networks: await nm.scan(run) }; },
     async wifiConnect(b) {
       await nm.connect(run, String(b.ssid || ''), b.password == null ? null : String(b.password));
@@ -282,7 +286,10 @@ function createWizard(options) {
     async finish() {
       if (!state.token || !state.owner) throw new Error('Chưa xong bước Telegram');
       const ready = Object.keys(state.engines).filter((e) => state.engines[e].loggedIn);
-      const content = envfile.build({ token: state.token, ownerIds: [state.owner.id], engines: ready, claudeToken: state.engines.claude.loggedIn ? state.claudeToken : null });
+      // Toàn quyền: chỉ khi chủ máy đã tự tích ô. Cài sudo không mật khẩu cho `agentos` + gỡ giới hạn systemd TRƯỚC khi bật dịch vụ điều phối.
+      if (state.fullAccess) await fullaccess.enable(run, o.fullAccessPaths);
+      else if (fullaccess.isEnabled(o.fullAccessPaths)) await fullaccess.disable(run, o.fullAccessPaths);
+      const content = envfile.build({ token: state.token, ownerIds: [state.owner.id], engines: ready, claudeToken: state.engines.claude.loggedIn ? state.claudeToken : null, fullAccess: state.fullAccess });
       envfile.writeSecure(o.envFile, content);
       store.clear(o.stateFile);                                    // token đã nằm trong orchestrator.env, không giữ bản sao
       await stopHotspot();
@@ -305,6 +312,7 @@ function createWizard(options) {
     'POST /api/setup/offline': actions.setupOffline,
     'POST /api/telegram/token': actions.telegramToken,
     'POST /api/telegram/wait': () => actions.telegramWait(),
+    'POST /api/fullaccess': actions.setFullAccess,
     'POST /api/engine/install': actions.engineInstall,
     'POST /api/engine/check': actions.engineCheck,
     'POST /api/engine/login': actions.engineLoginTerminal,

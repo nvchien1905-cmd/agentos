@@ -16,7 +16,7 @@ apt-get install -y --no-install-recommends xclip scrot xdotool >/dev/null 2>&1 |
 echo "== 2/4 Mã bộ điều phối + trợ lý màn hình"
 B=/root/agentos-bak-$(date +%Y%m%d-%H%M%S); mkdir -p "$B"; cp -a /opt/agentos/orchestrator/src "$B/"; [ -d /opt/agentos/desk ] && cp -a /opt/agentos/desk "$B/" || true
 echo "Đã sao lưu mã cũ vào $B"
-ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js engines/claude.js"
+ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js engines/claude.js"
 for f in $ORCH; do
   mkdir -p "$T/orchestrator/src/$(dirname "$f")"
   curl -fsSL "$R/orchestrator/src/$f" -o "$T/orchestrator/src/$f" || { echo "Không tải được orchestrator/src/$f"; exit 1; }
@@ -43,11 +43,53 @@ systemctl daemon-reload
 systemctl enable --now agentos-deskd.service
 systemctl restart agentos-deskd.service
 
+echo "== OneDrive (AI đọc dữ liệu và lưu kết quả/ghi nhớ ở /srv/onedrive, đồng bộ hai chiều)"
+apt-get install -y --no-install-recommends onedrive >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends onedrive; }
+CI=iso/config/includes.chroot
+for f in etc/systemd/system/onedrive-agentos.service etc/systemd/system/onedrive-agentos.path usr/share/applications/agentos-onedrive.desktop usr/share/icons/hicolor/scalable/apps/agentos-onedrive.svg; do
+  mkdir -p "/$(dirname "$f")"
+  curl -fsSL "$R/$CI/$f" -o "/$f" || { echo "Không tải được $f"; exit 1; }
+done
+id agentos >/dev/null 2>&1 || { echo "Thiếu người dùng agentos"; exit 1; }
+mkdir -p /srv/onedrive; chown agentos:agentos /srv/onedrive; chmod 2775 /srv/onedrive
+if [ ! -f /var/lib/agentos/.config/onedrive/config ]; then
+  mkdir -p /var/lib/agentos/.config/onedrive
+  cat > /var/lib/agentos/.config/onedrive/config <<'EOC'
+sync_dir = "/srv/onedrive"
+monitor_interval = "120"
+classify_as_big_delete = "50"
+skip_dotfiles = "true"
+sync_dir_permissions = "775"
+sync_file_permissions = "664"
+disable_notifications = "true"
+EOC
+fi
+chown -R agentos:agentos /var/lib/agentos/.config; chmod 700 /var/lib/agentos/.config /var/lib/agentos/.config/onedrive
+systemctl --global disable onedrive.service >/dev/null 2>&1 || true      # gói tự bật dịch vụ người dùng đòi đăng nhập liên tục
+printf '[Service]\nReadWritePaths=-/srv/onedrive\n' > /etc/systemd/system/agentos-orchestrator.service.d/21-onedrive.conf
+systemctl daemon-reload
+systemctl enable onedrive-agentos.path onedrive-agentos.service >/dev/null 2>&1 || true
+systemctl start onedrive-agentos.path || true
+chmod 755 /usr/share/applications/agentos-onedrive.desktop 2>/dev/null || true
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+mkdir -p /etc/skel/Desktop; ln -sfn /srv/onedrive /etc/skel/OneDrive
+cp /usr/share/applications/agentos-onedrive.desktop /etc/skel/Desktop/agentos-onedrive.desktop; chmod 755 /etc/skel/Desktop/agentos-onedrive.desktop
+for h in /home/*; do
+  u=$(basename "$h"); id "$u" >/dev/null 2>&1 || continue
+  [ "$(id -u "$u")" -ge 1000 ] || continue
+  usermod -aG agentos "$u"                                                # để mở/ghi ~/OneDrive (hiệu lực sau khi đăng xuất, đăng nhập lại)
+  ln -sfn /srv/onedrive "$h/OneDrive"; chown -h "$u:$(id -gn "$u")" "$h/OneDrive"
+  mkdir -p "$h/Desktop"; cp /usr/share/applications/agentos-onedrive.desktop "$h/Desktop/agentos-onedrive.desktop"
+  chmod 755 "$h/Desktop/agentos-onedrive.desktop"; chown "$u:$(id -gn "$u")" "$h/Desktop/agentos-onedrive.desktop"
+  echo "  đã thêm OneDrive cho $u"
+done
+
 echo "== 4/4 Khởi động lại bộ điều phối"
 systemctl restart agentos-orchestrator || true
 sleep 6
 systemctl is-active --quiet agentos-deskd && echo "✅ Trợ lý màn hình đang chạy." || echo "⚠️ Trợ lý màn hình chưa lên: journalctl -u agentos-deskd -n 20"
 systemctl is-active --quiet agentos-orchestrator && echo "✅ Bộ điều phối đang chạy." || echo "⚠️ Bộ điều phối chưa lên: journalctl -u agentos-orchestrator -n 30"
 echo
-echo "Xong. Mở Telegram gõ /help để thấy lệnh nhanh: /manhinh /mo /dong /khoamay /khoimay /tatmay /deepseek /doanhso /ton."
+echo "Xong. Mở Telegram gõ /help để thấy lệnh nhanh: /manhinh /mo /dong /khoamay /khoimay /tatmay /deepseek /doanhso /ton /onedrive."
+echo "OneDrive: nhắn bot  /onedrive ketnoi  rồi đăng nhập Microsoft trên điện thoại (làm một lần)."
 echo "KiotViet (/doanhso, /ton) cần khóa API: chạy  curl -sL $R/scripts/dat-khoa-kiotviet.sh -o k.sh; sudo bash k.sh"

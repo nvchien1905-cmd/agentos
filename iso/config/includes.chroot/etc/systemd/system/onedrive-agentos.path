@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - tự bật đồng bộ OneDrive khi chủ máy vừa đăng nhập xong
+
+[Path]
+PathExists=/var/lib/agentos/.config/onedrive/refresh_token
+Unit=onedrive-agentos.service
+
+[Install]
+WantedBy=multi-user.target

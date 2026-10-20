@@ -35,6 +35,9 @@ x11vnc
 xdotool
 scrot
 xclip
+
+# OneDrive (khách hàng mã nguồn mở, đồng bộ hai chiều cho AI)
+onedrive
 fonts-noto-core
 fonts-liberation
 

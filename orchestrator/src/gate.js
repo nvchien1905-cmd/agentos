@@ -6,7 +6,7 @@ const { decide, originOf } = require('./policy');
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
 //   POST /gate  header x-gate-token  body {jobId, tool, input}  ->  {behavior:'allow',updatedInput} | {behavior:'deny',message}
-function createGate({ db, approvals, workdir, log }) {
+function createGate({ db, approvals, workdir, log, extraDirs }) {
   log = log || (() => {});
   const token = crypto.randomBytes(24).toString('hex');
   const jobs = new Map();     // jobId -> { job, policy, state:{tainted, allowed:Set} }
@@ -21,7 +21,7 @@ function createGate({ db, approvals, workdir, log }) {
     if (!entry) return { behavior: 'deny', message: 'Việc không còn chạy, từ chối.' };
     const tool = String(body.tool || '');
     const input = body.input && typeof body.input === 'object' ? body.input : {};
-    const d = decide({ tool, input, policy: entry.policy, workdir, state: entry.state });
+    const d = decide({ tool, input, policy: entry.policy, workdir, extraDirs, state: entry.state });
 
     if (d.action === 'deny') {
       audit(entry.job.id, tool, d, 'deny', 'policy');

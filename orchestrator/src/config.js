@@ -51,6 +51,8 @@ function load(env) {
     backupKeep: Number(env.BACKUP_KEEP) || 7,
     retryDelaysMs: list(env.TRANSIENT_RETRY_SEC === undefined ? '15,60,180' : env.TRANSIENT_RETRY_SEC).map((s) => Number(s) * 1000).filter((n) => n >= 0),
     // Cấu hình công cụ (MCP + bộ công cụ). Không đặt -> chỉ dùng CLAUDE_ALLOWED_TOOLS.
+    // Thư mục OneDrive (đồng bộ hai chiều): AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đây
+    oneDriveDir: env.ONEDRIVE_DIR || '/srv/onedrive',
     // KiotViet API chính thức (chỉ đọc) cho /doanhso và /ton
     kiotviet: { clientId: env.KIOTVIET_CLIENT_ID || '', clientSecret: env.KIOTVIET_CLIENT_SECRET || '', retailer: env.KIOTVIET_RETAILER || '' },
     toolsFile: env.TOOLS_FILE ? path.resolve(env.TOOLS_FILE) : '',

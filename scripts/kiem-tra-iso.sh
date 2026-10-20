@@ -34,6 +34,8 @@ chk "journald co gioi han dung luong" grep -q SystemMaxUse /etc/systemd/journald
 chk "Chromium co mat" which chromium
 chk "Google Chrome co mat" test -x /usr/bin/google-chrome-stable
 chk "tro ly man hinh (deskd) co mat va bat" bash -c 'test -f /opt/agentos/desk/server.js && test -x /usr/local/bin/agentos-desk && systemctl is-enabled --quiet agentos-deskd && command -v xclip scrot xdotool >/dev/null'
+chk "OneDrive: goi onedrive + dich vu dong bo + thu muc /srv/onedrive (2775, nhom agentos) + cau hinh" bash -c 'command -v onedrive >/dev/null && systemctl is-enabled --quiet onedrive-agentos.path && [ "$(stat -c %a /srv/onedrive)" = 2775 ] && [ "$(stat -c %G /srv/onedrive)" = agentos ] && grep -q "classify_as_big_delete" /var/lib/agentos/.config/onedrive/config && ! systemctl --global is-enabled --quiet onedrive.service'
+chk "OneDrive: bieu tuong man hinh chinh + lien ket ~/OneDrive trong skel" bash -c 'test -x /etc/skel/Desktop/agentos-onedrive.desktop && [ "$(readlink /etc/skel/OneDrive)" = /srv/onedrive ]'
 chk "tro ly man hinh dang chay va nghe o /run/agentos/desk.sock" bash -c 'systemctl is-active --quiet agentos-deskd && test -S /run/agentos/desk.sock'
 chk "RustDesk (dieu khien tu xa) co mat" test -x /usr/bin/rustdesk
 chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex; do test -f /usr/share/applications/$f.desktop || exit 1; done'

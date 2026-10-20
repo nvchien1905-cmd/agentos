@@ -294,7 +294,7 @@ function createWizard(options) {
       store.clear(o.stateFile);                                    // token đã nằm trong orchestrator.env, không giữ bản sao
       await stopHotspot();
       await run('systemctl', ['enable', '--now', 'agentos-orchestrator.service'], { timeoutMs: 60000 });
-      await tg.send(state.token, state.owner.id, 'AgentOS đã sẵn sàng. Nhắn việc cho em bằng chữ (ví dụ: "Hôm nay thứ mấy?"). Gõ /help để xem lệnh. AI đang dùng: ' + ready.join(', ') + '.', tgOpts()).catch(() => {});
+      await tg.send(state.token, state.owner.id, 'AgentOS đã sẵn sàng. Nhắn việc cho em bằng chữ (ví dụ: "Hôm nay thứ mấy?"). Gõ /help để xem lệnh, /onedrive ketnoi để nối OneDrive (AI đọc dữ liệu và lưu kết quả ở đó). AI đang dùng: ' + ready.join(', ') + '.', tgOpts()).catch(() => {});
       state.finished = true;
       // Tự vô hiệu hóa sau khi trả lời xong: không để dịch vụ chạy bằng root nằm đó.
       setTimeout(() => {

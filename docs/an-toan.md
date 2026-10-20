@@ -53,3 +53,11 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - **KiotViet:** `/doanhso` và `/ton` dùng API chính thức, chỉ đọc; khóa nhập bằng `scripts/dat-khoa-kiotviet.sh` (không in ra màn hình, lưu 0600 root).
 - **AI nhìn/bấm màn hình thật:** lệnh `agentos-desk` (cho AI và quản trị viên). Ở chế độ bảo vệ mỗi lệnh phải được duyệt; chế độ toàn quyền thì tự do.
 - Cập nhật máy đã cài: `scripts/cap-nhat-dieu-khien.sh`. Thử không cần Telegram thật: `scripts/telegram-gia.js`.
+
+## OneDrive cho AI (dữ liệu AI dùng và AI lưu lại)
+
+- Gói `onedrive` (abraunegg, mã nguồn mở, có trong Debian 13) đồng bộ HAI CHIỀU thư mục `/srv/onedrive` với OneDrive của chủ máy (dịch vụ `onedrive-agentos`, chạy bằng `agentos`, tự bật khi có token nhờ `onedrive-agentos.path`). Người ngồi máy thấy cùng thư mục ở `~/OneDrive` (thuộc nhóm `agentos`, setgid 2775); AI đọc dữ liệu từ đó và lưu kết quả, báo cáo, **trí nhớ lâu dài** vào `/srv/onedrive/AgentOS/` (tệp `GHI-NHO.md` đọc đầu mỗi việc, thêm vào cuối mỗi việc) — lời nhắc nằm trong `ONEDRIVE_HINT` (orchestrator/src/index.js).
+- Kết nối bằng Telegram, một lần: `/onedrive ketnoi` → bot gửi link đăng nhập Microsoft; chủ máy đăng nhập, copy địa chỉ trang trắng cuối cùng, dán lại vào chat (hoặc `/onedrive <địa chỉ>`). Mã trong địa chỉ chỉ dùng một lần, hết hạn sau vài phút. Bộ điều phối không giữ mật khẩu; token nằm ở `/var/lib/agentos/.config/onedrive/` (0700) và bị chặn đối với AI (policy SECRET_RE).
+- Lệnh: `/onedrive` (tình trạng), `/onedrive dongbo` (SIGUSR1: đồng bộ ngay), `/onedrive thumuc`, `/onedrive ngat co` (xóa token, giữ tệp trên máy).
+- **Rủi ro cần biết:** đồng bộ hai chiều nghĩa là AI xóa/sửa tệp ở `/srv/onedrive` thì OneDrive cũng bị xóa/sửa (thùng rác OneDrive giữ khoảng 30 ngày). Giảm rủi ro: `classify_as_big_delete = 50` (xóa hàng loạt thì bộ đồng bộ dừng chờ xác nhận), lời nhắc cấm xóa/ghi đè tệp của chủ máy, chế độ bảo vệ vẫn hỏi trước khi ghi. Chế độ toàn quyền thì AI tự do — hãy để dữ liệu quan trọng có bản sao lưu riêng. Mọi thứ trong thư mục OneDrive AI đều đọc được (và gửi tới Anthropic/OpenAI khi AI xử lý): đừng để vào đó dữ liệu không muốn AI thấy.
+- Cập nhật máy đã cài: `scripts/cap-nhat-dieu-khien.sh` (cài cả OneDrive).

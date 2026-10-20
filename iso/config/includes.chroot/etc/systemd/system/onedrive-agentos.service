@@ -1,0 +1,25 @@
+[Unit]
+Description=AgentOS - đồng bộ OneDrive hai chiều (/srv/onedrive) cho AI
+After=network-online.target
+Wants=network-online.target
+# Chỉ chạy khi chủ máy đã đăng nhập OneDrive (lệnh /onedrive ketnoi trong Telegram tạo token); bật tự động bởi onedrive-agentos.path
+ConditionPathExists=/var/lib/agentos/.config/onedrive/refresh_token
+
+[Service]
+User=agentos
+Group=agentos
+UMask=0002
+Environment=HOME=/var/lib/agentos
+ExecStart=/usr/bin/onedrive --monitor --confdir=/var/lib/agentos/.config/onedrive
+Restart=always
+RestartSec=20
+# 126 = cần đồng bộ lại từ đầu (--resync): không tự lặp, chờ chủ máy
+RestartPreventExitStatus=126
+TimeoutStopSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/agentos /srv/onedrive
+
+[Install]
+WantedBy=multi-user.target

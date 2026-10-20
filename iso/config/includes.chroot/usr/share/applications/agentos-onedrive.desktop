@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OneDrive
+Comment=Thư mục OneDrive (đồng bộ với đám mây; AI đọc và lưu dữ liệu ở đây)
+Exec=thunar /srv/onedrive
+Icon=agentos-onedrive
+Terminal=false
+Categories=Network;Office;

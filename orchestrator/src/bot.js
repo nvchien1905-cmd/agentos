@@ -11,6 +11,7 @@ function helpText(profiles) {
     '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
+    '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '-----\n' +
     '/nhatky - nhật ký các lần AI xin dùng công cụ (cho phép/từ chối)\n' +
     '/trangthai - hàng đợi và tình trạng hạn mức\n' +
@@ -55,6 +56,10 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     // Chỉ nhận chat riêng với người được phép (không nhận trong nhóm).
     if (msg.chat.type && msg.chat.type !== 'private') return null;
     if (!text) return 'Hiện chỉ nhận tin nhắn chữ.';
+
+    // Địa chỉ đăng nhập OneDrive dán thẳng (không có lệnh): chuyển cho lệnh /onedrive
+    const pending = quick && quick.match && quick.match(text);
+    if (pending) return isAdmin(uid) ? quick.run(pending.name, pending.arg) : 'Lệnh /' + pending.name + ' chỉ dành cho quản trị viên.';
 
     const cmd = text.match(/^\/(\w+)(@\w+)?\s*([\s\S]*)$/);
     if (cmd) {

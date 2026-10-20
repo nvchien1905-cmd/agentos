@@ -1,0 +1,42 @@
+#!/bin/sh
+# OneDrive cho AI: gói `onedrive` (abraunegg, có trong Debian) đồng bộ hai chiều /srv/onedrive. Chủ máy đăng nhập bằng /onedrive ketnoi trong Telegram.
+set -e
+id agentos >/dev/null 2>&1
+
+# Thư mục dữ liệu dùng chung: agentos (AI + bộ đồng bộ) và người ngồi máy (nhóm agentos) cùng đọc/ghi; setgid để tệp mới thuộc nhóm agentos
+mkdir -p /srv/onedrive
+chown agentos:agentos /srv/onedrive
+chmod 2775 /srv/onedrive
+
+# Cấu hình bộ đồng bộ (chặn xóa hàng loạt: quá 50 mục bị xóa cùng lúc thì dừng chờ chủ máy xác nhận)
+mkdir -p /var/lib/agentos/.config/onedrive
+cat > /var/lib/agentos/.config/onedrive/config <<'EOC'
+sync_dir = "/srv/onedrive"
+monitor_interval = "120"
+classify_as_big_delete = "50"
+skip_dotfiles = "true"
+sync_dir_permissions = "775"
+sync_file_permissions = "664"
+disable_notifications = "true"
+EOC
+chown -R agentos:agentos /var/lib/agentos/.config
+chmod 700 /var/lib/agentos/.config /var/lib/agentos/.config/onedrive
+
+# Gói tự bật dịch vụ người dùng cho MỌI người dùng (sẽ đòi đăng nhập liên tục): tắt; dùng dịch vụ hệ thống của AgentOS
+systemctl --global disable onedrive.service 2>/dev/null || true
+systemctl disable onedrive@.service 2>/dev/null || true
+systemctl enable onedrive-agentos.path onedrive-agentos.service || true
+
+# Người dùng máy (tạo lúc cài bằng Calamares) vào nhóm agentos để mở ~/OneDrive
+if [ -f /etc/calamares/modules/users.conf ] && ! grep -q '^    - agentos$' /etc/calamares/modules/users.conf; then
+	sed -i '0,/^defaultGroups:/s//defaultGroups:\n    - agentos/' /etc/calamares/modules/users.conf
+fi
+mkdir -p /etc/skel
+ln -sfn /srv/onedrive /etc/skel/OneDrive
+if [ -f /usr/share/applications/agentos-onedrive.desktop ]; then
+	mkdir -p /etc/skel/Desktop
+	cp /usr/share/applications/agentos-onedrive.desktop /etc/skel/Desktop/agentos-onedrive.desktop
+	chmod 0755 /etc/skel/Desktop/agentos-onedrive.desktop
+fi
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+exit 0

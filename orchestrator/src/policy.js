@@ -14,7 +14,7 @@ const BROWSE_ACTIONS = /^browser_(navigate|navigate_back|snapshot|take_screensho
 const LABEL = { exec: 'Chạy lệnh', write: 'Ghi/sửa file', interact: 'Thao tác trên trang web', browse: 'Xem web', other: 'Dùng công cụ', read: 'Đọc file' };
 
 // File chứa khóa/token/dữ liệu hệ thống: AI không bao giờ được đọc hay ghi, kể cả khi người dùng bấm cho phép.
-const SECRET_RE = /(?<![\w-])(\.ssh|\.aws|\.gnupg|\.kube|\.claude|\.codex|\.netrc|\.npmrc|\.git-credentials|\.env(\.[\w.-]+)?|id_rsa|id_ed25519|\.credentials\.json|orchestrator\.env|agentos\.db|shadow|passwd)(?![\w-])/i;
+const SECRET_RE = /(?<![\w-])(\.ssh|\.aws|\.gnupg|\.kube|\.claude|\.codex|\.config[\\/]onedrive|refresh_token|\.netrc|\.npmrc|\.git-credentials|\.env(\.[\w.-]+)?|id_rsa|id_ed25519|\.credentials\.json|orchestrator\.env|agentos\.db|shadow|passwd)(?![\w-])/i;
 
 // Lệnh shell không bao giờ hợp lệ với tác nhân này (từ chối thẳng, không hỏi).
 const EXEC_DENY = [
@@ -106,7 +106,8 @@ function decide(ctx) {
   // 1. Cấm cứng
   for (const p of pathsOf(input)) {
     if (SECRET_RE.test(p)) return deny('không được đụng vào file chứa khóa/token/dữ liệu hệ thống');
-    if ((cls === 'read' || cls === 'write') && !inside(ctx.workdir, p)) return deny('chỉ được làm việc trong thư mục làm việc');
+    // Thư mục làm việc + các thư mục dữ liệu được cho thêm (OneDrive của chủ máy). Đường dẫn tương đối tính từ thư mục làm việc.
+    if ((cls === 'read' || cls === 'write') && ![ctx.workdir].concat(ctx.extraDirs || []).some((d) => inside(d, p))) return deny('chỉ được làm việc trong thư mục làm việc hoặc thư mục OneDrive');
   }
   if (cls === 'exec') {
     const cmd = String(input.command || '');

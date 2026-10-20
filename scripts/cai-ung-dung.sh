@@ -38,7 +38,7 @@ apt-get purge -y gnome-keyring libpam-gnome-keyring 2>/dev/null || true
 echo "== 3/4 Launcher, biểu tượng, quyền mở Claude/Codex"
 put usr/local/bin/agentos-app /usr/local/bin/agentos-app 755
 put usr/local/bin/agentos-ai /usr/local/bin/agentos-ai 755
-for n in zalo kiotviet deepseek claude codex; do
+for n in zalo kiotviet deepseek claude codex gemini; do
   put usr/share/applications/agentos-$n.desktop /usr/share/applications/agentos-$n.desktop 644
   put usr/share/icons/hicolor/scalable/apps/agentos-$n.svg /usr/share/icons/hicolor/scalable/apps/agentos-$n.svg 644
 done
@@ -51,7 +51,7 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true
 
 echo "== 4/4 Biểu tượng trên màn hình chính"
-APPS="google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex"
+APPS="google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini"
 place() { # place <thư mục Desktop> <chủ sở hữu hoặc rỗng>
   mkdir -p "$1"
   for f in $APPS; do

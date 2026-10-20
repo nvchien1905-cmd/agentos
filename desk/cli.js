@@ -3,7 +3,7 @@
 // agentos-desk: nhìn / điều khiển MÀN HÌNH THẬT của máy qua trợ lý màn hình (deskd). Dành cho AI và cho quản trị viên.
 //   agentos-desk screenshot              chụp màn hình, in đường dẫn ảnh .png (xem bằng công cụ đọc ảnh)
 //   agentos-desk windows                 liệt kê tiêu đề các cửa sổ đang hiện
-//   agentos-desk open <ứng dụng>         zalo | kiotviet | deepseek | chrome | rustdesk | claude | codex
+//   agentos-desk open <ứng dụng>         zalo | kiotviet | deepseek | chrome | rustdesk | claude | codex | gemini
 //   agentos-desk close <ứng dụng>
 //   agentos-desk click <x> <y> [nút] [double]
 //   agentos-desk type "<chữ>"            gõ chữ vào ô đang chọn

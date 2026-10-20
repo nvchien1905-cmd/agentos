@@ -16,7 +16,7 @@ apt-get install -y --no-install-recommends xclip scrot xdotool >/dev/null 2>&1 |
 echo "== 2/4 Mã bộ điều phối + trợ lý màn hình"
 B=/root/agentos-bak-$(date +%Y%m%d-%H%M%S); mkdir -p "$B"; cp -a /opt/agentos/orchestrator/src "$B/"; [ -d /opt/agentos/desk ] && cp -a /opt/agentos/desk "$B/" || true
 echo "Đã sao lưu mã cũ vào $B"
-ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js engines/claude.js"
+ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js engines/claude.js engines/gemini.js"
 for f in $ORCH; do
   mkdir -p "$T/orchestrator/src/$(dirname "$f")"
   curl -fsSL "$R/orchestrator/src/$f" -o "$T/orchestrator/src/$f" || { echo "Không tải được orchestrator/src/$f"; exit 1; }
@@ -83,6 +83,25 @@ for h in /home/*; do
   chmod 755 "$h/Desktop/agentos-onedrive.desktop"; chown "$u:$(id -gn "$u")" "$h/Desktop/agentos-onedrive.desktop"
   echo "  đã thêm OneDrive cho $u"
 done
+
+echo "== Gemini (AI của Google, dùng tài khoản Google)"
+ENVF=/etc/agentos/orchestrator.env
+setenv() { if grep -q "^$1=" "$ENVF"; then sed -i "s|^$1=.*|$1=$2|" "$ENVF"; else echo "$1=$2" >> "$ENVF"; fi; }
+GEM=/var/lib/agentos/.local/bin/gemini
+if [ ! -x "$GEM" ]; then
+  runuser -u agentos -- env HOME=/var/lib/agentos PATH=/var/lib/agentos/.local/bin:/usr/bin:/bin npm install -g --prefix /var/lib/agentos/.local --no-audit --no-fund @google/gemini-cli >/dev/null 2>&1 || { echo "Không cài được @google/gemini-cli (kiểm tra mạng)"; exit 1; }
+fi
+# Đặt sẵn kiểu đăng nhập "Google" để lần mở đầu hiện thẳng đường dẫn đăng nhập (không phải chọn menu)
+install -d -o agentos -g agentos -m 700 /var/lib/agentos/.gemini
+[ -f /var/lib/agentos/.gemini/settings.json ] || { printf '{\n  "security": { "auth": { "selectedType": "oauth-personal" } }\n}\n' > /var/lib/agentos/.gemini/settings.json; chown agentos:agentos /var/lib/agentos/.gemini/settings.json; chmod 600 /var/lib/agentos/.gemini/settings.json; }
+setenv GEMINI_BIN "$GEM"
+if [ -f /var/lib/agentos/.gemini/oauth_creds.json ]; then
+  CUR=$(grep '^ENGINE_ORDER=' "$ENVF" | head -n1 | cut -d= -f2)
+  case ",$CUR," in *,gemini,*) echo "Gemini đã nằm trong ENGINE_ORDER ($CUR)";; *) setenv ENGINE_ORDER "${CUR:+$CUR,}gemini"; echo "✅ Đã bật Gemini: ENGINE_ORDER=${CUR:+$CUR,}gemini";; esac
+else
+  echo "Gemini đã cài, CHƯA đăng nhập: mở biểu tượng Gemini trên màn hình chính → chọn 'Sign in with Google' (nếu hỏi) → mở đường dẫn trên điện thoại/Chrome, đăng nhập, dán mã vào cửa sổ."
+  echo "Xong thì chạy lại lệnh cập nhật này một lần nữa để bật Gemini trong danh sách AI."
+fi
 
 echo "== 4/4 Khởi động lại bộ điều phối"
 systemctl restart agentos-orchestrator || true

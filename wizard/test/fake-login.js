@@ -25,6 +25,20 @@ if (kind === 'claude-token') {
     let i = 0;
     const t = setInterval(() => { process.stdout.write(T.slice(i, i + 25)); i += 25; if (i >= T.length) { clearInterval(t); process.stdout.write('\r\n'); setTimeout(() => process.exit(0), 30); } }, 30);
   });
+} else if (kind === 'gemini-login') {
+  // Giống `gemini` với NO_BROWSER=true: in đường dẫn Google + chờ mã; nhập đúng mã thì ghi tệp đăng nhập (argv[3]) và KHÔNG tự thoát (vào giao diện hỏi đáp)
+  process.stdout.write('How would you like to authenticate? https://geminicli.com/docs/resources/tos-privacy/\r\nPlease visit the following URL to authorize the application:\r\nhttps://accounts.google.com/o/oauth2/v2/auth?client_id=abc&redirect_uri=https%3A%2F%2Fcodeassist.google.com%2Fauthcode\r\nEnter the authorization code: ');
+  let buf = '';
+  process.stdin.on('data', (d) => {
+    buf += d;
+    if (/[\r\n]/.test(buf)) {
+      const code = buf.split(/[\r\n]/)[0].trim();
+      if (code === 'MA-DUNG') { require('fs').writeFileSync(process.argv[3], '{"refresh_token":"x"}'); process.stdout.write('\r\nLogged in with Google\r\n'); }
+      else process.stdout.write('\r\nFailed to authenticate\r\n');
+      buf = '';
+    }
+  });
+  setTimeout(() => process.exit(0), 60000);
 } else if (kind === 'codex-device') {
   process.stdout.write('To sign in, open https://auth.openai.com/codex/device and enter code:\n\n    ABCD-1234\n\nWaiting for confirmation...\n');
   setTimeout(() => process.exit(0), 300);

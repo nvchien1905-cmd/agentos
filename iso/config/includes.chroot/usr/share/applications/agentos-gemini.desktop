@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Gemini
+Comment=Gemini - cùng tài khoản với bot Telegram
+Exec=/usr/local/bin/agentos-ai gemini
+Icon=agentos-gemini
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=xfce4-terminal

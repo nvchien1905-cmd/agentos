@@ -37,8 +37,8 @@ test('tools: nạp tools.example.json và tools.linux.json không lỗi, profile
     assert.deepEqual(t.allowFor(t.profile('chung')), []);
     assert.deepEqual(web.policy.allow, ['Read', 'Glob', 'Grep']);
     assert.deepEqual(web.engines, ['claude']);                          // có MCP -> mặc định chỉ Claude (Codex không qua cổng)
-    assert.deepEqual(t.enginesFor('chung'), ['claude', 'codex']);
-    assert.deepEqual(t.enginesFor('da-xoa'), ['claude', 'codex']);
+    assert.deepEqual(t.enginesFor('chung'), ['claude', 'codex', 'gemini']);
+    assert.deepEqual(t.enginesFor('da-xoa'), ['claude', 'codex', 'gemini']);
     assert.equal(t.profile('lam').adminOnly, true);
     assert.deepEqual(t.profile('lam').engines, ['claude']);
     assert.deepEqual(t.profile('lam').policy.allowExec, ['^pwd$', '^ls( -[a-zA-Z]+)?$']);
@@ -88,12 +88,12 @@ test('tools: không có file -> một profile mặc định chỉ đọc theo .e
 test('tools: bộ không qua cổng (gate:false) cho phép sẵn công cụ; Codex không được ghi file; engine lạ bị báo', () => {
   const t = loadTools({ file: writeTools({
     servers: { s: { command: 'x' } },
-    profiles: { cu: { allow: ['Read'], mcp: ['s'], gate: false }, bay: { engines: ['codex', 'gemini'], codexSandbox: 'workspace-write' } },
+    profiles: { cu: { allow: ['Read'], mcp: ['s'], gate: false }, bay: { engines: ['codex', 'gpt5'], codexSandbox: 'workspace-write' } },
     default: 'cu',
   }) });
   assert.deepEqual(t.allowFor(t.profile('cu')), ['Read', 'mcp__s']);
   const e = t.errors.join('\n');
-  assert.match(e, /engine không biết: gemini/);
+  assert.match(e, /engine không biết: gpt5/);
   assert.match(e, /cho Codex ghi file \(workspace-write\) nhưng Codex không qua cổng duyệt/);
 });
 

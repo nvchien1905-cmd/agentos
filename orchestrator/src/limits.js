@@ -1,7 +1,7 @@
 'use strict';
 
 // Câu chữ báo chạm giới hạn của các CLI (Claude Code, Codex). CLI đổi câu chữ theo thời gian -> test định kỳ.
-const LIMIT_RE = /usage limit|rate limit|limit reached|limit will reset|hit your limit|quota|out of (credits|usage)|too many requests|try again (at|in|after)/i;
+const LIMIT_RE = /usage limit|rate limit|limit reached|limit will reset|hit your limit|quota|out of (credits|usage)|too many requests|try again (at|in|after)|exhausted your capacity|RESOURCE_EXHAUSTED/i;
 
 // Lỗi TẠM THỜI (máy chủ AI quá tải, rớt mạng): thử lại sau vài giây, KHÔNG cho engine nghỉ cả giờ như khi hết hạn mức.
 const TRANSIENT_RE = /overloaded|\b(500|502|503|504|529)\b|ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network error|fetch failed|temporarily unavailable|internal server error|service unavailable|bad gateway/i;
@@ -43,9 +43,10 @@ function parseResetTime(text, now) {
 
   // 3) "try again in 2 hours 30 minutes" / "resets in 45 minutes"
   if (t == null) {
-    m = text.match(/\b(?:in|after)\s+((?:\d+\s*(?:days?|d|hours?|hrs?|h|minutes?|mins?|m)\b[\s,]*(?:and\s*)?)+)/i);
+    // (?![A-Za-z]) thay cho \b để hiểu cả dạng viết liền "2h30m" (Gemini)
+    m = text.match(/\b(?:in|after)\s+((?:\d+\s*(?:days?|d|hours?|hrs?|h|minutes?|mins?|m)(?![A-Za-z])[\s,]*(?:and\s*)?)+)/i);
     if (m) {
-      let sum = 0; const re = /(\d+)\s*(days?|d|hours?|hrs?|h|minutes?|mins?|m)\b/gi; let p;
+      let sum = 0; const re = /(\d+)\s*(days?|d|hours?|hrs?|h|minutes?|mins?|m)(?![A-Za-z])/gi; let p;
       while ((p = re.exec(m[1]))) sum += Number(p[1]) * UNIT_MS[p[2][0].toLowerCase()];
       if (sum > 0) t = now + sum;
     }

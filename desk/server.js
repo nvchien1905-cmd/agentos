@@ -21,6 +21,7 @@ const APPS = {
   rustdesk: { label: 'RustDesk', argv: ['/usr/bin/rustdesk'], match: (c) => /\/usr\/share\/rustdesk\/rustdesk|^rustdesk|\/usr\/bin\/rustdesk/.test(c) && !/--service/.test(c) },
   claude: { label: 'Claude Code', argv: ['/usr/local/bin/agentos-ai', 'claude'], match: null },
   codex: { label: 'Codex', argv: ['/usr/local/bin/agentos-ai', 'codex'], match: null },
+  gemini: { label: 'Gemini', argv: ['/usr/local/bin/agentos-ai', 'gemini'], match: null },
 };
 const KEY_RE = /^[A-Za-z0-9_+\- ]{1,60}$/;      // tên phím xdotool: Return, ctrl+v, alt+F4...
 const MAX_TYPE = 2000;

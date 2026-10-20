@@ -61,3 +61,9 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - Lệnh: `/onedrive` (tình trạng), `/onedrive dongbo` (SIGUSR1: đồng bộ ngay), `/onedrive thumuc`, `/onedrive ngat co` (xóa token, giữ tệp trên máy).
 - **Rủi ro cần biết:** đồng bộ hai chiều nghĩa là AI xóa/sửa tệp ở `/srv/onedrive` thì OneDrive cũng bị xóa/sửa (thùng rác OneDrive giữ khoảng 30 ngày). Giảm rủi ro: `classify_as_big_delete = 50` (xóa hàng loạt thì bộ đồng bộ dừng chờ xác nhận), lời nhắc cấm xóa/ghi đè tệp của chủ máy, chế độ bảo vệ vẫn hỏi trước khi ghi. Chế độ toàn quyền thì AI tự do — hãy để dữ liệu quan trọng có bản sao lưu riêng. Mọi thứ trong thư mục OneDrive AI đều đọc được (và gửi tới Anthropic/OpenAI khi AI xử lý): đừng để vào đó dữ liệu không muốn AI thấy.
 - Cập nhật máy đã cài: `scripts/cap-nhat-dieu-khien.sh` (cài cả OneDrive).
+
+## Gemini (Google)
+- Đăng nhập bằng tài khoản Google của chủ máy (đường dẫn + dán mã, như Codex). Không gom/chia sẻ tài khoản.
+- Chế độ bảo vệ: chạy `--approval-mode plan` (CHỈ ĐỌC) trong hộp cát; không có cổng duyệt/MCP như Claude, nên Gemini không sửa tệp hay chạy lệnh.
+- Chế độ toàn quyền (`/toanquyen`): chạy `yolo`, không hộp cát.
+- Bản miễn phí của Google có hạn mức; hết hạn mức bộ điều phối tự chuyển sang AI khác. Tài khoản Workspace có thể cần `GOOGLE_CLOUD_PROJECT`.

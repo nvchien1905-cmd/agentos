@@ -45,7 +45,7 @@ test('config: bắt buộc token/ID, kiểm tra ENGINE_ORDER', () => {
   assert.equal(config.validate(config.load(ok)).length, 0);
   assert.deepEqual(config.load(ok).engineOrder, ['claude']);
   assert.deepEqual(config.load(Object.assign({ ENGINE_ORDER: 'Claude, codex' }, ok)).engineOrder, ['claude', 'codex']);
-  assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'claude,gemini' }, ok))).length, 1);
+  assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'claude,gpt5' }, ok))).length, 1);
   assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'codex,codex' }, ok))).length, 1);
   assert.equal(config.validate(config.load(Object.assign({ ALLOWED_USER_IDS: 'abc' }, { TELEGRAM_TOKEN: 't' }))).length, 1);
 });

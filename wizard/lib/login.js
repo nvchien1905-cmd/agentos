@@ -1,4 +1,5 @@
 'use strict';
+const fs = require('fs');
 const { spawn: realSpawn } = require('child_process');
 const engines = require('./engines');
 
@@ -17,14 +18,20 @@ const PLANS = {
   // (Đã thử thật 20/10/2026: đọc token từ giao diện của setup-token bị MẤT chữ vì TUI vẽ lại màn hình từng phần -> token sai -> 'Not logged in'.)
   claude: { argv: () => [engines.BIN.claude, 'auth', 'login', '--claudeai'], needsInput: true, wantsToken: false },
   codex: { argv: () => [engines.BIN.codex, 'login', '--device-auth'], needsInput: false, wantsToken: false },
+  // Gemini: chạy `gemini` trong pty với NO_BROWSER=true (kiểu đăng nhập Google đã đặt sẵn trong settings.json) -> in "Please visit the following URL to authorize"
+  // rồi chờ "Enter the authorization code:" (dán mã, như Claude). Gemini KHÔNG tự thoát sau khi đăng nhập xong (vào giao diện hỏi đáp), nên xong khi
+  // tệp ~/.gemini/oauth_creds.json xuất hiện (doneFile) rồi ta dừng tiến trình. Đã kiểm trên máy thật (Gemini CLI 0.64): URL và dòng nhập mã hiện đúng.
+  gemini: { argv: () => [engines.BIN.gemini, '--skip-trust'], env: { NO_BROWSER: 'true' }, needsInput: true, wantsToken: false,
+    urlRe: /https:\/\/accounts\.google\.com\/[^\s"'<>\u001b]+/, doneFile: () => engines.GEMINI_CREDS, prepare: () => engines.prepareGemini() },
 };
 
 const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 
 // Lệnh thực tế: dưới quyền agentos, trong pty rộng (link dài không bị ngắt dòng).
-function defaultWrap(argv) {
+function defaultWrap(argv, extraEnv) {
   const inner = 'stty cols 4000 2>/dev/null; exec ' + argv.map(shq).join(' ');
-  const c = engines.asAgentos(['env', 'COLUMNS=4000', 'TERM=dumb', 'script', '-qefc', inner, '/dev/null']);
+  const envArgs = Object.keys(extraEnv || {}).map((k) => k + '=' + extraEnv[k]);
+  const c = engines.asAgentos(['env', 'COLUMNS=4000', 'TERM=dumb', ...envArgs, 'script', '-qefc', inner, '/dev/null']);
   return { cmd: c.cmd, args: c.args };
 }
 
@@ -48,7 +55,7 @@ function createLogin(opts) {
     if (!s) return { status: 'idle' };
     const text = clean(s.buf);
     const redacted = text.replace(new RegExp(CLAUDE_TOKEN_RE.source, 'g'), '[đã nhận token]');
-    const m = text.match(URL_RE);
+    const m = text.match((PLANS[s.engine] && PLANS[s.engine].urlRe) || URL_RE);
     // Codex: mã thiết bị dùng một lần (VD 5X5H-X6VNW) để nhập trên trang OpenAI. Hiện riêng, to, thay vì chôn trong nội dung.
     const dc = s.engine === 'codex' ? text.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4,6})\b/) : null;
     return {
@@ -71,8 +78,9 @@ function createLogin(opts) {
       const plan = PLANS[engine];
       if (!plan) throw new Error('AI không biết: ' + engine);
       if (cur && !cur.done) stop(cur, 'Bị thay bằng lần đăng nhập mới');
-      const w = wrap(plan.argv());
-      const s = { id: Date.now().toString(36), engine, buf: '', status: 'running', token: null, done: false, error: null, child: null };
+      if (plan.prepare && !opts.skipPrepare) { try { plan.prepare(); } catch (e) { /* không chặn: lệnh đăng nhập sẽ báo lỗi rõ hơn */ } }
+      const w = wrap(plan.argv(), plan.env);
+      const s = { id: Date.now().toString(36), engine, buf: '', status: 'running', token: null, done: false, error: null, child: null, startedAt: Date.now() };
       cur = s;
       let child;
       try { child = spawn(w.cmd, w.args, { stdio: ['pipe', 'pipe', 'pipe'] }); } catch (e) { s.status = 'error'; s.error = e.message; s.done = true; return view(s); }
@@ -86,7 +94,22 @@ function createLogin(opts) {
       child.stderr.on('data', onData);
       child.stdin.on('error', () => {});
       child.on('error', (e) => { s.status = 'error'; s.error = 'Không chạy được lệnh đăng nhập: ' + e.message; s.done = true; });
+      // Lệnh đăng nhập không tự thoát (Gemini): xong khi tệp đăng nhập mới xuất hiện (mới hơn lúc bắt đầu), rồi dừng tiến trình.
+      if (plan.doneFile) {
+        const file = (opts.doneFile && opts.doneFile[engine]) || plan.doneFile();
+        s.doneTimer = setInterval(() => {
+          try {
+            if (!s.done && fs.existsSync(file) && fs.statSync(file).mtimeMs >= s.startedAt - 1000) {
+              s.status = 'done'; s.done = true; clearInterval(s.doneTimer); clearTimeout(s.timer);
+              setTimeout(() => { try { child.kill('SIGTERM'); } catch (e) { /* đã thoát */ } }, opts.stopDelayMs === undefined ? 2500 : opts.stopDelayMs).unref();
+            }
+          } catch (e) { /* thử lại lần sau */ }
+        }, opts.pollMs || 1000);
+        if (s.doneTimer.unref) s.doneTimer.unref();
+      }
       child.on('close', (code) => {
+        clearInterval(s.doneTimer);
+        if (s.status === 'done') return;                // đã hoàn tất bằng tệp đăng nhập
         s.done = true; clearTimeout(s.timer);
         if (plan.wantsToken) s.token = bestToken(s.buf) || s.token;   // lấy lại lần cuối từ toàn bộ nội dung đã nhận
         if (s.status === 'error') return;

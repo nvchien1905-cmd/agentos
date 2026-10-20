@@ -196,12 +196,13 @@
   }
 
   // ---- 3. AI ----
-  var NAMES = { claude: 'Claude (Anthropic)', codex: 'Codex (OpenAI)' };
+  var ENGINES = ['claude', 'codex', 'gemini'];
+  var NAMES = { claude: 'Claude (Anthropic)', codex: 'Codex (OpenAI)', gemini: 'Gemini (Google)' };
   var loginEng = null;
   function renderEngines() {
     refresh().then(function () {
-      var h = '<h2>3. Đăng nhập AI</h2><p>Dùng tài khoản <b>của chính bạn</b>. Cần ít nhất một AI. Bấm "Cài đặt" (vài phút) rồi "Đăng nhập": trang sẽ đưa bạn một đường dẫn để mở và đăng nhập ngay trên điện thoại.</p>';
-      ['claude', 'codex'].forEach(function (e) {
+      var h = '<h2>3. Đăng nhập AI</h2><p>Dùng tài khoản <b>của chính bạn</b>. Cần ít nhất một AI. Bấm "Cài đặt" (vài phút) rồi "Đăng nhập": trang sẽ đưa bạn một đường dẫn để mở và đăng nhập ngay trên điện thoại. <span class="mute">Gemini dùng tài khoản Google (có gói miễn phí giới hạn).</span></p>';
+      ENGINES.forEach(function (e) {
         var st = S.engines[e] || {}; var job = S.jobs['install-' + e];
         h += '<div class="card"><div class="row" style="margin-top:0"><b style="flex:1">' + NAMES[e] + '</b><span id="s-' + e + '"></span></div><div class="row" style="margin:0">';
         h += '<button data-a="install" data-e="' + e + '">' + (st.installed ? 'Cài lại' : 'Cài đặt') + '</button>';
@@ -214,10 +215,10 @@
       view.innerHTML = h;
       document.getElementById('back').onclick = function () { setStep(1); };
       document.getElementById('next').onclick = function () { setStep(3); };
-      ['claude', 'codex'].forEach(updateEngine);
+      ENGINES.forEach(updateEngine);
       var btns = view.querySelectorAll('button[data-a]');
       for (var i = 0; i < btns.length; i++) btns[i].onclick = onEngineBtn;
-      var running = (S.jobs['install-claude'] && S.jobs['install-claude'].status === 'running') || (S.jobs['install-codex'] && S.jobs['install-codex'].status === 'running');
+      var running = ENGINES.some(function (x) { return S.jobs['install-' + x] && S.jobs['install-' + x].status === 'running'; });
       if (running) later(renderEngines, 3000);
       else if (loginEng) pollLogin(loginEng);
     }).catch(function () { later(renderEngines, 3000); });
@@ -225,7 +226,7 @@
   function updateEngine(e) {
     var st = S.engines[e] || {}; var el = document.getElementById('s-' + e);
     if (el) { el.className = st.loggedIn ? 'ok' : 'mute'; el.textContent = st.loggedIn ? '✔ Đã đăng nhập' : st.installed ? 'Đã cài, chưa đăng nhập' : 'Chưa cài'; }
-    var any = ['claude', 'codex'].some(function (x) { return S.engines[x] && S.engines[x].loggedIn; });
+    var any = ENGINES.some(function (x) { return S.engines[x] && S.engines[x].loggedIn; });
     var nx = document.getElementById('next'); if (nx) nx.disabled = !any;
   }
   function onEngineBtn(ev) {
@@ -273,7 +274,7 @@
 
   // ---- 4. Hoàn tất ----
   function renderDone() {
-    var ok = ['claude', 'codex'].filter(function (x) { return S.engines[x] && S.engines[x].loggedIn; }).map(function (x) { return NAMES[x]; });
+    var ok = ENGINES.filter(function (x) { return S.engines[x] && S.engines[x].loggedIn; }).map(function (x) { return NAMES[x]; });
     view.innerHTML = '<h2>4. Sẵn sàng</h2><p>Đã chuẩn bị xong:</p><ul>' +
       '<li>Mạng: <b class="ok">có</b></li><li>Telegram: bot <b>@' + esc(S.bot && S.bot.username) + '</b>, chủ máy <b>' + esc(S.owner && (S.owner.name || S.owner.id)) + '</b></li><li>AI: <b>' + esc(ok.join(', ')) + '</b></li></ul>' +
       '<div class="card"><label style="display:flex;gap:12px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="fa"' + (S.fullAccess ? ' checked' : '') + ' style="width:22px;height:22px;margin-top:3px;flex:none">' +

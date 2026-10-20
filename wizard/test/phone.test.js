@@ -151,7 +151,7 @@ test('login Claude: mã sai thì báo lỗi; Codex: link + mã thiết bị, kh�
   const F = createLogin({ wrap: () => ({ cmd: process.execPath, args: [FAKE, 'fail'] }) });
   F.start('codex');
   assert.match((await until(() => { const v = F.get(); return v.status === 'error' ? v : null; })).error, /mã 3/);
-  assert.throws(() => F.start('gemini'), /không biết/);
+  assert.throws(() => F.start('gpt5'), /không biết/);
 
   const C = createLogin({ wrap: () => ({ cmd: process.execPath, args: [FAKE, 'long'] }) });
   C.start('codex'); await until(() => C.get().url);

@@ -38,7 +38,7 @@ chk "OneDrive: goi onedrive + dich vu dong bo + thu muc /srv/onedrive (2775, nho
 chk "OneDrive: bieu tuong man hinh chinh + lien ket ~/OneDrive trong skel" bash -c 'test -x /etc/skel/Desktop/agentos-onedrive.desktop && [ "$(readlink /etc/skel/OneDrive)" = /srv/onedrive ]'
 chk "tro ly man hinh dang chay va nghe o /run/agentos/desk.sock" bash -c 'systemctl is-active --quiet agentos-deskd && test -S /run/agentos/desk.sock'
 chk "RustDesk (dieu khien tu xa) co mat" test -x /usr/bin/rustdesk
-chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex; do test -f /usr/share/applications/$f.desktop || exit 1; done'
+chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex agentos-gemini; do test -f /usr/share/applications/$f.desktop || exit 1; done'
 chk "bieu tuong man hinh chinh (skel) co 7 ung dung va chay duoc (x)" bash -c 'for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex; do test -x /etc/skel/Desktop/$f.desktop || exit 1; done'
 chk "sudoers mo Claude/Codex duoi agentos hop le (0440), KHONG phai root" bash -c 'sudo -n visudo -cf /etc/sudoers.d/91-agentos-desktop >/dev/null 2>&1 && grep -q "(agentos)" /etc/sudoers.d/91-agentos-desktop && ! grep -q "ALL=(ALL" /etc/sudoers.d/91-agentos-desktop'
 chk "thu muc /var/lib/agentos thuoc agentos" bash -c '[ "$(stat -c %U /var/lib/agentos)" = agentos ]'

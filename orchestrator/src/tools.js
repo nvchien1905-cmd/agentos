@@ -3,9 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Lệnh Telegram đã dùng, không được đặt tên profile trùng.
-const RESERVED = new Set(['claude', 'codex', 'start', 'help', 'id', 'moi', 'trangthai', 'viec', 'huy', 'nhatky', 'toanquyen', 'baove', 'manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive']);
+const RESERVED = new Set(['claude', 'codex', 'gemini', 'start', 'help', 'id', 'moi', 'trangthai', 'viec', 'huy', 'nhatky', 'toanquyen', 'baove', 'manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive']);
 const NAME_RE = /^[a-z][a-z0-9_]{0,23}$/;
-const KNOWN_ENGINES = ['claude', 'codex'];
+const KNOWN_ENGINES = ['claude', 'codex', 'gemini'];
 
 // Thay ${BIEN} trong mọi chuỗi của cấu hình (đường dẫn dữ liệu, màn hình ảo...). Biến lạ giữ nguyên.
 function subst(v, vars) {
@@ -43,7 +43,7 @@ function loadTools({ file, vars, fallbackAllow }) {
     const mcp = Array.isArray(p.mcp) ? p.mcp : [];
     for (const m of mcp) if (!servers[m]) errors.push('Profile "' + n + '" dùng máy chủ MCP không có: ' + m);
     // Engine được chạy bộ này. Codex không đi qua cổng duyệt nên mặc định chỉ dùng cho bộ không có MCP.
-    const engines = Array.isArray(p.engines) ? p.engines.slice() : (mcp.length ? ['claude'] : ['claude', 'codex']);
+    const engines = Array.isArray(p.engines) ? p.engines.slice() : (mcp.length ? ['claude'] : ['claude', 'codex', 'gemini']);
     for (const e of engines) if (!KNOWN_ENGINES.includes(e)) errors.push('Profile "' + n + '" có engine không biết: ' + e);
     if (engines.includes('codex') && p.codexSandbox && p.codexSandbox !== 'read-only') {
       errors.push('Profile "' + n + '" cho Codex ghi file (' + p.codexSandbox + ') nhưng Codex không qua cổng duyệt');

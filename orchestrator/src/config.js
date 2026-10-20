@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const KNOWN_ENGINES = ['claude', 'codex'];
+const KNOWN_ENGINES = ['claude', 'codex', 'gemini'];
 
 // Đọc .env đơn giản (không thêm thư viện). Biến đã có trong môi trường được ưu tiên.
 function loadEnvFile(file) {
@@ -30,6 +30,9 @@ function load(env) {
     engineOrder: list(env.ENGINE_ORDER === undefined ? 'claude' : env.ENGINE_ORDER).map((s) => s.toLowerCase()),
     claudeBin: env.CLAUDE_BIN || 'claude',
     codexBin: env.CODEX_BIN || 'codex',
+    geminiBin: env.GEMINI_BIN || 'gemini',
+    geminiModel: env.GEMINI_MODEL || '',                         // trống = để Gemini CLI tự chọn mô hình mặc định
+    geminiBinArgs: [],
     claudeBinArgs: [],
     codexBinArgs: [],
     workdir: path.resolve(env.WORKDIR || './work'),

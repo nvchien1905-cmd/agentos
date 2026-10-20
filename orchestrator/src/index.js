@@ -8,6 +8,7 @@ const { openDb } = require('./db');
 const { createTelegram } = require('./telegram');
 const { startClaude } = require('./engines/claude');
 const { startCodex } = require('./engines/codex');
+const { startGemini } = require('./engines/gemini');
 const { createWorker } = require('./worker');
 const { createBot } = require('./bot');
 const { loadTools } = require('./tools');
@@ -169,6 +170,20 @@ async function main() {
         bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir,
         prompt: '[' + [p.hint, ONEDRIVE_HINT].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId,
         sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap,
+      });
+    },
+    // Gemini (Google) KHÔNG đi qua cổng duyệt của AgentOS -> ở chế độ bảo vệ chỉ chạy CHỈ ĐỌC (--approval-mode plan: không ghi tệp, không chạy lệnh, không MCP)
+    // và trong sandbox; ở chế độ toàn quyền chạy yolo (tự chấp nhận mọi hành động), không sandbox.
+    gemini: ({ job, prompt, resumeId }) => {
+      if (isFull()) {
+        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir, prompt: '[' + FULL_HINT + ']\n\n' + prompt, resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs });
+      }
+      const p = tools.profile(job.profile);
+      const note = 'Bạn đang ở chế độ CHỈ ĐỌC (không ghi tệp, không chạy lệnh): nếu cần lưu kết quả, hãy đưa nội dung vào câu trả lời để chủ máy lưu.';
+      return startGemini({
+        bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir,
+        prompt: '[' + [p.hint, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId,
+        mode: 'plan', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap,
       });
     },
   };

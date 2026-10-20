@@ -1,6 +1,6 @@
 'use strict';
 
-const RESUME_FAIL_RE = /no conversation found|session.*not found|thread.*not found|cannot resume|could not resume/i;
+const RESUME_FAIL_RE = /no conversation found|session.*not found|thread.*not found|cannot resume|could not resume|error resuming|invalid session/i;
 const NAMES = { claude: 'Claude', codex: 'Codex' };
 
 const pad = (n) => String(n).padStart(2, '0');

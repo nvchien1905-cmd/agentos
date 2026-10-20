@@ -88,7 +88,7 @@ function createWizard(options) {
     token: persisted.token || null, bot: persisted.bot || null, owner: persisted.owner || null,
     claudeToken: persisted.claudeToken || null, lastError: persisted.lastError || null,
     fullAccess: persisted.fullAccess === true,                   // chủ máy TỰ tích ô "toàn quyền" (mặc định tắt)
-    engines: { claude: { installed: null, loggedIn: false }, codex: { installed: null, loggedIn: false } },
+    engines: { claude: { installed: null, loggedIn: false }, codex: { installed: null, loggedIn: false }, gemini: { installed: null, loggedIn: false } },
     jobs: {}, finished: false,
     hotspot: { ssid: null, up: false, error: null },
     offline: { status: 'idle', step: null, error: null },
@@ -272,7 +272,8 @@ function createWizard(options) {
     async engineLoginTerminal(b) {
       const eng = String(b.engine);
       if (!engines.BIN[eng]) throw new Error('AI không biết');
-      const cmd = eng === 'claude' ? engines.BIN.claude : engines.BIN.codex + ' login';
+      if (eng === 'gemini') engines.prepareGemini();
+      const cmd = eng === 'claude' ? engines.BIN.claude : eng === 'gemini' ? 'NO_BROWSER=true ' + engines.BIN.gemini + ' --skip-trust' : engines.BIN.codex + ' login';
       const display = process.env.DISPLAY || ':0';
       const xenv = { DISPLAY: display };
       const xauth = findXauthority(o.homeDir);

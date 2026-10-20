@@ -10,7 +10,7 @@ function build(cfg) {
   if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(cfg.token || '')) throw new Error('Thiếu hoặc sai token bot');
   const owners = (cfg.ownerIds || []).map(String);
   if (!owners.length || !owners.every((x) => NUM.test(x))) throw new Error('Thiếu ID Telegram của chủ máy');
-  const engines = (cfg.engines || []).filter((e) => ['claude', 'codex'].includes(e));
+  const engines = (cfg.engines || []).filter((e) => ['claude', 'codex', 'gemini'].includes(e));
   if (!engines.length) throw new Error('Chưa có AI nào đăng nhập được');
   const paths = cfg.paths || {};
   const lines = [
@@ -24,6 +24,7 @@ function build(cfg) {
     'TOOLS_FILE=' + (paths.tools || '/opt/agentos/orchestrator/tools.json'),
     'CLAUDE_BIN=' + (paths.claude || '/var/lib/agentos/.local/bin/claude'),
     'CODEX_BIN=' + (paths.codex || '/var/lib/agentos/.local/bin/codex'),
+    'GEMINI_BIN=' + (paths.gemini || '/var/lib/agentos/.local/bin/gemini'),
     'CODEX_SANDBOX=read-only',
     'SANDBOX=auto',
     'MIN_FREE_MB=500',

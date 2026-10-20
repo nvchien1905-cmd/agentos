@@ -102,7 +102,7 @@ test('telegram: chỉ người nhắn ĐÚNG MÃ thành chủ máy; người l�
 // ---------- file cấu hình ----------
 
 test('envfile: dựng cấu hình đúng, từ chối thiếu/sai, ghi quyền 600 qua file tạm', () => {
-  const s = envfile.build({ token: TOKEN, ownerIds: ['777'], engines: ['claude', 'codex', 'gemini'] });
+  const s = envfile.build({ token: TOKEN, ownerIds: ['777'], engines: ['claude', 'codex', 'gpt5'] });
   assert.match(s, /^TELEGRAM_TOKEN=123456789:AAH/m);
   assert.match(s, /^ALLOWED_USER_IDS=777$/m); assert.match(s, /^ADMIN_USER_IDS=777$/m);
   assert.match(s, /^ENGINE_ORDER=claude,codex$/m);                              // engine lạ bị bỏ
@@ -143,7 +143,7 @@ test('engines: lệnh chạy dưới quyền agentos, cài đặt vào /var/lib/
   assert.equal(lim.ok, true); assert.equal(lim.limited, true);
   // Hạn mức + lỗi đăng nhập thật thì vẫn là chưa đăng nhập
   assert.equal((await engines.verifyLogin(async () => ({ code: 1, out: '', err: 'unauthorized: please run codex login' }), 'codex')).ok, false);
-  await assert.rejects(() => engines.install(run, 'gemini'), /không biết/);
+  await assert.rejects(() => engines.install(run, 'gpt5'), /không biết/);
   await assert.rejects(() => engines.install(async () => ({ code: 1, out: '', err: 'EACCES\nboom' }), 'codex'), /Cài codex thất bại: EACCES \| boom/);
 });
 
@@ -223,7 +223,7 @@ test('server: luồng đầy đủ Wi-Fi -> Telegram -> AI -> hoàn tất ghi c�
     assert.equal(ow.body.owner.id, '777');
 
     assert.equal((await S.call('POST', '/api/finish', {})).body.error, 'Chưa có AI nào đăng nhập được');
-    assert.equal((await S.call('POST', '/api/engine/install', { engine: 'gemini' })).status, 400);
+    assert.equal((await S.call('POST', '/api/engine/install', { engine: 'gpt5' })).status, 400);
     await S.call('POST', '/api/engine/install', { engine: 'claude' });
     for (let i = 0; i < 40; i++) { const s = await S.call('GET', '/api/state'); if (s.body.jobs['install-claude'].status !== 'running') break; await new Promise((r) => setTimeout(r, 25)); }
     assert.equal((await S.call('GET', '/api/state')).body.jobs['install-claude'].status, 'done');

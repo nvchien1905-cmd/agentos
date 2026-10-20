@@ -4,7 +4,7 @@
 set -e
 id agentos >/dev/null 2>&1
 
-chmod 0755 /usr/local/bin/agentos-stt /usr/local/bin/agentos-sao-luu
+chmod 0755 /usr/local/bin/agentos-stt /usr/local/bin/agentos-sao-luu /usr/local/bin/agentos-key
 
 # --- Nhận dạng giọng nói: faster-whisper trong môi trường riêng. Ghim phiên bản (av mới nhất không khớp). Mô hình tải ở lần dùng đầu (~500MB).
 python3 -m venv /opt/agentos/stt-venv

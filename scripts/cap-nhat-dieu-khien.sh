@@ -16,7 +16,7 @@ apt-get install -y --no-install-recommends xclip scrot xdotool >/dev/null 2>&1 |
 echo "== 2/4 Mã bộ điều phối + trợ lý màn hình"
 B=/root/agentos-bak-$(date +%Y%m%d-%H%M%S); mkdir -p "$B"; cp -a /opt/agentos/orchestrator/src "$B/"; [ -d /opt/agentos/desk ] && cp -a /opt/agentos/desk "$B/" || true
 echo "Đã sao lưu mã cũ vào $B"
-ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js voice.js schedule.js tailscale.js printing.js engines/claude.js engines/gemini.js"
+ORCH="config.js bot.js tools.js index.js quick.js kiotviet.js desk.js onedrive.js policy.js gate.js limits.js worker.js voice.js schedule.js tailscale.js printing.js apikeys.js engines/claude.js engines/gemini.js"
 for f in $ORCH; do
   mkdir -p "$T/orchestrator/src/$(dirname "$f")"
   curl -fsSL "$R/orchestrator/src/$f" -o "$T/orchestrator/src/$f" || { echo "Không tải được orchestrator/src/$f"; exit 1; }
@@ -130,6 +130,23 @@ systemctl enable --now agentos-sao-luu.timer >/dev/null 2>&1 || true
 systemctl enable --now cups >/dev/null 2>&1 || true
 for h in /home/*; do u=$(basename "$h"); id "$u" >/dev/null 2>&1 || continue; [ "$(id -u "$u")" -ge 1000 ] || continue; usermod -aG lpadmin "$u"; done
 echo "Đã cài: văn phòng/OCR, in ấn (CUPS), giọng nói, Tailscale, sao lưu 02:30 hằng ngày. Sao lưu thử ngay: sudo systemctl start agentos-sao-luu"
+
+echo "== Khóa API cho AI (Claude, Codex, Gemini, DeepSeek)"
+mkdir -p /opt/agentos/wizard/lib
+for f in apikeys.js engines.js envfile.js store.js; do
+  curl -fsSL "$R/wizard/lib/$f" -o "$T/w-$f" || { echo "Không tải được wizard/lib/$f"; exit 1; }
+  node --check "$T/w-$f" || { echo "wizard/lib/$f lỗi cú pháp"; exit 1; }
+done
+for f in apikeys.js engines.js envfile.js store.js; do cat "$T/w-$f" > "/opt/agentos/wizard/lib/$f"; done
+for f in usr/local/bin/agentos-key usr/share/applications/agentos-apikey.desktop usr/share/icons/hicolor/scalable/apps/agentos-apikey.svg; do
+  mkdir -p "/$(dirname "$f")"; curl -fsSL "$R/$CI/$f" -o "/$f" || { echo "Không tải được $f"; exit 1; }
+done
+chmod 755 /usr/local/bin/agentos-key /usr/share/applications/agentos-apikey.desktop
+mkdir -p /etc/skel/Desktop; cp /usr/share/applications/agentos-apikey.desktop /etc/skel/Desktop/; chmod 755 /etc/skel/Desktop/agentos-apikey.desktop
+for h in /home/*; do u=$(basename "$h"); id "$u" >/dev/null 2>&1 || continue; [ "$(id -u "$u")" -ge 1000 ] || continue
+  mkdir -p "$h/Desktop"; cp /usr/share/applications/agentos-apikey.desktop "$h/Desktop/"; chmod 755 "$h/Desktop/agentos-apikey.desktop"; chown "$u:$(id -gn "$u")" "$h/Desktop/agentos-apikey.desktop"; done
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+echo "Thêm khóa API: bấm biểu tượng 'Khóa API (AI)' trên màn hình chính, hoặc: sudo agentos-key"
 
 echo "== 4/4 Khởi động lại bộ điều phối"
 systemctl restart agentos-orchestrator || true

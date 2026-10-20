@@ -32,7 +32,7 @@ sed -i 's|^Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable
 apt-get purge -y gnome-keyring libpam-gnome-keyring 2>/dev/null || true
 
 mkdir -p /etc/skel/Desktop
-for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini; do
+for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini agentos-apikey; do
 	src=/usr/share/applications/$f.desktop
 	[ -f "$src" ] || { echo "[CANH BAO] thieu $src"; continue; }
 	cp "$src" /etc/skel/Desktop/$f.desktop

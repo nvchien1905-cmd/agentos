@@ -1,0 +1,108 @@
+#!/usr/bin/env node
+'use strict';
+// Thêm / đổi / xóa KHÓA API của các AI sau khi máy đã cài xong (chạy bằng root: sudo agentos-key, hoặc bấm biểu tượng "Khóa API" trên màn hình chính).
+//   agentos-key                    menu: xem tình trạng, chọn AI, dán khóa
+//   agentos-key list               liệt kê (khóa được che)
+//   agentos-key set <ai> [khóa]    ai = claude | codex | gemini | deepseekapi (không gõ khóa thì hỏi, không hiện chữ)
+//   agentos-key del <ai>           xóa khóa (AI quay lại dùng tài khoản đăng nhập, nếu có)
+// Khóa được kiểm với máy chủ của hãng, ghi vào /etc/agentos/orchestrator.env (quyền 600), bật AI đó trong ENGINE_ORDER, cài CLI nếu thiếu, khởi động lại bộ điều phối.
+const fs = require('fs');
+const cp = require('child_process');
+const readline = require('readline');
+const LIB = process.env.AGENTOS_WIZARD_LIB || '/opt/agentos/wizard/lib';
+const apikeys = require(LIB + '/apikeys');
+const engines = require(LIB + '/engines');
+const envfile = require(LIB + '/envfile');
+const ENV_FILE = process.env.AGENTOS_ENV_FILE || '/etc/agentos/orchestrator.env';
+
+const run = (cmd, args, o) => new Promise((resolve) => {
+  cp.execFile(cmd, args, { timeout: (o && o.timeoutMs) || 60000, maxBuffer: 8 * 1024 * 1024 }, (err, out, errOut) =>
+    resolve({ code: err ? (err.code === undefined ? 1 : err.code) : 0, out: String(out || ''), err: String(errOut || '') }));
+});
+const readEnv = () => { try { return fs.readFileSync(ENV_FILE, 'utf8'); } catch (e) { return null; } };
+const current = (text) => {
+  const m = {};
+  for (const e of apikeys.ENGINES) { const re = new RegExp('^' + apikeys.VAR[e] + '=(.*)$', 'm'); const x = String(text || '').match(re); if (x && x[1].trim()) m[e] = x[1].trim(); }
+  return m;
+};
+
+function ask(question, hidden) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    if (hidden && process.stdin.isTTY) {
+      rl._writeToOutput = (s) => { if (s.includes(question)) process.stdout.write(s); };       // không hiện khóa đang gõ/dán
+    }
+    rl.question(question, (a) => { rl.close(); if (hidden) process.stdout.write('\n'); resolve(a.trim()); });
+  });
+}
+
+function list(text) {
+  const have = current(text);
+  console.log('Khóa API đang lưu:');
+  apikeys.ENGINES.forEach((e, i) => console.log('  ' + (i + 1) + ') ' + apikeys.NAMES[e].padEnd(22) + (have[e] ? apikeys.mask(have[e]) : '(chưa có — dùng tài khoản đăng nhập nếu có)')));
+}
+
+async function setKey(engine, key) {
+  if (!apikeys.ENGINES.includes(engine)) { console.error('AI không biết: ' + engine + '. Chọn: ' + apikeys.ENGINES.join(', ')); return 2; }
+  const text = readEnv();
+  if (text == null) { console.error('Máy chưa cấu hình xong (không có ' + ENV_FILE + '). Hãy hoàn tất trình hướng dẫn lần đầu rồi chạy lại.'); return 1; }
+  if (!key) {
+    console.log('Lấy khóa ' + apikeys.NAMES[engine] + ' ở: ' + apikeys.WHERE[engine]);
+    key = await ask('Dán khóa API (không hiện chữ): ', true);
+  }
+  if (!key) { console.log('Không có khóa, bỏ qua.'); return 0; }
+  process.stdout.write('Đang kiểm khóa với máy chủ của hãng... ');
+  const r = await apikeys.check(engine, key);
+  if (!r.ok) { console.log('\n⚠️  ' + r.detail); return 1; }
+  console.log('✔ ' + r.detail);
+  // CLI để chạy khóa (deepseekapi dùng chính Claude Code)
+  if (!(await engines.installed(run, engine))) {
+    process.stdout.write('Cài ' + (engine === 'deepseekapi' ? 'Claude Code' : engine) + ' (vài phút)... ');
+    try { await engines.install(run, engine); console.log('xong'); } catch (e) { console.log('\n⚠️  ' + e.message); return 1; }
+  }
+  if (engine === 'gemini') engines.prepareGemini({ authType: 'gemini-api-key' });     // settings.json ưu tiên hơn biến môi trường
+  const next = apikeys.applyToEnv(text, engine, key);
+  envfile.writeSecure(ENV_FILE, next);
+  console.log('✔ Đã lưu khóa ' + apikeys.mask(key) + ' và bật ' + apikeys.NAMES[engine] + ' trong danh sách AI.');
+  await restart();
+  return 0;
+}
+
+async function del(engine) {
+  if (!apikeys.ENGINES.includes(engine)) { console.error('AI không biết: ' + engine); return 2; }
+  const text = readEnv();
+  if (text == null) { console.error('Không có ' + ENV_FILE); return 1; }
+  if (engine === 'gemini') engines.prepareGemini();                                  // về kiểu đăng nhập tài khoản Google
+  envfile.writeSecure(ENV_FILE, apikeys.applyToEnv(text, engine, null));
+  console.log('✔ Đã xóa khóa ' + apikeys.NAMES[engine] + '. (AI này vẫn nằm trong ENGINE_ORDER; nếu chưa đăng nhập tài khoản thì bot sẽ tự chuyển sang AI khác.)');
+  await restart();
+  return 0;
+}
+
+async function restart() {
+  if (process.env.AGENTOS_NO_RESTART) return;
+  const r = await run('systemctl', ['restart', 'agentos-orchestrator.service']);
+  console.log(r.code === 0 ? '✔ Đã khởi động lại bộ điều phối — nhắn bot để thử.' : '⚠️  Không khởi động lại được bộ điều phối: ' + r.err.trim());
+}
+
+async function main() {
+  const [cmd, a, b] = process.argv.slice(2);
+  if (typeof process.getuid === 'function' && process.getuid() !== 0 && !process.env.AGENTOS_ENV_FILE) { console.error('Cần chạy bằng quyền quản trị: sudo agentos-key'); return 1; }
+  if (cmd === 'list') { list(readEnv()); return 0; }
+  if (cmd === 'set') return setKey(a, b);
+  if (cmd === 'del' || cmd === 'xoa') return del(a);
+  if (cmd) { console.error('Dùng: agentos-key [list | set <ai> [khóa] | del <ai>]'); return 2; }
+  // menu
+  for (;;) {
+    console.log('\n=== Khóa API cho AI ===');
+    list(readEnv());
+    const pick = await ask('\nChọn 1-' + apikeys.ENGINES.length + ' để thêm/đổi khóa, d1-d' + apikeys.ENGINES.length + ' để xóa, q để thoát: ');
+    if (!pick || /^q/i.test(pick)) return 0;
+    const del1 = pick.match(/^d(\d)$/i);
+    const n = Number((del1 ? del1[1] : pick)) - 1;
+    if (!(n >= 0 && n < apikeys.ENGINES.length)) { console.log('Không hiểu lựa chọn.'); continue; }
+    await (del1 ? del(apikeys.ENGINES[n]) : setKey(apikeys.ENGINES[n]));
+  }
+}
+
+main().then((c) => process.exit(c || 0), (e) => { console.error('Lỗi: ' + e.message); process.exit(1); });

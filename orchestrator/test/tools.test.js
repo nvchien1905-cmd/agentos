@@ -37,8 +37,8 @@ test('tools: nạp tools.example.json và tools.linux.json không lỗi, profile
     assert.deepEqual(t.allowFor(t.profile('chung')), []);
     assert.deepEqual(web.policy.allow, ['Read', 'Glob', 'Grep']);
     assert.deepEqual(web.engines, ['claude']);                          // có MCP -> mặc định chỉ Claude (Codex không qua cổng)
-    assert.deepEqual(t.enginesFor('chung'), ['claude', 'codex', 'gemini']);
-    assert.deepEqual(t.enginesFor('da-xoa'), ['claude', 'codex', 'gemini']);
+    assert.deepEqual(t.enginesFor('chung'), ['claude', 'codex', 'gemini', 'deepseekapi']);
+    assert.deepEqual(t.enginesFor('da-xoa'), ['claude', 'codex', 'gemini', 'deepseekapi']);
     assert.equal(t.profile('lam').adminOnly, true);
     assert.deepEqual(t.profile('lam').engines, ['claude']);
     assert.deepEqual(t.profile('lam').policy.allowExec, ['^pwd$', '^ls( -[a-zA-Z]+)?$']);

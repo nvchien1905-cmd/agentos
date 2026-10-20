@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Khóa API (AI)
+Comment=Thêm hoặc đổi khóa API của Claude, Codex, Gemini, DeepSeek
+Exec=xfce4-terminal --title="Khóa API cho AI" -x sudo /usr/local/bin/agentos-key
+Icon=agentos-apikey
+Terminal=false
+Categories=Settings;

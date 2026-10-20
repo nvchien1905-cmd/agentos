@@ -75,3 +75,11 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - **Tailscale**: đường vào dự phòng đi qua mạng riêng của chủ máy (không mở cổng ra Internet); đăng nhập bằng tài khoản của chủ máy; bật Tailscale SSH. Đăng xuất bằng `/tailscale ngat co`.
 - **In ấn** (`/in`): chỉ in được tệp nằm trong thư mục OneDrive của AgentOS; Word/Excel được đổi sang PDF trước. CUPS chỉ nghe ở `localhost:631`.
 - **Sao lưu 02:30 hằng ngày** lên `OneDrive/AgentOS/sao-luu/`, giữ 14 bản: cơ sở dữ liệu bộ điều phối + cấu hình đã **che** token/mật khẩu + danh sách phần mềm. Không có tài khoản AI, token Telegram, khóa KiotViet. Đây là sao lưu DỮ LIỆU/CẤU HÌNH, không phải ảnh nguyên ổ đĩa: ổ hỏng thì cài lại máy rồi nhập lại bí mật.
+
+## Khóa API (Claude, Codex, Gemini, DeepSeek)
+- Khách mua khóa API thay vì thuê bao vẫn dùng được: nhập ở trình hướng dẫn lần đầu (mỗi AI có ô "Dùng khóa API"), hoặc SAU NÀY bấm biểu tượng **"Khóa API (AI)"** trên màn hình chính / chạy `sudo agentos-key` (thêm, đổi, xóa). Khóa được hỏi thử với máy chủ của hãng trước khi lưu (khóa sai bị từ chối), nhập không hiện chữ.
+- Lưu trong `/etc/agentos/orchestrator.env` (quyền 600, chỉ root) dưới tên `AGENTOS_KEY_*` — không phải tên chuẩn của hãng. Khi chạy một AI, CHỈ khóa của AI đó được đổi sang biến mà CLI của hãng đọc; các khóa khác bị xóa trắng nên AI này không thấy khóa của AI kia. Khóa không nằm trong tham số dòng lệnh. Chính sách chặn AI đọc `/etc/agentos` như cũ; ở chế độ toàn quyền AI có root nên đọc được mọi thứ (vốn đã vậy với token Telegram).
+- Có khóa API thì AI đó dùng khóa (tính tiền theo lượng dùng của hãng), không dùng đăng nhập thuê bao. Hết số dư/vượt hạn mức khóa → coi như hết hạn mức, tự chuyển AI khác.
+- **DeepSeek (API)** là engine `deepseekapi`: chạy Claude Code trỏ sang điểm cuối tương thích Anthropic của DeepSeek (cách DeepSeek hướng dẫn; mô hình `deepseek-flash`, đổi bằng `DEEPSEEK_MODEL=deepseek-v4-pro`). Khác lệnh `/deepseek` (mở DeepSeek WEB trên màn hình, vì điều khoản web cấm robot); dùng API là hợp lệ. Ép dùng bằng `/deepseekapi <việc>`.
+- Gemini: Gemini CLI đọc kiểu đăng nhập từ `~/.gemini/settings.json` trước biến môi trường, nên bộ điều phối tự đặt `gemini-api-key` khi có khóa và `oauth-personal` khi không.
+- Sao lưu hằng ngày KHÔNG chứa khóa API (đã che).

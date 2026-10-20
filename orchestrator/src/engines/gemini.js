@@ -44,7 +44,7 @@ function startGemini(opts) {
       transient: cls.transient,
       resetAt: cls.limit ? parseResetTime(hay) : null,
       error: failed ? (errMsg || text || r.err.trim().slice(0, 1000) || 'Thoát với mã ' + r.code) : null,
-      notLoggedIn: failed && (r.code === 41 || /Auth method|authorization is required|GEMINI_API_KEY|not logged in/i.test(hay)),
+      notLoggedIn: failed && (r.code === 41 || /Auth method|authorization is required|GEMINI_API_KEY|API key not valid|API_KEY_INVALID|not logged in/i.test(hay)),
     };
   });
   return { done, kill: p.kill };

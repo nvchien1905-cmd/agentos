@@ -3,7 +3,7 @@ const { fmtTime } = require('./worker');
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
-    '/claude, /codex hoặc /gemini <việc> - ép dùng một AI (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
+    '/claude, /codex, /gemini hoặc /deepseekapi <việc> - ép dùng một AI (khóa API hoặc tài khoản) (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
     profiles.map((p) => '/' + p.name + ' <việc> - ' + (p.description || 'dùng bộ công cụ ' + p.name) + '\n').join('') +
     '/viec - xem 5 việc gần nhất\n' +
     '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
@@ -98,7 +98,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         return prompt ? submit(chatId, prompt, null, name) : 'Cách dùng: /' + name + ' <việc cần làm>';
       }
       switch (name) {
-        case 'claude': case 'codex': case 'gemini': return 'Engine ' + name + ' chưa được bật trên máy này.';
+        case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
         case 'start': case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
         case 'moi':

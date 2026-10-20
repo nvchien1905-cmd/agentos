@@ -69,7 +69,7 @@ test('config + công cụ: ENGINE_ORDER nhận gemini; bộ công cụ không c�
   assert.equal(config.validate(config.load(Object.assign({}, ok, { ENGINE_ORDER: 'claude,gemini,gemini' }))).length, 1);
   const t = loadTools({ file: path.join(__dirname, '..', 'tools.linux.json'), vars: {} });
   assert.deepEqual(t.errors, []);
-  assert.deepEqual(t.enginesFor('chung'), ['claude', 'codex', 'gemini']);
+  assert.deepEqual(t.enginesFor('chung'), ['claude', 'codex', 'gemini', 'deepseekapi']);
   assert.deepEqual(t.enginesFor('web'), ['claude']);
   assert.deepEqual(t.enginesFor('lam'), ['claude']);
 });

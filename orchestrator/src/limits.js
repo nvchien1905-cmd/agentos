@@ -1,7 +1,7 @@
 'use strict';
 
 // Câu chữ báo chạm giới hạn của các CLI (Claude Code, Codex). CLI đổi câu chữ theo thời gian -> test định kỳ.
-const LIMIT_RE = /usage limit|rate limit|limit reached|limit will reset|hit your limit|quota|out of (credits|usage)|too many requests|try again (at|in|after)|exhausted your capacity|RESOURCE_EXHAUSTED/i;
+const LIMIT_RE = /usage limit|rate limit|limit reached|limit will reset|hit your limit|quota|out of (credits|usage)|too many requests|try again (at|in|after)|exhausted your capacity|RESOURCE_EXHAUSTED|credit balance is too low|insufficient balance|exceeded your current quota|billing/i;
 
 // Lỗi TẠM THỜI (máy chủ AI quá tải, rớt mạng): thử lại sau vài giây, KHÔNG cho engine nghỉ cả giờ như khi hết hạn mức.
 const TRANSIENT_RE = /overloaded|\b(500|502|503|504|529)\b|ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network error|fetch failed|temporarily unavailable|internal server error|service unavailable|bad gateway/i;

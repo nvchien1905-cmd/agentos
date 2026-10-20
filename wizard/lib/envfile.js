@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Tạo /etc/agentos/orchestrator.env cho bộ điều phối từ kết quả của trình hướng dẫn.
+const apikeys = require('./apikeys');
 const NUM = /^\d+$/;
 const SAFE = /^[^\r\n\0]*$/;
 
@@ -10,7 +11,7 @@ function build(cfg) {
   if (!/^\d{6,}:[A-Za-z0-9_-]{30,}$/.test(cfg.token || '')) throw new Error('Thiếu hoặc sai token bot');
   const owners = (cfg.ownerIds || []).map(String);
   if (!owners.length || !owners.every((x) => NUM.test(x))) throw new Error('Thiếu ID Telegram của chủ máy');
-  const engines = (cfg.engines || []).filter((e) => ['claude', 'codex', 'gemini'].includes(e));
+  const engines = (cfg.engines || []).filter((e) => ['claude', 'codex', 'gemini', 'deepseekapi'].includes(e));
   if (!engines.length) throw new Error('Chưa có AI nào đăng nhập được');
   const paths = cfg.paths || {};
   const lines = [
@@ -37,6 +38,13 @@ function build(cfg) {
   if (cfg.claudeToken) {
     if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(cfg.claudeToken)) throw new Error('Token Claude không đúng dạng');
     lines.push('CLAUDE_CODE_OAUTH_TOKEN=' + cfg.claudeToken);
+  }
+  // Khóa API (tùy chọn): AGENTOS_KEY_* — chỉ ghi khóa của AI có trong danh sách đã sẵn sàng, đúng dạng
+  const keys = cfg.apiKeys || {};
+  for (const e of engines) {
+    if (!keys[e]) continue;
+    if (!apikeys.validFormat(e, keys[e])) throw new Error('Khóa API của ' + e + ' không đúng dạng');
+    lines.push(apikeys.VAR[e] + '=' + String(keys[e]).trim());
   }
   for (const l of lines) if (!SAFE.test(l)) throw new Error('Giá trị cấu hình chứa ký tự không hợp lệ');
   return lines.join('\n') + '\n';

@@ -51,7 +51,7 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true
 
 echo "== 4/4 Biểu tượng trên màn hình chính"
-APPS="google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini"
+APPS="google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini agentos-apikey"
 place() { # place <thư mục Desktop> <chủ sở hữu hoặc rỗng>
   mkdir -p "$1"
   for f in $APPS; do

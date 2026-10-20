@@ -12,6 +12,7 @@ const nm = require('./lib/nm');
 const tg = require('./lib/telegram');
 const envfile = require('./lib/envfile');
 const engines = require('./lib/engines');
+const apikeys = require('./lib/apikeys');
 const hotspot = require('./lib/hotspot');
 const store = require('./lib/store');
 const fullaccess = require('./lib/fullaccess');
@@ -87,8 +88,9 @@ function createWizard(options) {
   const state = {
     token: persisted.token || null, bot: persisted.bot || null, owner: persisted.owner || null,
     claudeToken: persisted.claudeToken || null, lastError: persisted.lastError || null,
+    apiKeys: persisted.apiKeys && typeof persisted.apiKeys === 'object' ? persisted.apiKeys : {},   // khóa API chủ máy nhập (lưu quyền 600, xóa khi hoàn tất)
     fullAccess: persisted.fullAccess === true,                   // chủ máy TỰ tích ô "toàn quyền" (mặc định tắt)
-    engines: { claude: { installed: null, loggedIn: false }, codex: { installed: null, loggedIn: false }, gemini: { installed: null, loggedIn: false } },
+    engines: { claude: { installed: null, loggedIn: false }, codex: { installed: null, loggedIn: false }, gemini: { installed: null, loggedIn: false }, deepseekapi: { installed: null, loggedIn: false } },
     jobs: {}, finished: false,
     hotspot: { ssid: null, up: false, error: null },
     offline: { status: 'idle', step: null, error: null },
@@ -200,6 +202,7 @@ function createWizard(options) {
         net, bot: state.bot, owner: state.owner, engines: state.engines, jobs: state.jobs, finished: state.finished,
         code: auth.code(), lan: { ips: netinfo.lanAddresses(o.ifaces), host: netinfo.hostLabel(o.hostname), port: boundPort },
         hotspot: state.hotspot.up ? { ssid: state.hotspot.ssid, up: true, qr: hotspot.wifiQrText(state.hotspot.ssid, hotspot.credentials(o.hotspotFile).psk), psk: hotspot.credentials(o.hotspotFile).psk } : { up: false, error: state.hotspot.error },
+        apiKeys: Object.keys(state.apiKeys).reduce((m, k) => { m[k] = apikeys.mask(state.apiKeys[k]); return m; }, {}), apiWhere: apikeys.WHERE,
         offline: state.offline, lastError: state.lastError, hasClaudeToken: !!state.claudeToken, fullAccess: state.fullAccess,
       };
     },
@@ -231,6 +234,20 @@ function createWizard(options) {
       while (!state.owner && Date.now() < until && !closed) await sleep(300);
       return { owner: state.owner || null };
     },
+    // Khóa API thay cho đăng nhập tài khoản: kiểm với máy chủ của hãng rồi lưu (chưa coi là sẵn sàng; phải "Kiểm tra" qua CLI sau khi cài).
+    async apiKey(b) {
+      const eng = String(b.engine), key = String(b.key || '').trim();
+      if (!apikeys.ENGINES.includes(eng)) throw new Error('AI không biết');
+      const r = await apikeys.check(eng, key, o.apiFetch);
+      if (!r.ok) throw new Error(r.detail);
+      state.apiKeys[eng] = key; state.engines[eng].loggedIn = false; persist();
+      return { saved: true, detail: r.detail, limited: !!r.limited, masked: apikeys.mask(key) };
+    },
+    async apiKeyClear(b) {
+      const eng = String(b.engine);
+      delete state.apiKeys[eng]; state.engines[eng] && (state.engines[eng].loggedIn = false); persist();
+      return { cleared: true };
+    },
     async engineInstall(b) {
       const eng = String(b.engine);
       if (!engines.PACKAGES[eng]) throw new Error('AI không biết');
@@ -245,7 +262,9 @@ function createWizard(options) {
       if (!engines.PACKAGES[eng]) throw new Error('AI không biết');
       state.engines[eng].installed = await engines.installed(run, eng);
       if (!state.engines[eng].installed) return { installed: null, loggedIn: false, detail: 'chưa cài' };
-      const env = eng === 'claude' && state.claudeToken ? { CLAUDE_CODE_OAUTH_TOKEN: state.claudeToken } : undefined;
+      if (eng === 'gemini') engines.prepareGemini({ authType: state.apiKeys.gemini ? 'gemini-api-key' : undefined });
+      const env = state.apiKeys[eng] ? apikeys.childEnv(eng, state.apiKeys)
+        : eng === 'claude' && state.claudeToken ? { CLAUDE_CODE_OAUTH_TOKEN: state.claudeToken } : undefined;
       const v = await engines.verifyLogin(run, eng, env);
       state.engines[eng].loggedIn = v.ok;
       return { installed: state.engines[eng].installed, loggedIn: v.ok, limited: !!v.limited, detail: v.detail };
@@ -290,7 +309,7 @@ function createWizard(options) {
       // Toàn quyền: chỉ khi chủ máy đã tự tích ô. Cài sudo không mật khẩu cho `agentos` + gỡ giới hạn systemd TRƯỚC khi bật dịch vụ điều phối.
       if (state.fullAccess) await fullaccess.enable(run, o.fullAccessPaths);
       else if (fullaccess.isEnabled(o.fullAccessPaths)) await fullaccess.disable(run, o.fullAccessPaths);
-      const content = envfile.build({ token: state.token, ownerIds: [state.owner.id], engines: ready, claudeToken: state.engines.claude.loggedIn ? state.claudeToken : null, fullAccess: state.fullAccess });
+      const content = envfile.build({ token: state.token, ownerIds: [state.owner.id], engines: ready, claudeToken: state.engines.claude.loggedIn && !state.apiKeys.claude ? state.claudeToken : null, apiKeys: state.apiKeys, fullAccess: state.fullAccess });
       envfile.writeSecure(o.envFile, content);
       store.clear(o.stateFile);                                    // token đã nằm trong orchestrator.env, không giữ bản sao
       await stopHotspot();
@@ -314,6 +333,8 @@ function createWizard(options) {
     'POST /api/telegram/token': actions.telegramToken,
     'POST /api/telegram/wait': () => actions.telegramWait(),
     'POST /api/fullaccess': actions.setFullAccess,
+    'POST /api/apikey': actions.apiKey,
+    'POST /api/apikey/clear': actions.apiKeyClear,
     'POST /api/engine/install': actions.engineInstall,
     'POST /api/engine/check': actions.engineCheck,
     'POST /api/engine/login': actions.engineLoginTerminal,

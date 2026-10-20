@@ -2,10 +2,10 @@
 
 // Cài và kiểm tra Claude Code / Codex CLI cho người dùng hệ thống `agentos`. KHÔNG nhúng sẵn trong ISO (chờ GĐ 0 pháp lý):
 // tải từ npm chính thức lúc cài đặt, người dùng tự đăng nhập tài khoản CỦA HỌ. Trình hướng dẫn không đọc/lưu token đăng nhập.
-const PACKAGES = { claude: '@anthropic-ai/claude-code', codex: '@openai/codex', gemini: '@google/gemini-cli' };
+const PACKAGES = { claude: '@anthropic-ai/claude-code', codex: '@openai/codex', gemini: '@google/gemini-cli', deepseekapi: '@anthropic-ai/claude-code' };   // deepseekapi = Claude Code trỏ sang DeepSeek (cần khóa API)
 const PREFIX = '/var/lib/agentos/.local';
 const HOME = '/var/lib/agentos';
-const BIN = { claude: PREFIX + '/bin/claude', codex: PREFIX + '/bin/codex', gemini: PREFIX + '/bin/gemini' };
+const BIN = { claude: PREFIX + '/bin/claude', codex: PREFIX + '/bin/codex', gemini: PREFIX + '/bin/gemini', deepseekapi: PREFIX + '/bin/claude' };
 const GEMINI_CREDS = HOME + '/.gemini/oauth_creds.json';           // Gemini CLI lưu đăng nhập Google ở đây sau khi dán mã
 
 // Chạy lệnh DƯỚI QUYỀN người dùng agentos (trình hướng dẫn chạy bằng root).
@@ -34,8 +34,8 @@ async function verifyLogin(run, engine, extraEnv) {
   if (!BIN[engine]) throw new Error('AI không biết: ' + engine);
   // Cả hai CLI đọc prompt từ stdin (giống bộ điều phối).
   // Gemini: chạy từ thư mục home của agentos (env -C): nếu thư mục hiện tại agentos không đọc được, Gemini CLI báo EACCES khi tìm GEMINI.md. Chế độ plan = chỉ đọc.
-  const c = engine === 'claude'
-    ? asAgentos([BIN.claude, '-p', '--output-format', 'json', '--max-turns', '1'])
+  const c = engine === 'claude' || engine === 'deepseekapi'
+    ? asAgentos([BIN[engine], '-p', '--output-format', 'json', '--max-turns', '1'])
     : engine === 'gemini'
       ? asAgentos(['env', '-C', HOME, BIN.gemini, '-p', '', '--output-format', 'json', '--skip-trust', '--approval-mode', 'plan'])
       : asAgentos([BIN.codex, 'exec', '--skip-git-repo-check', '--sandbox', 'read-only', '-']);
@@ -60,7 +60,7 @@ function prepareGemini(deps) {
   fs.mkdirSync(dir, { recursive: true });
   let cfg = {}; try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { cfg = {}; }
   if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) cfg = {};
-  cfg.security = Object.assign({}, cfg.security, { auth: Object.assign({}, cfg.security && cfg.security.auth, { selectedType: 'oauth-personal' }) });
+  cfg.security = Object.assign({}, cfg.security, { auth: Object.assign({}, cfg.security && cfg.security.auth, { selectedType: deps.authType || 'oauth-personal' }) });   // 'gemini-api-key' khi chủ máy dùng khóa API (settings.json ưu tiên hơn biến GEMINI_API_KEY)
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
   try {
     const uid = Number(execFileSync('id', ['-u', 'agentos']).toString()), gid = Number(execFileSync('id', ['-g', 'agentos']).toString());

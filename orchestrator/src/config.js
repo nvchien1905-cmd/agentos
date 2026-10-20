@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const KNOWN_ENGINES = ['claude', 'codex', 'gemini'];
+const KNOWN_ENGINES = ['claude', 'codex', 'gemini', 'deepseekapi'];
 
 // Đọc .env đơn giản (không thêm thư viện). Biến đã có trong môi trường được ưu tiên.
 function loadEnvFile(file) {
@@ -33,6 +33,9 @@ function load(env) {
     geminiBin: env.GEMINI_BIN || 'gemini',
     geminiModel: env.GEMINI_MODEL || '',                         // trống = để Gemini CLI tự chọn mô hình mặc định
     geminiBinArgs: [],
+    // Khóa API (xem apikeys.js): có khóa thì AI đó dùng khóa thay vì tài khoản đăng nhập
+    apiKeys: require('./apikeys').keysFrom(env),
+    deepseekModel: env.DEEPSEEK_MODEL || 'deepseek-flash',
     claudeBinArgs: [],
     codexBinArgs: [],
     workdir: path.resolve(env.WORKDIR || './work'),

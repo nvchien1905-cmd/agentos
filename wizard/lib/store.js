@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Lưu trạng thái trình hướng dẫn (quyền 600, chỉ root) để mất điện giữa chừng vẫn nối tiếp được. Xóa khi hoàn tất (token đã nằm trong orchestrator.env).
-const KEYS = ['token', 'bot', 'owner', 'claudeToken', 'lastError', 'fullAccess'];
+const KEYS = ['token', 'bot', 'owner', 'claudeToken', 'lastError', 'fullAccess', 'apiKeys'];
 
 function load(file) {
   try {

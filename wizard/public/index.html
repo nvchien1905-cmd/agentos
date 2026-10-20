@@ -196,8 +196,8 @@
   }
 
   // ---- 3. AI ----
-  var ENGINES = ['claude', 'codex', 'gemini'];
-  var NAMES = { claude: 'Claude (Anthropic)', codex: 'Codex (OpenAI)', gemini: 'Gemini (Google)' };
+  var ENGINES = ['claude', 'codex', 'gemini', 'deepseekapi'];
+  var NAMES = { claude: 'Claude (Anthropic)', codex: 'Codex (OpenAI)', gemini: 'Gemini (Google)', deepseekapi: 'DeepSeek (khóa API)' };
   var loginEng = null;
   function renderEngines() {
     refresh().then(function () {
@@ -206,10 +206,17 @@
         var st = S.engines[e] || {}; var job = S.jobs['install-' + e];
         h += '<div class="card"><div class="row" style="margin-top:0"><b style="flex:1">' + NAMES[e] + '</b><span id="s-' + e + '"></span></div><div class="row" style="margin:0">';
         h += '<button data-a="install" data-e="' + e + '">' + (st.installed ? 'Cài lại' : 'Cài đặt') + '</button>';
-        h += '<button data-a="login" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Đăng nhập</button>';
+        if (e !== 'deepseekapi') h += '<button data-a="login" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Đăng nhập</button>';
         h += '<button class="primary" data-a="check" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Kiểm tra</button>';
-        if (S.local) h += '<button data-a="term" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Mở trên màn hình máy</button>';
-        h += '</div><p class="mute" id="d-' + e + '" style="margin-top:10px">' + (job && job.status === 'running' ? 'Đang cài đặt (vài phút)...' : job && job.status === 'error' ? esc(job.error) : '') + '</p><div id="l-' + e + '"></div></div>';
+        if (S.local && e !== 'deepseekapi') h += '<button data-a="term" data-e="' + e + '"' + (st.installed ? '' : ' disabled') + '>Mở trên màn hình máy</button>';
+        h += '</div>';
+        var mk = (S.apiKeys || {})[e], where = (S.apiWhere || {})[e] || '';
+        h += '<details class="keybox"' + (e === 'deepseekapi' || mk ? ' open' : '') + '><summary>' + (mk ? '🔑 Đang dùng khóa API ' + esc(mk) : '🔑 Dùng khóa API (thay cho đăng nhập tài khoản)') + '</summary>' +
+          '<p class="mute" style="margin:8px 0">Lấy khóa ở: ' + esc(where) + '. Khóa chỉ lưu trên máy này (quyền root), không gửi cho ai ngoài hãng.</p>' +
+          '<div class="row" style="margin:0"><input id="k-' + e + '" type="password" autocomplete="off" placeholder="Dán khóa API vào đây" style="flex:1">' +
+          '<button data-a="savekey" data-e="' + e + '">Lưu khóa</button>' + (mk ? '<button data-a="clearkey" data-e="' + e + '">Xóa</button>' : '') + '</div>' +
+          (e === 'deepseekapi' ? '<p class="mute" style="margin:8px 0 0">DeepSeek chạy qua Claude Code: bấm "Cài đặt" (cài Claude Code) rồi "Kiểm tra".</p>' : '<p class="mute" style="margin:8px 0 0">Lưu khóa xong bấm "Cài đặt" (nếu chưa cài) rồi "Kiểm tra".</p>') + '</details>';
+        h += '<p class="mute" id="d-' + e + '" style="margin-top:10px">' + (job && job.status === 'running' ? 'Đang cài đặt (vài phút)...' : job && job.status === 'error' ? esc(job.error) : '') + '</p><div id="l-' + e + '"></div></div>';
       });
       h += '<div class="nav"><button id="back">Quay lại</button><button class="primary" id="next" disabled>Tiếp theo</button></div>';
       view.innerHTML = h;
@@ -234,6 +241,16 @@
     if (a === 'install') { api('POST', 'engine/install', { engine: e }).then(function () { later(renderEngines, 500); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
     if (a === 'term') { api('POST', 'engine/login', { engine: e }).then(function () { msg('d-' + e, 'Đã mở cửa sổ đăng nhập trên màn hình máy. Xong rồi bấm "Kiểm tra".', 'mute'); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
     if (a === 'login') { loginEng = e; api('POST', 'login/start', { engine: e }).then(function () { pollLogin(e); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
+    if (a === 'savekey') {
+      var inp = document.getElementById('k-' + e), val = inp ? inp.value.trim() : '';
+      if (!val) { msg('d-' + e, 'Chưa dán khóa API.', 'bad'); return; }
+      msg('d-' + e, 'Đang kiểm tra khóa với máy chủ của hãng...', 'mute spin');
+      api('POST', 'apikey', { engine: e, key: val }).then(function (r) {
+        inp.value = ''; S.engines[e] = { installed: (S.engines[e] || {}).installed, loggedIn: false };
+        msg('d-' + e, '✔ ' + r.detail + ' (' + r.masked + '). Tiếp: bấm "Cài đặt" (nếu chưa cài) rồi "Kiểm tra".', 'ok'); later(renderEngines, 1500);
+      }).catch(function (x) { msg('d-' + e, x.message, 'bad'); });
+    }
+    if (a === 'clearkey') { api('POST', 'apikey/clear', { engine: e }).then(function () { later(renderEngines, 300); }).catch(function (x) { msg('d-' + e, x.message, 'bad'); }); }
     if (a === 'check') checkEngine(e);
   }
   function checkEngine(e) {

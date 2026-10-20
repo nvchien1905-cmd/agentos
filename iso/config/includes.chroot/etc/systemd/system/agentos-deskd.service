@@ -1,0 +1,17 @@
+[Unit]
+Description=AgentOS - trợ lý màn hình (chụp màn hình, mở/đóng ứng dụng, bấm chuột/gõ phím cho bot Telegram)
+After=multi-user.target
+
+[Service]
+# Chạy bằng root để nhìn/điều khiển phiên đồ họa của người ngồi máy. Chỉ nghe ở /run/agentos/desk.sock (nhóm agentos),
+# chỉ nhận một số lệnh CỐ ĐỊNH (không có lệnh chạy bất kỳ). Xem desk/server.js.
+ExecStart=/usr/bin/node /opt/agentos/desk/server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

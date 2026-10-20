@@ -33,6 +33,8 @@ chk "logind IdleAction=ignore" grep -q IdleAction=ignore /etc/systemd/logind.con
 chk "journald co gioi han dung luong" grep -q SystemMaxUse /etc/systemd/journald.conf.d/10-agentos.conf
 chk "Chromium co mat" which chromium
 chk "Google Chrome co mat" test -x /usr/bin/google-chrome-stable
+chk "tro ly man hinh (deskd) co mat va bat" bash -c 'test -f /opt/agentos/desk/server.js && test -x /usr/local/bin/agentos-desk && systemctl is-enabled --quiet agentos-deskd && command -v xclip scrot xdotool >/dev/null'
+chk "tro ly man hinh dang chay va nghe o /run/agentos/desk.sock" bash -c 'systemctl is-active --quiet agentos-deskd && test -S /run/agentos/desk.sock'
 chk "RustDesk (dieu khien tu xa) co mat" test -x /usr/bin/rustdesk
 chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex; do test -f /usr/share/applications/$f.desktop || exit 1; done'
 chk "bieu tuong man hinh chinh (skel) co 7 ung dung va chay duoc (x)" bash -c 'for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex; do test -x /etc/skel/Desktop/$f.desktop || exit 1; done'

@@ -1,8 +1,9 @@
 [Unit]
 Description=AgentOS - bộ điều phối (Telegram -> AI)
-After=network-online.target agentos-xvfb.service
+After=network-online.target agentos-xvfb.service agentos-deskd.service
 Wants=network-online.target
 Requires=agentos-xvfb.service
+Wants=agentos-deskd.service
 # Chỉ chạy khi đã được cấu hình (trình hướng dẫn lần đầu / quản trị viên tạo file này)
 ConditionPathExists=/etc/agentos/orchestrator.env
 # Lỗi liên tục tới mức systemd bỏ cuộc -> nhắn Telegram cho quản trị viên

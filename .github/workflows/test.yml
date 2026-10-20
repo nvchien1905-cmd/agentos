@@ -16,6 +16,8 @@ jobs:
       - name: Cài thư viện
         working-directory: orchestrator
         run: npm ci
+      - name: Chạy test trợ lý màn hình
+        run: node --test desk/test/desk.test.js desk/test/session.test.js
       - name: Chạy test xử lý nhiều màn hình
         run: bash scripts/test-man-hinh.sh
       - name: Chạy test trình hướng dẫn lần đầu

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Nhìn / điều khiển màn hình thật của máy (qua trợ lý màn hình). Gõ agentos-desk không tham số để xem hướng dẫn.
+exec /usr/bin/node /opt/agentos/desk/cli.js "$@"

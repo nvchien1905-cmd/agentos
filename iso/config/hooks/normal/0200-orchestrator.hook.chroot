@@ -19,6 +19,6 @@ npm init -y >/dev/null
 npm install --omit=dev @playwright/mcp@0.0.83
 
 # Chỉ khởi động bộ điều phối khi đã có /etc/agentos/orchestrator.env
-systemctl enable agentos-xvfb.service agentos-orchestrator.service || true
+systemctl enable agentos-xvfb.service agentos-orchestrator.service agentos-deskd.service || true
 # Trình hướng dẫn lần đầu (chạy ở bản đã cài khi chưa có orchestrator.env; mã nguồn do CI chép vào /opt/agentos/wizard)
 systemctl enable agentos-wizard.service || true

@@ -6,6 +6,12 @@ function helpText(profiles) {
     '/claude <việc> hoặc /codex <việc> - ép dùng một engine (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
     profiles.map((p) => '/' + p.name + ' <việc> - ' + (p.description || 'dùng bộ công cụ ' + p.name) + '\n').join('') +
     '/viec - xem 5 việc gần nhất\n' +
+    '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
+    '/manhinh - chụp màn hình máy gửi về đây · /cuaso - xem các cửa sổ đang mở\n' +
+    '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
+    '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
+    '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
+    '-----\n' +
     '/nhatky - nhật ký các lần AI xin dùng công cụ (cho phép/từ chối)\n' +
     '/trangthai - hàng đợi và tình trạng hạn mức\n' +
     '/huy - hủy việc đang chạy và các việc đang chờ\n' +
@@ -22,7 +28,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `profiles`: [{ name, description, adminOnly }] các bộ công cụ chọn bằng lệnh /<tên> (ví dụ /web).
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick }) {
   profiles = profiles || [];
   isAdmin = isAdmin || (() => true);
   const profileByName = new Map(profiles.map((p) => [p.name, p]));
@@ -56,6 +62,11 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
       if (worker.engineNames().includes(name)) {
         const prompt = cmd[3].trim();
         return prompt ? submit(chatId, prompt, name) : 'Cách dùng: /' + name + ' <việc cần làm>';
+      }
+      // Lệnh nhanh không qua AI (màn hình, mở/đóng ứng dụng, DeepSeek web, KiotViet): trả về Promise
+      if (quick && quick.has(name)) {
+        if (!isAdmin(uid)) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên.';
+        return quick.run(name, cmd[3]);
       }
       if (profileByName.has(name)) {
         if (profileByName.get(name).adminOnly && !isAdmin(uid)) return 'Bộ công cụ /' + name + ' chỉ dành cho quản trị viên.';

@@ -34,6 +34,7 @@ xvfb
 x11vnc
 xdotool
 scrot
+xclip
 fonts-noto-core
 fonts-liberation
 

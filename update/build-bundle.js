@@ -59,7 +59,7 @@ function main() {
   if (!/^\d+(\.\d+){1,3}$/.test(version)) { console.error('Phiên bản phải dạng 2026.10.21.1'); return 2; }
   const outDir = path.resolve(arg('out') || path.join(ROOT, 'updates'));
   const privateKey = crypto.createPrivateKey(fs.readFileSync(key));
-  fs.writeFileSync(path.join(ROOT, 'VERSION'), version + '\n');
+  if (!process.env.AGENTOS_BUILD_NO_VERSION_FILE) fs.writeFileSync(path.join(ROOT, 'VERSION'), version + '\n');   // test đặt biến này để không ghi đè VERSION thật
 
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'agentos-bundle-'));
   try {

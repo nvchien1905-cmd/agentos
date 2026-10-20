@@ -34,9 +34,9 @@ chk "journald co gioi han dung luong" grep -q SystemMaxUse /etc/systemd/journald
 chk "Chromium co mat" which chromium
 chk "Google Chrome co mat" test -x /usr/bin/google-chrome-stable
 chk "tro ly man hinh (deskd) co mat va bat" bash -c 'test -f /opt/agentos/desk/server.js && test -x /usr/local/bin/agentos-desk && systemctl is-enabled --quiet agentos-deskd && command -v xclip scrot xdotool >/dev/null'
-chk "OneDrive: goi onedrive + dich vu dong bo + thu muc /srv/onedrive (2775, nhom agentos) + cau hinh" bash -c 'command -v onedrive >/dev/null && systemctl is-enabled --quiet onedrive-agentos.path && [ "$(stat -c %a /srv/onedrive)" = 2775 ] && [ "$(stat -c %G /srv/onedrive)" = agentos ] && grep -q "classify_as_big_delete" /var/lib/agentos/.config/onedrive/config && ! systemctl --global is-enabled --quiet onedrive.service'
+chk "OneDrive: goi onedrive + dich vu dong bo + thu muc /srv/onedrive (2775, nhom agentos) + cau hinh" bash -c 'command -v onedrive >/dev/null && systemctl is-enabled --quiet onedrive-agentos.path && [ "$(stat -c %a /srv/onedrive)" = 2775 ] && [ "$(stat -c %G /srv/onedrive)" = agentos ] && sudo -n grep -q "classify_as_big_delete" /var/lib/agentos/.config/onedrive/config && ! systemctl --global is-enabled --quiet onedrive.service'
 chk "OneDrive: bieu tuong man hinh chinh + lien ket ~/OneDrive trong skel" bash -c 'test -x /etc/skel/Desktop/agentos-onedrive.desktop && [ "$(readlink /etc/skel/OneDrive)" = /srv/onedrive ]'
-chk "tro ly man hinh dang chay va nghe o /run/agentos/desk.sock" bash -c 'systemctl is-active --quiet agentos-deskd && test -S /run/agentos/desk.sock'
+chk "tro ly man hinh dang chay va nghe o /run/agentos/desk.sock" bash -c 'systemctl is-active --quiet agentos-deskd && sudo -n test -S /run/agentos/desk.sock'
 chk "RustDesk (dieu khien tu xa) co mat" test -x /usr/bin/rustdesk
 chk "cong cu van phong cho AI: soffice pdftotext tesseract(vie) convert ffmpeg jq sqlite3" bash -c 'command -v soffice pdftotext tesseract convert ffmpeg jq sqlite3 >/dev/null && tesseract --list-langs 2>&1 | grep -qx vie'
 chk "thu vien Python van phong (pandas openpyxl docx xlsxwriter odf reportlab)" python3 -c 'import pandas, openpyxl, docx, xlsxwriter, odf, reportlab'
@@ -50,7 +50,7 @@ if [ $SUDO = 1 ]; then
 fi
 chk "launcher Zalo/KiotViet/Claude/Codex co mat" bash -c 'test -x /usr/local/bin/agentos-app && test -x /usr/local/bin/agentos-ai && for f in agentos-zalo agentos-kiotviet agentos-deepseek agentos-claude agentos-codex agentos-gemini; do test -f /usr/share/applications/$f.desktop || exit 1; done'
 chk "bieu tuong man hinh chinh (skel) co 7 ung dung va chay duoc (x)" bash -c 'for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex; do test -x /etc/skel/Desktop/$f.desktop || exit 1; done'
-chk "sudoers mo Claude/Codex duoi agentos hop le (0440), KHONG phai root" bash -c 'sudo -n visudo -cf /etc/sudoers.d/91-agentos-desktop >/dev/null 2>&1 && grep -q "(agentos)" /etc/sudoers.d/91-agentos-desktop && ! grep -q "ALL=(ALL" /etc/sudoers.d/91-agentos-desktop'
+chk "sudoers mo Claude/Codex duoi agentos hop le (0440), KHONG phai root" bash -c 'sudo -n visudo -cf /etc/sudoers.d/91-agentos-desktop >/dev/null 2>&1 && sudo -n grep -q "(agentos)" /etc/sudoers.d/91-agentos-desktop && ! sudo -n grep -q "ALL=(ALL" /etc/sudoers.d/91-agentos-desktop'
 chk "thu muc /var/lib/agentos thuoc agentos" bash -c '[ "$(stat -c %U /var/lib/agentos)" = agentos ]'
 chk "tools.json co mat" test -f "$ORCH/tools.json"
 chk "khong co unit nao bi loi (systemctl --failed)" bash -c 'test "$(systemctl --failed --no-legend | wc -l)" = 0'

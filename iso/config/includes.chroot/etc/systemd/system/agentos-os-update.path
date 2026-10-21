@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - có yêu cầu cập nhật hệ điều hành (từ Telegram /capnhat hedieuhanh co)
+
+[Path]
+PathExists=/var/lib/agentos/os-update-request
+Unit=agentos-os-update.service
+
+[Install]
+WantedBy=multi-user.target

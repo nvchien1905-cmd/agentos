@@ -54,6 +54,10 @@ Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF2
 
+# Cập nhật hệ điều hành từ Telegram (/capnhat hedieuhanh co): dịch vụ root chạy khi bot gửi yêu cầu
+chmod 755 /usr/local/sbin/agentos-os-update 2>/dev/null || true
+systemctl enable --now agentos-os-update.path >/dev/null 2>&1 || systemctl enable agentos-os-update.path >/dev/null 2>&1 || true
+
 # Sửa màn hình trắng của trình hướng dẫn lần đầu trên một số card đồ họa: tắt tăng tốc GPU của Chromium kiosk
 W=/etc/xdg/autostart/agentos-wizard.desktop
 if [ -f "$W" ] && ! grep -q -- '--disable-gpu' "$W"; then

@@ -1,0 +1,10 @@
+[Unit]
+Description=AgentOS - cập nhật hệ điều hành (apt dist-upgrade không hỏi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentos-os-update
+TimeoutStartSec=3600
+Nice=10

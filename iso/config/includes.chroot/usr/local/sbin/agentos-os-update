@@ -1,0 +1,21 @@
+#!/bin/sh
+# Cập nhật HỆ ĐIỀU HÀNH (gói Debian) lên bản mới nhất, chạy bằng root khi có yêu cầu từ Telegram (/capnhat hedieuhanh co) hoặc Cài đặt.
+# Không hỏi gì, giữ cấu hình cũ. Ghi kết quả ra /var/lib/agentos/os-update-result.json để bot báo lại.
+REQ=/var/lib/agentos/os-update-request
+RES=/var/lib/agentos/os-update-result.json
+rm -f "$REQ"
+LOG=$(mktemp); trap 'rm -f "$LOG"' EXIT
+export DEBIAN_FRONTEND=noninteractive
+ok=true; err=""; n=0
+if ! apt-get update >"$LOG" 2>&1; then ok=false; err="Không tải được danh sách gói (kiểm tra mạng)"; fi
+if [ "$ok" = true ]; then
+  n=$(apt-get -s dist-upgrade 2>/dev/null | grep -c '^Inst ')
+  if ! apt-get -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef dist-upgrade >>"$LOG" 2>&1; then ok=false; err="apt-get dist-upgrade báo lỗi"; fi
+  apt-get -y autoremove >>"$LOG" 2>&1
+fi
+reboot=false; [ -f /var/run/reboot-required ] && reboot=true
+TAILTXT=$(tail -n 5 "$LOG" | tr '\n' ' ' | cut -c1-300)
+jq -n --argjson ok "$ok" --argjson n "${n:-0}" --argjson reboot "$reboot" --arg err "$err" --arg tail "$TAILTXT" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{kind:"os", ok:$ok, upgraded:$n, rebootRequired:$reboot, error:$err, tail:$tail, at:$at}' > "$RES"
+chmod 644 "$RES"
+exit 0

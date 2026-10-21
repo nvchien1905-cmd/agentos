@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.21.4",
-  "file": "agentos-update-2026.10.21.4.tar.gz",
-  "size": 134736,
-  "sha256": "96a2df6787da248d957d467485e13d6d029f6e0c6d95e03270a85ebab4264e53",
+  "version": "2026.10.21.5",
+  "file": "agentos-update-2026.10.21.5.tar.gz",
+  "size": 136659,
+  "sha256": "bd94d7adc2957a9ec52e92ea51184b95b2ff2664c98736c242c304c754ba9ddb",
   "date": "2026-10-21",
-  "notes": "Cài đặt AgentOS (giao diện đồ họa): cập nhật AgentOS và hệ điều hành, cài ứng dụng, khóa API, bot, Wi-Fi, OneDrive, Tailscale. Thanh công cụ có nút Cài đặt và ứng dụng chính."
+  "notes": "Ra lệnh cập nhật hệ điều hành từ Telegram: /capnhat hedieuhanh (xem) và /capnhat hedieuhanh co (cập nhật). /capnhat co vẫn cập nhật phần mềm AgentOS."
 }

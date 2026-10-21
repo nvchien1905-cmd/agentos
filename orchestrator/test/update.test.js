@@ -92,3 +92,25 @@ test('quick: /capnhat đã đăng ký và chuyển lệnh cho bộ cập nhật'
   assert.ok(q.has('capnhat')); assert.equal(await q.run('capnhat', 'co ep'), 'UPD:co ep');
   assert.match(await createQuick({}).run('capnhat', ''), /chưa có tính năng cập nhật/);
 });
+
+test('/capnhat hedieuhanh: xem số gói có bản mới, nhắc khởi động lại; "co" ghi yêu cầu (bận thì chờ, "ep" ép); báo kết quả đúng một lần', async () => {
+  let busy = false, reboot = false;
+  const dir = tmp();
+  const { w, o } = make({
+    idle: () => !busy, osRequestFile: path.join(dir, 'osreq'), osResultFile: path.join(dir, 'osres.json'), rebootFile: path.join(dir, 'reboot-required'),
+    run: async () => ({ code: 0, out: 'Inst libfoo [1] (2 Debian)\nInst google-chrome-stable [1] (2)\nConf libfoo\n' }),
+  });
+  for (const cmdText of ['hedieuhanh', 'hệ điều hành', 'he thong', 'os']) assert.match(await w.command(cmdText), /2 gói có bản mới.*libfoo, google-chrome-stable/);
+  fs.writeFileSync(o.rebootFile, ''); assert.match(await w.command('hedieuhanh'), /chờ khởi động lại/); fs.rmSync(o.rebootFile);
+  busy = true;
+  assert.match(await w.command('hedieuhanh co'), /Đang có việc AI/); assert.equal(fs.existsSync(o.osRequestFile), false);
+  assert.match(await w.command('hedieuhanh co ep'), /Đã yêu cầu cập nhật hệ điều hành/); assert.ok(fs.existsSync(o.osRequestFile)); fs.rmSync(o.osRequestFile);
+  busy = false; assert.match(await w.command('hdh co'), /Đã yêu cầu/);
+  fs.writeFileSync(o.osResultFile, JSON.stringify({ kind: 'os', ok: true, upgraded: 3, rebootRequired: true, at: '2026-10-21T10:00:00Z' }));
+  await w.announceResult(); assert.match(o.sent[0][1], /Đã cập nhật hệ điều hành: 3 gói/); assert.match(o.sent[0][1], /\/khoimay co/);
+  await w.announceResult(); assert.equal(o.sent.length, 1);
+  fs.writeFileSync(o.osResultFile, JSON.stringify({ kind: 'os', ok: false, error: 'Không tải được danh sách gói', tail: 'E: x', at: '2026-10-21T11:00:00Z' }));
+  await w.announceResult(); assert.match(o.sent[1][1], /KHÔNG thành công: Không tải được danh sách gói/);
+  const plain = make({ run: async () => ({ code: 0, out: '' }) });
+  assert.match(await plain.w.command('hedieuhanh'), /đã mới nhất/);
+});

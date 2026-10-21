@@ -1,11 +1,13 @@
 'use strict';
 const fs = require('fs');
+const cp = require('child_process');
 const { noAccent } = require('./kiotviet');
 
 // CẬP NHẬT PHẦN MỀM từ xa qua Telegram (không boot lại). Bộ điều phối chỉ HỎI phiên bản mới và GỬI YÊU CẦU; việc tải/kiểm chữ ký/cài do dịch vụ root
 // `agentos-update` làm (xem update/updater.js): chỉ gói do chủ dự án KÝ mới được cài, lỗi thì tự khôi phục.
 //   /capnhat              phiên bản đang cài + bản mới nhất       /capnhat co [ep]   cài ngay (đang có việc AI chạy thì cần "ep")
 //   /capnhat tudong bat|tat   tự cài trong khung 02:00-05:00 giờ VN khi máy rảnh (mặc định TẮT: chỉ báo có bản mới)
+//   /capnhat hedieuhanh [co]  cập nhật HỆ ĐIỀU HÀNH Debian (gói hệ thống: Linux, Chrome, LibreOffice...) lên bản mới nhất; dịch vụ root agentos-os-update làm
 const DEFAULT_URL = 'https://raw.githubusercontent.com/nvchien1905-cmd/agentos/main/updates/';
 const CHECK_EVERY_MS = 3 * 3600 * 1000;
 const cmpVersion = (a, b) => {
@@ -22,6 +24,10 @@ function createUpdateWatcher(o) {
   const versionFile = o.versionFile || '/opt/agentos/VERSION';
   const requestFile = o.requestFile || '/var/lib/agentos/update-request';
   const resultFile = o.resultFile || '/var/lib/agentos/update-result.json';
+  const osRequestFile = o.osRequestFile || '/var/lib/agentos/os-update-request';
+  const osResultFile = o.osResultFile || '/var/lib/agentos/os-update-result.json';
+  const rebootFile = o.rebootFile || '/var/run/reboot-required';
+  const sh = o.run || ((cmd, args) => new Promise((resolve) => cp.execFile(cmd, args, { timeout: 60000, maxBuffer: 4 * 1024 * 1024 }, (err, out) => resolve({ code: err ? 1 : 0, out: String(out || '') }))));
   const notify = o.notify, admins = o.admins || [];
   const idle = o.idle || (() => true);
 
@@ -42,8 +48,27 @@ function createUpdateWatcher(o) {
     fs.writeFileSync(requestFile, JSON.stringify({ at: new Date(now()).toISOString() }) + '\n');
   }
 
+  // Cập nhật hệ điều hành (apt): bot chỉ XEM và GỬI YÊU CẦU; dịch vụ root agentos-os-update chạy apt-get update + dist-upgrade không hỏi.
+  async function osCommand(rest) {
+    const r = noAccent(rest);
+    if (/^(co|ngay|capnhat|cai|ep)\b/.test(r)) {
+      if (!/\bep\b/.test(r) && !idle()) return '⏳ Đang có việc AI chạy/chờ. Đợi xong rồi gõ /capnhat hedieuhanh co lại, hoặc /capnhat hedieuhanh co ep để làm ngay.';
+      try { fs.writeFileSync(osRequestFile, JSON.stringify({ at: new Date(now()).toISOString() }) + '\n'); } catch (e) { return '⚠️ Không gửi được yêu cầu: ' + e.message; }
+      return '⏳ Đã yêu cầu cập nhật hệ điều hành: máy tải danh sách gói mới rồi nâng cấp (vài phút tới vài chục phút tùy số gói). Xong bot nhắn kết quả; nếu cần khởi động lại sẽ báo.';
+    }
+    const s = await sh('apt-get', ['-s', 'dist-upgrade']);
+    const pkgs = String(s.out).split('\n').filter((l) => l.startsWith('Inst ')).map((l) => l.split(' ')[1]);
+    const lines = ['🖥️ Hệ điều hành (Debian)'];
+    lines.push(pkgs.length ? pkgs.length + ' gói có bản mới (theo danh sách gói lần cập nhật gần nhất): ' + pkgs.slice(0, 15).join(', ') + (pkgs.length > 15 ? '...' : '') : 'Theo danh sách gói gần nhất: đã mới nhất (máy tự tải danh sách mới khi bạn cập nhật).');
+    if (fs.existsSync(rebootFile)) lines.push('⚠️ Máy đang chờ khởi động lại để hoàn tất cập nhật trước (gõ /khoimay co).');
+    lines.push('Gõ /capnhat hedieuhanh co để cập nhật lên bản mới nhất.');
+    return lines.join('\n');
+  }
+
   async function command(arg) {
     const a = noAccent(arg);
+    const om = a.match(/^(he dieu hanh|hedieuhanh|he thong|hethong|hdh|os|debian)\b\s*(.*)$/);
+    if (om) return osCommand(om[2]);
     if (a === 'tudong bat' || a === 'tudong tat') {
       db.kvSet('update:auto', a === 'tudong bat' ? '1' : '0');
       return a === 'tudong bat' ? '✅ Đã bật tự cập nhật: khi có bản mới, máy tự cài trong khung 02:00-05:00 (giờ VN) lúc không có việc AI. Gõ /capnhat tudong tat để tắt.' : '⏸️ Đã tắt tự cập nhật (vẫn báo khi có bản mới).';
@@ -95,6 +120,17 @@ function createUpdateWatcher(o) {
 
   // Khi bộ điều phối vừa khởi động lại: có kết quả cập nhật mới chưa báo thì báo cho quản trị viên.
   async function announceResult() {
+    // kết quả cập nhật hệ điều hành (apt)
+    try {
+      const os = JSON.parse(fs.readFileSync(osResultFile, 'utf8'));
+      if (os && os.at && db.kvGet('update:lastOsResultAt') !== os.at) {
+        db.kvSet('update:lastOsResultAt', os.at);
+        const t = os.ok
+          ? '✅ Đã cập nhật hệ điều hành: ' + (os.upgraded || 0) + ' gói được nâng cấp.' + (os.rebootRequired ? '\n⚠️ Cần khởi động lại để hoàn tất: gõ /khoimay co.' : '')
+          : '⚠️ Cập nhật hệ điều hành KHÔNG thành công: ' + (os.error || 'lỗi') + (os.tail ? '\n' + os.tail : '');
+        for (const adm of admins) { try { await notify(adm, t); } catch (e) { log('báo kết quả cập nhật hệ điều hành lỗi: ' + e.message); } }
+      }
+    } catch (e) { /* chưa có */ }
     let r; try { r = JSON.parse(fs.readFileSync(resultFile, 'utf8')); } catch (e) { return null; }
     if (!r || !r.at || db.kvGet('update:lastResultAt') === r.at) return null;
     db.kvSet('update:lastResultAt', r.at);

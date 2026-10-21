@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cài đặt AgentOS</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#17202b;--mute:#5b6b7c;--line:#dde3ea;--pri:#0b5c8f;--ok:#157a3c;--bad:#b3261e;--warn:#9a6700}
+*{box-sizing:border-box}html,body{height:100%}body{margin:0;font:15px/1.5 system-ui,"Noto Sans",sans-serif;color:var(--ink);background:var(--bg);display:flex}
+nav{width:218px;background:#12324a;color:#dbe7f0;padding:14px 8px;display:flex;flex-direction:column;gap:2px;flex:none}
+nav h1{font-size:16px;margin:4px 10px 12px;color:#fff;letter-spacing:.2px}
+nav button{all:unset;cursor:pointer;padding:10px 12px;border-radius:8px;display:flex;gap:10px;align-items:center}
+nav button:hover{background:#1c4766}nav button.on{background:#0b5c8f;color:#fff;font-weight:600}
+main{flex:1;overflow:auto;padding:22px 28px}h2{margin:0 0 14px;font-size:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.card h3{margin:0 0 8px;font-size:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}
+button.b{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}button.b:hover{background:#eef3f8}
+button.p{background:var(--pri);color:#fff;border-color:var(--pri)}button.p:hover{background:#0a4f7c}button.d{color:var(--bad)}button:disabled{opacity:.5;cursor:default}
+input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;min-width:0}input[type=text],input[type=password]{flex:1}
+.mute{color:var(--mute)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}small{color:var(--mute)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#aab4bf;margin-right:6px}.dot.active{background:#1fa34a}.dot.failed{background:#d33}.dot.inactive{background:#c9a227}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}.app{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:#fff}
+.bar{height:9px;background:#e3e9ef;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--pri)}
+.banner{padding:10px 14px;border-radius:10px;margin-bottom:14px;background:#fff6dc;border:1px solid #ecd58a;color:#5c4400}
+#log{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(10,20,30,.55);display:none;align-items:center;justify-content:center;z-index:9}
+#log .box{background:#fff;border-radius:14px;width:min(860px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:16px}
+#log pre{background:#0d1620;color:#cfe3f3;border-radius:8px;padding:10px;overflow:auto;flex:1;min-height:260px;max-height:60vh;margin:10px 0;font:12.5px/1.45 ui-monospace,monospace;white-space:pre-wrap}
+#toast{position:fixed;right:18px;bottom:18px;background:#17202b;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:10;max-width:60vw}
+table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px solid var(--line)}
+@media(max-width:760px){nav{width:62px}nav span.t{display:none}main{padding:14px}}
+</style></head><body>
+<nav id="nav"><h1>⚙ AgentOS</h1></nav>
+<main id="main"><p class="mute">Đang tải...</p></main>
+<div id="log"><div class="box"><div class="row"><b id="logt" class="grow"></b><span id="logs" class="mute"></span></div><pre id="logp"></pre><div class="row"><span class="grow mute" id="logh"></span><button class="b p" id="logc" disabled>Đóng</button></div></div></div>
+<div id="toast"></div>
+<script>
+(function () {
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['net', '📶', 'Mạng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var cur = 'overview', main = document.getElementById('main'), timer = null;
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function api(method, path, body) {
+    return fetch('/api/' + path, { method: method, headers: { 'content-type': 'application/json', 'x-agentos-settings': '1' }, body: method === 'POST' ? JSON.stringify(body || {}) : undefined })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('Lỗi ' + r.status)); return j; }); });
+  }
+  function toast(t, bad) { var e = document.getElementById('toast'); e.textContent = t; e.style.background = bad ? '#8f1d16' : '#17202b'; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { e.style.display = 'none'; }, 5000); }
+  function fail(e) { toast(e.message || String(e), true); }
+  function ask(msg) { return window.confirm(msg); }
+
+  // ----- cửa sổ nhật ký công việc nền -----
+  function watchJob(id, title, done) {
+    var box = document.getElementById('log'), pre = document.getElementById('logp'), c = document.getElementById('logc');
+    document.getElementById('logt').textContent = title; document.getElementById('logs').textContent = 'đang chạy...'; document.getElementById('logh').textContent = '';
+    pre.textContent = ''; c.disabled = true; box.style.display = 'flex';
+    var from = 0, stop = false;
+    c.onclick = function () { box.style.display = 'none'; stop = true; if (done) done(); render(); };
+    (function poll() {
+      if (stop) return;
+      api('GET', 'jobs/' + id + '?from=' + from).then(function (j) {
+        if (j.lines.length) { pre.textContent += j.lines.join('\n') + '\n'; pre.scrollTop = pre.scrollHeight; }
+        from = j.next;
+        if (j.status === 'running') return setTimeout(poll, 1200);
+        document.getElementById('logs').textContent = j.status === 'done' ? '✓ xong' : '✗ lỗi';
+        document.getElementById('logs').className = j.status === 'done' ? 'ok' : 'bad'; c.disabled = false;
+      }).catch(function (e) { document.getElementById('logs').textContent = e.message; c.disabled = false; });
+    })();
+  }
+
+  function nav() {
+    var h = '<h1>⚙ AgentOS</h1>';
+    TABS.forEach(function (t) { h += '<button data-t="' + t[0] + '" class="' + (t[0] === cur ? 'on' : '') + '">' + t[1] + ' <span class="t">' + t[2] + '</span></button>'; });
+    var n = document.getElementById('nav'); n.innerHTML = h;
+    [].forEach.call(n.querySelectorAll('button'), function (b) { b.onclick = function () { cur = b.getAttribute('data-t'); nav(); render(); }; });
+  }
+  function dot(s) { return '<span class="dot ' + esc(s) + '"></span>' + esc(s === 'active' ? 'đang chạy' : s === 'inactive' ? 'đã dừng' : s === 'failed' ? 'LỖI' : s); }
+  function secs(n) { var d = Math.floor(n / 86400), h = Math.floor(n % 86400 / 3600), m = Math.floor(n % 3600 / 60); return (d ? d + ' ngày ' : '') + h + ' giờ ' + m + ' phút'; }
+  function set(html) { main.innerHTML = html; }
+  function on(id, fn) { var e = document.getElementById(id); if (e) e.onclick = fn; }
+  function rebootBanner(o) { return o && o.rebootRequired ? '<div class="banner">⚠️ Máy cần <b>khởi động lại</b> để hoàn tất cập nhật. <button class="b" id="rb">Khởi động lại bây giờ</button></div>' : ''; }
+  function wireReboot() { on('rb', function () { if (ask('Khởi động lại máy bây giờ?')) api('POST', 'power', { action: 'reboot', confirm: true }).then(function () { toast('Máy sẽ khởi động lại...'); }).catch(fail); }); }
+
+  var pages = {
+    overview: function () {
+      api('GET', 'overview').then(function (o) {
+        var used = o.disk.totalMb ? Math.round(100 - o.disk.freeMb * 100 / o.disk.totalMb) : 0, svc = '';
+        var names = { orchestrator: 'Bộ điều phối (bot Telegram)', deskd: 'Trợ lý màn hình', onedrive: 'Đồng bộ OneDrive', tailscale: 'Tailscale', cups: 'In ấn (CUPS)', network: 'Mạng', capnhat: 'Cập nhật từ xa', saoluu: 'Sao lưu hằng ngày' };
+        Object.keys(o.services).forEach(function (k) { svc += '<tr><td>' + esc(names[k] || k) + '</td><td>' + dot(o.services[k]) + '</td></tr>'; });
+        set(rebootBanner(o) + (o.configured ? '' : '<div class="banner">Máy chưa cấu hình xong (chưa có bot Telegram/AI). Hoàn tất trình hướng dẫn lần đầu.</div>') +
+          '<h2>Tổng quan</h2><div class="grid"><div class="card"><h3>AgentOS</h3>Phiên bản <b>' + esc(o.version) + '</b><br><small>Tên máy: ' + esc(o.host) + '<br>Địa chỉ: ' + esc(o.ips.join(', ') || '—') + '<br>Đã chạy: ' + esc(secs(o.uptimeSec)) + '</small></div>' +
+          '<div class="card"><h3>Ổ đĩa</h3><div class="bar"><i style="width:' + used + '%"></i></div><small>Còn trống ' + esc(o.disk.freeMb >= 1024 ? (o.disk.freeMb / 1024).toFixed(1) + ' GB' : o.disk.freeMb + ' MB') + ' (' + used + '% đã dùng)</small></div></div>' +
+          '<div class="card"><h3>Dịch vụ</h3><table>' + svc + '</table></div>');
+        wireReboot();
+      }).catch(fail);
+    },
+    updates: function () {
+      set('<h2>Cập nhật</h2><div class="card"><h3>Phần mềm AgentOS</h3><p class="mute">Bot, trình hướng dẫn, ứng dụng của AgentOS. Bản cập nhật có chữ ký của nhà phát hành; lỗi thì tự khôi phục bản cũ.</p><div id="u1" class="mute">Chưa kiểm tra.</div><div class="row" style="margin-top:10px"><button class="b" id="c1">Kiểm tra</button><button class="b p" id="a1" disabled>Cập nhật AgentOS</button></div></div>' +
+        '<div class="card"><h3>Hệ điều hành (Debian)</h3><p class="mute">Bản vá bảo mật và phiên bản mới nhất của các gói hệ thống (Linux, Chrome, LibreOffice...). Có thể mất vài phút.</p><div id="u2" class="mute">Chưa kiểm tra.</div><div class="row" style="margin-top:10px"><button class="b" id="c2">Kiểm tra</button><button class="b p" id="a2">Cập nhật hệ điều hành lên mới nhất</button></div></div><div id="rbx"></div>');
+      on('c1', function () { document.getElementById('u1').textContent = 'Đang hỏi...'; api('POST', 'updates/agentos/check').then(function (r) {
+        document.getElementById('u1').innerHTML = 'Đang cài <b>' + esc(r.installed) + '</b> · mới nhất <b>' + esc(r.latest) + '</b> ' + (r.newer ? '<span class="warn">→ có bản mới</span>' : '<span class="ok">✓ đã mới nhất</span>') + (r.newer && r.notes ? '<br><small>' + esc(r.notes) + '</small>' : '');
+        document.getElementById('a1').disabled = !r.newer; }).catch(function (e) { document.getElementById('u1').innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; }); });
+      on('a1', function () { api('POST', 'updates/agentos/apply').then(function (r) { watchJob(r.job, 'Cập nhật AgentOS'); }).catch(fail); });
+      on('c2', function () { document.getElementById('u2').textContent = 'Đang tải danh sách cập nhật...'; api('POST', 'updates/os/check').then(function (r) {
+        document.getElementById('u2').innerHTML = r.upgradable ? '<span class="warn">' + r.upgradable + ' gói có bản mới</span><br><small>' + esc(r.packages.join(', ')) + (r.upgradable > r.packages.length ? '...' : '') + '</small>' : '<span class="ok">✓ Hệ điều hành đã mới nhất</span>';
+        document.getElementById('rbx').innerHTML = rebootBanner(r); wireReboot(); }).catch(function (e) { document.getElementById('u2').innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; }); });
+      on('a2', function () { if (!ask('Cập nhật toàn bộ hệ điều hành lên bản mới nhất? Có thể mất vài phút và có thể cần khởi động lại.')) return; api('POST', 'updates/os/upgrade').then(function (r) { watchJob(r.job, 'Cập nhật hệ điều hành'); }).catch(fail); });
+    },
+    apps: function () {
+      api('GET', 'apps').then(function (r) {
+        var h = '<h2>Ứng dụng</h2><div class="card"><h3>Cài thêm từ kho Debian</h3><div class="row"><input type="text" id="pk" placeholder="Tên gói, ví dụ: gimp, vlc, htop"><button class="b p" id="pi">Cài</button><button class="b d" id="pr">Gỡ</button></div><small>Các gói trong kho Debian chính thức. Ứng dụng Windows (.exe) không chạy trực tiếp trên Linux.</small></div><div class="grid">';
+        r.apps.forEach(function (a) { h += '<div class="app"><b>' + esc(a.name) + '</b><div class="row"><span class="grow ' + (a.installed ? 'ok' : 'mute') + '">' + (a.installed ? '✓ Đã cài' : 'Chưa cài') + '</span>' + (a.installed ? '<button class="b d" data-r="' + a.id + '">Gỡ</button>' : '<button class="b p" data-i="' + a.id + '">Cài</button>') + '</div></div>'; });
+        set(h + '</div>');
+        [].forEach.call(main.querySelectorAll('button[data-i]'), function (b) { b.onclick = function () { api('POST', 'apps/install', { id: b.getAttribute('data-i') }).then(function (j) { watchJob(j.job, 'Cài ứng dụng'); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-r]'), function (b) { b.onclick = function () { if (ask('Gỡ ứng dụng này?')) api('POST', 'apps/remove', { id: b.getAttribute('data-r') }).then(function (j) { watchJob(j.job, 'Gỡ ứng dụng'); }).catch(fail); }; });
+        on('pi', function () { api('POST', 'apps/install', { package: document.getElementById('pk').value }).then(function (j) { watchJob(j.job, 'Cài gói'); }).catch(fail); });
+        on('pr', function () { if (ask('Gỡ gói này?')) api('POST', 'apps/remove', { package: document.getElementById('pk').value }).then(function (j) { watchJob(j.job, 'Gỡ gói'); }).catch(fail); });
+      }).catch(fail);
+    },
+    ai: function () {
+      api('GET', 'ai').then(function (r) {
+        var h = '<h2>AI và khóa API</h2>' + (r.configured ? '' : '<div class="banner">Máy chưa cấu hình xong, chưa lưu được khóa. Hoàn tất trình hướng dẫn lần đầu.</div>') + '<p class="mute">Mỗi AI dùng <b>tài khoản đăng nhập</b> hoặc <b>khóa API</b> của bạn. Có khóa thì dùng khóa (tính tiền theo lượng dùng của hãng). Bot tự chuyển sang AI kế tiếp khi hết hạn mức.</p>';
+        r.engines.forEach(function (e) {
+          var login = e.id !== 'deepseekapi';
+          h += '<div class="card"><div class="row"><h3 class="grow" style="margin:0">' + esc(e.name) + '</h3><label><input type="checkbox" data-en="' + e.id + '" ' + (e.enabled ? 'checked' : '') + '> Dùng trong bot</label></div>' +
+            '<p class="mute" style="margin:6px 0">' + (e.installed ? 'Đã cài: ' + esc(e.installed) : 'Chưa cài phần mềm') + ' · ' + (e.key ? 'khóa API: <b>' + esc(e.key) + '</b>' : 'chưa có khóa API') + '</p>' +
+            '<div class="row"><input type="password" id="k-' + e.id + '" placeholder="Dán khóa API (' + esc(e.where) + ')" autocomplete="off"><button class="b p" data-sk="' + e.id + '">Lưu khóa</button>' + (e.key ? '<button class="b d" data-ck="' + e.id + '">Xóa khóa</button>' : '') + '</div>' +
+            '<div class="row" style="margin-top:8px">' + (e.installed ? '' : '<button class="b" data-in="' + e.id + '">Cài phần mềm</button>') + (login && e.installed ? '<button class="b" data-lg="' + e.id + '">Đăng nhập bằng tài khoản</button>' : '') + '</div></div>';
+        });
+        h += '<div class="row"><button class="b p" id="so">Lưu danh sách AI đang dùng</button><small>Thứ tự ưu tiên: ' + esc(r.order.join(' → ') || '—') + '</small></div>';
+        set(h);
+        [].forEach.call(main.querySelectorAll('button[data-sk]'), function (b) { b.onclick = function () { var id = b.getAttribute('data-sk'), v = document.getElementById('k-' + id).value.trim(); if (!v) return toast('Chưa dán khóa', true); toast('Đang kiểm khóa với hãng...'); api('POST', 'ai/key', { engine: id, key: v }).then(function (j) { toast('✔ ' + j.detail + ' (' + j.masked + ')'); if (j.job) watchJob(j.job, 'Cài phần mềm', render); else render(); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-ck]'), function (b) { b.onclick = function () { if (ask('Xóa khóa API này?')) api('POST', 'ai/key/clear', { engine: b.getAttribute('data-ck') }).then(render).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-in]'), function (b) { b.onclick = function () { api('POST', 'ai/install', { engine: b.getAttribute('data-in') }).then(function (j) { watchJob(j.job, 'Cài phần mềm', render); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-lg]'), function (b) { b.onclick = function () { api('POST', 'ai/login', { engine: b.getAttribute('data-lg') }).then(function (j) { toast(j.hint); }).catch(fail); }; });
+        on('so', function () { var order = []; [].forEach.call(main.querySelectorAll('input[data-en]'), function (c) { if (c.checked) order.push(c.getAttribute('data-en')); }); api('POST', 'ai/order', { order: order }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
+      }).catch(fail);
+    },
+    bot: function () {
+      api('GET', 'bot').then(function (r) {
+        if (!r.configured) return set('<h2>Bot Telegram</h2><div class="banner">Máy chưa cấu hình xong. Hoàn tất trình hướng dẫn lần đầu.</div>');
+        set('<h2>Bot Telegram</h2><div class="card"><h3>Bot</h3><p>' + (r.bot ? 'Đang dùng bot <b>@' + esc(r.bot.username) + '</b>' : '<span class="warn">Không đọc được thông tin bot (kiểm tra mạng/token)</span>') + ' · dịch vụ ' + dot(r.service) + '</p>' +
+          '<div class="row"><input type="password" id="tk" placeholder="Đổi token bot (từ @BotFather)" autocomplete="off"><button class="b p" id="tks">Lưu token</button></div></div>' +
+          '<div class="card"><h3>Người được phép điều khiển</h3><p class="mute">ID Telegram của chủ máy (nhắn <b>/id</b> cho bot để biết). Nhiều ID ngăn cách bằng dấu phẩy.</p><div class="row"><input type="text" id="ow" value="' + esc(r.owners.join(',')) + '"><button class="b p" id="ows">Lưu</button></div></div>' +
+          '<div class="card"><h3>Chế độ làm việc của AI</h3><p>Hiện tại: <b>' + (r.fullAccessEnabled ? '⚡ Toàn quyền' : '🛡️ Bảo vệ') + '</b></p><p class="mute">Bảo vệ: AI hỏi bạn trước khi ghi tệp/chạy lệnh và chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, có quyền quản trị (sudo) trên máy — chỉ bật khi hiểu rõ.</p>' +
+          '<div class="row"><button class="b" id="m0">Chuyển sang Bảo vệ</button><button class="b d" id="m1">Chuyển sang Toàn quyền</button></div></div>');
+        on('tks', function () { api('POST', 'bot/token', { token: document.getElementById('tk').value }).then(function (j) { toast('Đã lưu bot @' + j.bot.username); render(); }).catch(fail); });
+        on('ows', function () { api('POST', 'bot/owner', { ids: document.getElementById('ow').value }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
+        on('m0', function () { api('POST', 'bot/mode', { full: false }).then(function () { toast('Đã chuyển sang chế độ Bảo vệ'); render(); }).catch(fail); });
+        on('m1', function () { if (ask('BẬT TOÀN QUYỀN: AI sẽ tự làm không hỏi và có quyền quản trị trên máy này. Bạn chắc chắn?')) api('POST', 'bot/mode', { full: true }).then(function () { toast('Đã bật Toàn quyền'); render(); }).catch(fail); });
+      }).catch(fail);
+    },
+    net: function () {
+      api('GET', 'net').then(function (r) {
+        set('<h2>Mạng</h2><div class="card"><h3>Tình trạng</h3><p>' + (r.status.online ? '<span class="ok">✓ Có Internet</span>' : '<span class="bad">Không có Internet</span>') + ' · địa chỉ ' + esc(r.ips.join(', ') || '—') + '</p></div>' +
+          '<div class="card"><h3>Wi-Fi</h3><div class="row"><button class="b" id="ws">Quét mạng Wi-Fi</button></div><div id="wl" style="margin-top:10px"></div></div>');
+        on('ws', function () { document.getElementById('wl').textContent = 'Đang quét...'; api('POST', 'net/scan').then(function (j) {
+          var h = ''; j.networks.forEach(function (n, i) { h += '<div class="row" style="margin:6px 0"><span class="grow">' + esc(n.ssid) + ' <small>(' + n.signal + '%' + (n.secured ? ', có mật khẩu' : '') + ')</small></span>' + (n.secured ? '<input type="password" id="wp' + i + '" placeholder="Mật khẩu" autocomplete="off">' : '') + '<button class="b p" data-w="' + i + '">Kết nối</button></div>'; });
+          document.getElementById('wl').innerHTML = h || '<span class="mute">Không thấy mạng nào.</span>';
+          [].forEach.call(document.querySelectorAll('button[data-w]'), function (b) { b.onclick = function () { var i = b.getAttribute('data-w'), pw = document.getElementById('wp' + i); toast('Đang kết nối...'); api('POST', 'net/connect', { ssid: j.networks[i].ssid, password: pw ? pw.value : null }).then(function () { toast('Đã kết nối'); render(); }).catch(fail); }; });
+        }).catch(fail); });
+      }).catch(fail);
+    },
+    link: function () {
+      Promise.all([api('GET', 'onedrive'), api('GET', 'tailscale')]).then(function (a) {
+        var od = a[0], ts = a[1];
+        set('<h2>Kết nối</h2><div class="card"><h3>OneDrive (Microsoft)</h3><p>' + (od.connected ? '<span class="ok">✓ Đã kết nối</span> · đồng bộ ' + dot(od.service) + ' · thư mục <b>' + esc(od.dir) + '</b> (' + (od.entries == null ? '?' : od.entries) + ' mục)' : '<span class="mute">Chưa kết nối</span>') + '</p><p class="mute">AI đọc dữ liệu và lưu kết quả vào OneDrive của bạn. Đồng bộ hai chiều với tài khoản Microsoft thật.</p><div class="row" id="odb"></div><div id="odx"></div></div>' +
+          '<div class="card"><h3>Tailscale (đường vào dự phòng)</h3><p>' + (ts.state === 'Running' ? '<span class="ok">✓ Đã kết nối</span> · ' + esc((ts.ips || [])[0] || '') + ' ' + esc(ts.dns || '') : ts.state === 'missing' ? '<span class="bad">Chưa cài</span>' : '<span class="mute">Chưa đăng nhập (' + esc(ts.state) + ')</span>') + '</p><div class="row" id="tsb"></div><div id="tsx"></div></div>');
+        var ob = document.getElementById('odb');
+        ob.innerHTML = od.connected ? '<button class="b" id="os">Đồng bộ ngay</button><button class="b d" id="od">Ngắt kết nối</button>' : '<button class="b p" id="oc">Kết nối OneDrive</button>';
+        on('os', function () { api('POST', 'onedrive/sync').then(function () { toast('Đã yêu cầu đồng bộ'); }).catch(fail); });
+        on('od', function () { if (ask('Ngắt kết nối OneDrive? (tệp đã tải về vẫn giữ nguyên)')) api('POST', 'onedrive/disconnect', { confirm: true }).then(render).catch(fail); });
+        on('oc', function () { toast('Đang lấy đường dẫn đăng nhập...'); api('POST', 'onedrive/start').then(function (j) {
+          document.getElementById('odx').innerHTML = '<ol><li>Mở đường dẫn này (chuột phải → Mở), đăng nhập Microsoft và bấm Đồng ý: <br><a href="' + esc(j.url) + '" target="_blank" rel="noopener">' + esc(j.url.slice(0, 70)) + '...</a></li><li>Trình duyệt hiện <b>trang trắng</b>. Copy TOÀN BỘ địa chỉ trên thanh địa chỉ.</li><li>Dán vào đây: <div class="row"><input type="text" id="odr" placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=..."><button class="b p" id="odf">Hoàn tất</button></div></li></ol>';
+          on('odf', function () { toast('Đang xác nhận...'); api('POST', 'onedrive/finish', { response: document.getElementById('odr').value }).then(function () { toast('✔ Đã kết nối OneDrive'); render(); }).catch(fail); }); }).catch(fail); });
+        var tb = document.getElementById('tsb');
+        tb.innerHTML = ts.state === 'Running' ? '<button class="b d" id="td">Đăng xuất Tailscale</button>' : ts.state === 'missing' ? '' : '<button class="b p" id="tc">Kết nối Tailscale</button>';
+        on('td', function () { if (ask('Đăng xuất Tailscale? Máy mất đường vào dự phòng.')) api('POST', 'tailscale/disconnect', { confirm: true }).then(render).catch(fail); });
+        on('tc', function () { toast('Đang lấy đường dẫn đăng nhập...'); api('POST', 'tailscale/connect').then(function (j) {
+          document.getElementById('tsx').innerHTML = j.already ? 'Đã kết nối.' : '<p>Mở đường dẫn, đăng nhập và bấm Connect (làm trong 10 phút): <br><a href="' + esc(j.url) + '" target="_blank" rel="noopener">' + esc(j.url) + '</a></p><button class="b" id="tr">Đã xong, kiểm tra lại</button>'; on('tr', render); }).catch(fail); });
+      }).catch(fail);
+    },
+    sys: function () {
+      Promise.all([api('GET', 'services'), api('GET', 'backup')]).then(function (a) {
+        var s = a[0], b = a[1], names = { orchestrator: 'Bộ điều phối (bot)', deskd: 'Trợ lý màn hình', onedrive: 'Đồng bộ OneDrive', tailscale: 'Tailscale', cups: 'In ấn', network: 'Mạng', capnhat: 'Cập nhật từ xa', saoluu: 'Sao lưu hằng ngày' };
+        var rows = '', opts = '';
+        Object.keys(s.services).forEach(function (k) { rows += '<tr><td>' + esc(names[k] || k) + '</td><td>' + dot(s.services[k]) + '</td><td style="text-align:right">' + (s.restartable.indexOf(k) >= 0 ? '<button class="b" data-rs="' + k + '">Khởi động lại</button>' : '') + '</td></tr>'; opts += '<option value="' + k + '">' + esc(names[k] || k) + '</option>'; });
+        var files = ''; b.files.forEach(function (f) { files += '<tr><td>' + esc(f.name) + '</td><td>' + esc(f.size) + '</td></tr>'; });
+        set('<h2>Hệ thống</h2><div class="card"><h3>Dịch vụ</h3><table>' + rows + '</table></div><div class="card"><h3>Nhật ký</h3><div class="row"><select id="lu">' + opts + '</select><button class="b" id="lv">Xem</button></div><pre id="lp" style="background:#0d1620;color:#cfe3f3;border-radius:8px;padding:10px;max-height:300px;overflow:auto;font-size:12px;white-space:pre-wrap;display:none"></pre></div>' +
+          '<div class="card"><h3>Sao lưu</h3><p class="mute">Mỗi ngày 02:30 lên OneDrive (không gồm mật khẩu/khóa). Thư mục: ' + esc(b.dir) + '</p><table>' + (files || '<tr><td class="mute">Chưa có bản sao lưu</td></tr>') + '</table><div class="row" style="margin-top:10px"><button class="b p" id="bk">Sao lưu ngay</button></div></div>' +
+          '<div class="card"><h3>Nguồn điện</h3><div class="row"><button class="b" id="p1">Khởi động lại máy</button><button class="b d" id="p2">Tắt máy</button></div></div>');
+        [].forEach.call(main.querySelectorAll('button[data-rs]'), function (x) { x.onclick = function () { api('POST', 'services/restart', { name: x.getAttribute('data-rs') }).then(function (j) { toast('Đã khởi động lại: ' + j.state); render(); }).catch(fail); }; });
+        on('lv', function () { var p = document.getElementById('lp'); p.style.display = 'block'; p.textContent = 'Đang đọc...'; api('GET', 'logs?unit=' + document.getElementById('lu').value + '&lines=150').then(function (j) { p.textContent = j.text || '(trống)'; p.scrollTop = p.scrollHeight; }).catch(fail); });
+        on('bk', function () { api('POST', 'backup/run').then(function (j) { watchJob(j.job, 'Sao lưu', render); }).catch(fail); });
+        on('p1', function () { if (ask('Khởi động lại máy?')) api('POST', 'power', { action: 'reboot', confirm: true }).then(function () { toast('Máy sẽ khởi động lại...'); }).catch(fail); });
+        on('p2', function () { if (ask('TẮT máy? (không bật lại từ xa được)')) api('POST', 'power', { action: 'poweroff', confirm: true }).then(function () { toast('Máy sẽ tắt...'); }).catch(fail); });
+      }).catch(fail);
+    }
+  };
+  function render() { clearInterval(timer); (pages[cur] || pages.overview)(); }
+  nav(); render();
+})();
+</script></body></html>

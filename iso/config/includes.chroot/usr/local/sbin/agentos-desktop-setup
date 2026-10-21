@@ -5,7 +5,7 @@
 #   - Ứng dụng Claude / ChatGPT dạng cửa sổ web riêng (Linux không có bản chính thức) trên màn hình chính.
 set -e
 export DEBIAN_FRONTEND=noninteractive
-PKGS="ibus ibus-unikey ibus-gtk3 ibus-gtk4 im-config dconf-cli xarchiver thunar-archive-plugin unzip p7zip-full unar"
+PKGS="ibus ibus-unikey ibus-gtk3 ibus-gtk4 im-config dconf-cli xarchiver thunar-archive-plugin unzip p7zip-full unar fonts-noto-color-emoji"
 apt-get install -y --no-install-recommends $PKGS >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends $PKGS; }
 
 # Cấu hình hệ thống cho IBus (mọi người dùng): nạp sẵn bàn phím Anh + Unikey, phím chuyển
@@ -41,6 +41,19 @@ Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
 
+# Cài đặt AgentOS (giao diện đồ họa): dịch vụ + thanh công cụ (nút Cài đặt và ứng dụng chính ở thanh trên, thêm một lần cho mỗi người dùng khi đăng nhập)
+chmod 755 /usr/local/bin/agentos-settings /usr/local/bin/agentos-panel-setup 2>/dev/null || true
+systemctl daemon-reload 2>/dev/null || true
+systemctl enable --now agentos-settings.service >/dev/null 2>&1 || systemctl enable agentos-settings.service >/dev/null 2>&1 || true
+cat > /etc/xdg/autostart/agentos-panel-setup.desktop <<'EOF2'
+[Desktop Entry]
+Type=Application
+Name=AgentOS - thanh công cụ
+Exec=/usr/local/bin/agentos-panel-setup
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF2
+
 # Sửa màn hình trắng của trình hướng dẫn lần đầu trên một số card đồ họa: tắt tăng tốc GPU của Chromium kiosk
 W=/etc/xdg/autostart/agentos-wizard.desktop
 if [ -f "$W" ] && ! grep -q -- '--disable-gpu' "$W"; then
@@ -48,7 +61,7 @@ if [ -f "$W" ] && ! grep -q -- '--disable-gpu' "$W"; then
 fi
 
 # Biểu tượng ứng dụng mới cho người dùng mới (skel) và người dùng đã có
-for f in agentos-claudeweb agentos-chatgpt; do
+for f in agentos-settings agentos-claudeweb agentos-chatgpt; do
   src=/usr/share/applications/$f.desktop
   [ -f "$src" ] || continue
   mkdir -p /etc/skel/Desktop; cp "$src" /etc/skel/Desktop/$f.desktop; chmod 755 /etc/skel/Desktop/$f.desktop

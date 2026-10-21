@@ -1,0 +1,12 @@
+[Unit]
+Description=AgentOS - Cài đặt (giao diện đồ họa, chỉ 127.0.0.1:8089, chỉ chủ máy)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node /opt/agentos/wizard/settings/server.js
+Restart=always
+RestartSec=3
+# Chạy bằng root để cài phần mềm/cập nhật/khởi động lại dịch vụ; chỉ nhận kết nối loopback từ tài khoản thuộc nhóm sudo (xem server.js)
+
+[Install]
+WantedBy=multi-user.target

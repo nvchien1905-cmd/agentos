@@ -1,0 +1,7 @@
+#!/bin/sh
+# Mở "Cài đặt AgentOS" (giao diện đồ họa) thành cửa sổ riêng bằng Google Chrome.
+URL=http://127.0.0.1:8089/
+BROWSER=/usr/bin/google-chrome-stable; [ -x "$BROWSER" ] || BROWSER=/usr/bin/chromium
+# Đợi dịch vụ sẵn sàng (vừa bật máy)
+i=0; while [ $i -lt 20 ]; do curl -s -o /dev/null "$URL" && break; i=$((i+1)); sleep 1; done
+exec "$BROWSER" --app="$URL" --user-data-dir="$HOME/.config/agentos-app-settings" --password-store=basic --no-first-run --no-default-browser-check --lang=vi --window-size=1180,760 "$@"

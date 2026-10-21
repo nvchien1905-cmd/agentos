@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.21.2",
-  "file": "agentos-update-2026.10.21.2.tar.gz",
-  "size": 116667,
-  "sha256": "48f7d33736088ffbe13c73dab3a5fcffc6dfacafe0cdb40ad27a978e69b5006b",
+  "version": "2026.10.21.3",
+  "file": "agentos-update-2026.10.21.3.tar.gz",
+  "size": 134560,
+  "sha256": "9b239f5d51bb583aefc5a8ccd87cff8e5e9b6a8f9191b3693b218506c20e7363",
   "date": "2026-10-21",
-  "notes": "Sửa màn hình trắng ở trình hướng dẫn lần đầu; gõ tiếng Việt (IBus+Unikey, Ctrl+Space đổi kiểu gõ); giải nén tệp (chuột phải → Giải nén tại đây); ứng dụng Claude và ChatGPT trên màn hình chính"
+  "notes": "Cài đặt AgentOS (giao diện đồ họa): cập nhật AgentOS và hệ điều hành, cài ứng dụng, khóa API, bot, Wi-Fi, OneDrive, Tailscale. Thanh công cụ có nút Cài đặt và ứng dụng chính."
 }

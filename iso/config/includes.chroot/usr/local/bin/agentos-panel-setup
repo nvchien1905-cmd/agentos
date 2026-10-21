@@ -1,0 +1,34 @@
+#!/bin/sh
+# Thêm nút "Cài đặt AgentOS" và các ứng dụng chính (Chrome, Zalo, KiotViet, Claude, ChatGPT) vào THANH TRÊN của Xfce, một lần cho mỗi người dùng.
+# Chạy trong phiên đăng nhập của người dùng (autostart /etc/xdg/autostart/agentos-panel-setup.desktop). Chạy lại không hại: có tệp đánh dấu thì thoát.
+MARK="$HOME/.config/agentos/panel-v1"
+[ -f "$MARK" ] && exit 0
+command -v xfconf-query >/dev/null 2>&1 || exit 0
+# đợi xfce4-panel sẵn sàng
+i=0; while [ $i -lt 30 ]; do xfconf-query -c xfce4-panel -p /panels >/dev/null 2>&1 && break; i=$((i+1)); sleep 1; done
+xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids >/dev/null 2>&1 || exit 0
+
+ID=21; NEW=""
+for app in agentos-settings google-chrome agentos-zalo agentos-kiotviet agentos-claudeweb agentos-chatgpt; do
+  src=/usr/share/applications/$app.desktop
+  [ -f "$src" ] || continue
+  d="$HOME/.config/xfce4/panel/launcher-$ID"
+  mkdir -p "$d"; cp "$src" "$d/$app.desktop"
+  xfconf-query -c xfce4-panel -p /plugins/plugin-$ID -n -t string -s launcher
+  xfconf-query -c xfce4-panel -p /plugins/plugin-$ID/items -n -t string -s "$app.desktop" -a
+  NEW="$NEW $ID"
+  ID=$((ID+1))
+done
+[ -n "$NEW" ] || exit 0
+OLD=$(xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids | grep -E '^[0-9]+$')
+ARGS=""
+FIRST=1
+for p in $OLD; do
+  ARGS="$ARGS -t int -s $p"
+  if [ "$FIRST" = 1 ]; then for n in $NEW; do ARGS="$ARGS -t int -s $n"; done; FIRST=0; fi
+done
+# shellcheck disable=SC2086
+xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids $ARGS
+mkdir -p "$HOME/.config/agentos"; : > "$MARK"
+xfce4-panel -r >/dev/null 2>&1 &
+exit 0

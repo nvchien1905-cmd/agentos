@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cài đặt AgentOS
+Comment=Cập nhật hệ điều hành, cài ứng dụng, khóa API, bot Telegram, Wi-Fi, OneDrive... không cần gõ lệnh
+Exec=/usr/local/bin/agentos-settings
+Icon=agentos-settings
+Terminal=false
+Categories=Settings;System;

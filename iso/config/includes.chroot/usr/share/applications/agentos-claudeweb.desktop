@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Claude (ứng dụng web)
+Comment=Claude của Anthropic dạng cửa sổ riêng như ứng dụng trên Windows (đăng nhập tài khoản của bạn)
+Exec=/usr/local/bin/agentos-app claudeweb
+Icon=agentos-claudeweb
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=claude.ai

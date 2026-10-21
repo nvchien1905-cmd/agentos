@@ -17,6 +17,8 @@ const APPS = {
   zalo: { label: 'Zalo', argv: ['/usr/local/bin/agentos-app', 'zalo'], match: (c) => /agentos-app-zalo/.test(c) },
   kiotviet: { label: 'KiotViet', argv: ['/usr/local/bin/agentos-app', 'kiotviet'], match: (c) => /agentos-app-kiotviet/.test(c) },
   deepseek: { label: 'DeepSeek', argv: ['/usr/local/bin/agentos-app', 'deepseek'], match: (c) => /agentos-app-deepseek/.test(c) },
+  claudeweb: { label: 'Claude (web)', argv: ['/usr/local/bin/agentos-app', 'claudeweb'], match: (c) => /agentos-app-claudeweb/.test(c) },
+  chatgpt: { label: 'ChatGPT', argv: ['/usr/local/bin/agentos-app', 'chatgpt'], match: (c) => /agentos-app-chatgpt/.test(c) },
   chrome: { label: 'Google Chrome', argv: ['/usr/bin/google-chrome-stable', '--password-store=basic'], match: (c) => /\/opt\/google\/chrome\/chrome/.test(c) && !/--app=|agentos-app-/.test(c) },
   rustdesk: { label: 'RustDesk', argv: ['/usr/bin/rustdesk'], match: (c) => /\/usr\/share\/rustdesk\/rustdesk|^rustdesk|\/usr\/bin\/rustdesk/.test(c) && !/--service/.test(c) },
   claude: { label: 'Claude Code', argv: ['/usr/local/bin/agentos-ai', 'claude'], match: null },

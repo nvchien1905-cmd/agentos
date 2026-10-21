@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.20.2",
-  "file": "agentos-update-2026.10.20.2.tar.gz",
-  "size": 115184,
-  "sha256": "16a504d0536fa7458e9ee24b0d1a8853db975ab7d3f811b03913d0653756390a",
-  "date": "2026-10-20",
-  "notes": "Sửa màn hình trắng ở trình hướng dẫn lần đầu trên một số card đồ họa (tắt tăng tốc GPU của Chromium)"
+  "version": "2026.10.21.1",
+  "file": "agentos-update-2026.10.21.1.tar.gz",
+  "size": 117008,
+  "sha256": "8d428313f454c3709e8fadf47f12ff45cc67a9600d06851b93c25a11e69fdbda",
+  "date": "2026-10-21",
+  "notes": "Gõ tiếng Việt (IBus+Unikey, Ctrl+Space đổi kiểu gõ), giải nén tệp (chuột phải → Giải nén tại đây), ứng dụng Claude và ChatGPT trên màn hình chính"
 }

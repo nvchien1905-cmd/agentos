@@ -1,0 +1,56 @@
+#!/bin/sh
+# Tiện ích máy tính để bàn (chạy bằng root, chạy lại nhiều lần không hại). Dùng cho: hook dựng ISO và apply.sh của bản cập nhật.
+#   - Gõ tiếng Việt: ibus + ibus-unikey (UniKey bản Windows KHÔNG chạy trên Linux), bật sẵn Telex; đổi kiểu gõ: Ctrl+Space hoặc Super+Space.
+#   - Giải nén: xarchiver + thunar-archive-plugin (chuột phải tệp .zip/.7z/.rar -> "Giải nén tại đây"), unzip/7z/unar cho dòng lệnh.
+#   - Ứng dụng Claude / ChatGPT dạng cửa sổ web riêng (Linux không có bản chính thức) trên màn hình chính.
+set -e
+export DEBIAN_FRONTEND=noninteractive
+PKGS="ibus ibus-unikey ibus-gtk3 ibus-gtk4 im-config dconf-cli xarchiver thunar-archive-plugin unzip p7zip-full unar"
+apt-get install -y --no-install-recommends $PKGS >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends $PKGS; }
+
+# Cấu hình hệ thống cho IBus (mọi người dùng): nạp sẵn bàn phím Anh + Unikey, phím chuyển
+mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
+[ -f /etc/dconf/profile/user ] || printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user
+grep -q '^system-db:local' /etc/dconf/profile/user || echo 'system-db:local' >> /etc/dconf/profile/user
+cat > /etc/dconf/db/local.d/00-agentos-ibus <<'EOF'
+[desktop/ibus/general]
+preload-engines=['xkb:us::eng', 'Unikey']
+engines-order=['xkb:us::eng', 'Unikey']
+use-system-keyboard-layout=true
+
+[desktop/ibus/general/hotkey]
+triggers=['<Control>space', '<Super>space']
+EOF
+dconf update
+# IBus là bộ gõ mặc định của phiên Xfce (im-config chọn ibus khi chỉ có ibus)
+mkdir -p /etc/X11/Xsession.d
+cat > /etc/X11/Xsession.d/75agentos-ibus <<'EOF'
+# Bộ gõ tiếng Việt (IBus + Unikey) cho mọi ứng dụng, kể cả Chrome
+export GTK_IM_MODULE=ibus
+export QT_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+EOF
+chmod 644 /etc/X11/Xsession.d/75agentos-ibus
+mkdir -p /etc/xdg/autostart
+cat > /etc/xdg/autostart/agentos-ibus.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Bộ gõ tiếng Việt (IBus)
+Exec=ibus-daemon -drx
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+
+# Biểu tượng ứng dụng mới cho người dùng mới (skel) và người dùng đã có
+for f in agentos-claudeweb agentos-chatgpt; do
+  src=/usr/share/applications/$f.desktop
+  [ -f "$src" ] || continue
+  mkdir -p /etc/skel/Desktop; cp "$src" /etc/skel/Desktop/$f.desktop; chmod 755 /etc/skel/Desktop/$f.desktop
+  for h in /home/*; do
+    u=$(basename "$h"); id "$u" >/dev/null 2>&1 || continue; [ "$(id -u "$u")" -ge 1000 ] || continue
+    mkdir -p "$h/Desktop"; cp "$src" "$h/Desktop/$f.desktop"; chmod 755 "$h/Desktop/$f.desktop"; chown "$u:$(id -gn "$u")" "$h/Desktop/$f.desktop"
+  done
+done
+gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+update-desktop-database /usr/share/applications 2>/dev/null || true
+exit 0

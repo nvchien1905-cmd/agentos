@@ -30,6 +30,10 @@ fi
 # --- Sao lưu hằng ngày
 systemctl enable agentos-sao-luu.timer || true
 
+# --- Gõ tiếng Việt (IBus + Unikey), giải nén tệp, ứng dụng Claude/ChatGPT: dùng chung script với bản cập nhật
+chmod 0755 /usr/local/sbin/agentos-desktop-setup
+/usr/local/sbin/agentos-desktop-setup
+
 # --- Cập nhật phần mềm không cần boot lại (bản cập nhật phải có chữ ký khớp /etc/agentos/update-pubkey.pem)
 systemctl enable agentos-update.path || true
 test -s /etc/agentos/update-pubkey.pem || { echo "[LOI] thieu khoa cong khai cap nhat"; exit 1; }

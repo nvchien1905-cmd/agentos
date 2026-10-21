@@ -89,7 +89,8 @@ function createWizard(options) {
     token: persisted.token || null, bot: persisted.bot || null, owner: persisted.owner || null,
     claudeToken: persisted.claudeToken || null, lastError: persisted.lastError || null,
     apiKeys: persisted.apiKeys && typeof persisted.apiKeys === 'object' ? persisted.apiKeys : {},   // khóa API chủ máy nhập (lưu quyền 600, xóa khi hoàn tất)
-    fullAccess: persisted.fullAccess === true,                   // chủ máy TỰ tích ô "toàn quyền" (mặc định tắt)
+    // Toàn quyền (AI có sudo, không hỏi xin phép) BẬT SẴN theo quyết định của nhà bán máy (21/10/2026); ô tích ở bước cuối cho chủ máy bỏ tích để tắt.
+    fullAccess: persisted.fullAccess !== false,
     engines: { claude: { installed: null, loggedIn: false }, codex: { installed: null, loggedIn: false }, gemini: { installed: null, loggedIn: false }, deepseekapi: { installed: null, loggedIn: false } },
     jobs: {}, finished: false,
     hotspot: { ssid: null, up: false, error: null },
@@ -306,6 +307,7 @@ function createWizard(options) {
     async finish() {
       if (!state.token || !state.owner) throw new Error('Chưa xong bước Telegram');
       const ready = Object.keys(state.engines).filter((e) => state.engines[e].loggedIn);
+      if (!ready.length) throw new Error('Chưa có AI nào đăng nhập được');      // kiểm TRƯỚC khi cài sudo: lỗi thì không đụng tới hệ thống
       // Toàn quyền: chỉ khi chủ máy đã tự tích ô. Cài sudo không mật khẩu cho `agentos` + gỡ giới hạn systemd TRƯỚC khi bật dịch vụ điều phối.
       if (state.fullAccess) await fullaccess.enable(run, o.fullAccessPaths);
       else if (fullaccess.isEnabled(o.fullAccessPaths)) await fullaccess.disable(run, o.fullAccessPaths);
@@ -314,7 +316,8 @@ function createWizard(options) {
       store.clear(o.stateFile);                                    // token đã nằm trong orchestrator.env, không giữ bản sao
       await stopHotspot();
       await run('systemctl', ['enable', '--now', 'agentos-orchestrator.service'], { timeoutMs: 60000 });
-      await tg.send(state.token, state.owner.id, 'AgentOS đã sẵn sàng. Nhắn việc cho em bằng chữ (ví dụ: "Hôm nay thứ mấy?"). Gõ /help để xem lệnh, /onedrive ketnoi để nối OneDrive (AI đọc dữ liệu và lưu kết quả ở đó). AI đang dùng: ' + ready.join(', ') + '.', tgOpts()).catch(() => {});
+      await tg.send(state.token, state.owner.id, 'AgentOS đã sẵn sàng. Nhắn việc cho em bằng chữ (ví dụ: "Hôm nay thứ mấy?"). Gõ /help để xem lệnh, /onedrive ketnoi để nối OneDrive (AI đọc dữ liệu và lưu kết quả ở đó). AI đang dùng: ' + ready.join(', ') + '.\n' +
+        (state.fullAccess ? '⚡ Chế độ TOÀN QUYỀN đang BẬT: AI tự làm một mạch, có quyền quản trị (sudo) trên máy này, không hỏi xin phép. Gõ /baove để chuyển sang chế độ hỏi trước.' : '🛡️ Chế độ bảo vệ: AI hỏi bạn trước khi ghi tệp hoặc chạy lệnh. Gõ /toanquyen để AI tự làm không hỏi.'), tgOpts()).catch(() => {});
       state.finished = true;
       // Tự vô hiệu hóa sau khi trả lời xong: không để dịch vụ chạy bằng root nằm đó.
       setTimeout(() => {

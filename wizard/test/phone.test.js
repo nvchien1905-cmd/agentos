@@ -201,6 +201,7 @@ async function boot(extra) {
     envFile: path.join(dir, 'orchestrator.env'), stateFile: path.join(dir, 'state.json'), hotspotFile: path.join(dir, 'hotspot.json'),
     hotspotDelayMs: 0, captivePort: 0, pollPauseMs: 5, errorPauseMs: 10, settleMs: 0, onlinePollMs: 5, onlineTries: 5, waitMs: 2000, finishDelayMs: 60000,
     ifaces: { eth0: [{ family: 'IPv4', address: '192.168.1.77', internal: false }] }, hostname: 'agentos-shop',
+    fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-agentos-toan-quyen'), dropin: path.join(dir, 'dropin', '10-toan-quyen.conf') },   // toàn quyền bật sẵn: không bao giờ đụng /etc thật khi test
   }, extra && extra.opts));
   delete (extra || {}).sim;
   const port = await w.listen();

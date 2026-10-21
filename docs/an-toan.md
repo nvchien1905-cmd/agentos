@@ -96,3 +96,9 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - Chạy bằng dịch vụ root `agentos-settings`, **chỉ nghe 127.0.0.1:8089**. Máy chủ biết ai đang gọi bằng uid của kết nối loopback (đọc bảng socket của nhân) và chỉ nhận tài khoản thuộc nhóm `sudo` (chủ máy); tài khoản `agentos` (nơi AI chạy) và mọi người dùng khác bị từ chối. Thêm kiểm Host (chống DNS rebinding) và tiêu đề `X-AgentOS-Settings` cho mọi thao tác ghi.
 - Thao tác nguy hiểm (tắt/khởi động lại, ngắt OneDrive/Tailscale, gỡ ứng dụng, bật toàn quyền) đều hỏi xác nhận. Tên gói cài thêm chỉ nhận chữ thường/số/`-+.` và chạy không qua shell. Khóa API chỉ hiện dạng che.
 - Cập nhật hệ điều hành = `apt-get update && apt-get dist-upgrade` không hỏi (giữ cấu hình cũ) + `autoremove`, hiện nhật ký trực tiếp; xong có thể cần khởi động lại (có biểu ngữ nhắc).
+
+## Toàn quyền BẬT SẴN (quyết định của nhà bán máy, 21/10/2026)
+- Theo yêu cầu: máy cài xong cho AI **toàn quyền quản trị** ngay (sudo không mật khẩu, không hỏi xin phép, không hộp cô lập) để ra lệnh bằng Telegram làm được mọi thứ trên máy. Trước đó mặc định là tắt.
+- **Khách vẫn kiểm soát được:** bước cuối trình hướng dẫn có ô tích rõ ràng (đã tích sẵn) ghi đủ rủi ro; bỏ tích là chế độ bảo vệ. Tin Telegram đầu tiên ghi rõ chế độ đang bật và cách tắt (`/baove`). Đổi bất cứ lúc nào bằng Cài đặt → Bot Telegram hoặc lệnh `/baove` `/toanquyen`.
+- **Rủi ro cần nói với khách:** AI hiểu nhầm lệnh có thể xóa/sửa dữ liệu; nội dung đọc từ web/tệp có cài lệnh giả (prompt injection) cũng có thể bị làm theo. Chỉ tài khoản Telegram của chủ máy ra lệnh được. Bản sao lưu hằng ngày và hoàn tác cập nhật giúp giảm thiệt hại nhưng không thay thế sự thận trọng.
+- Mã/thiết kế giữ nguyên cơ chế cũ (`fullaccess.js`): sudoers kiểm bằng `visudo -cf`, gỡ giới hạn systemd; test không bao giờ chạm `/etc` thật.

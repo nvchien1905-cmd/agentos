@@ -256,10 +256,11 @@ async function toFinish(S) {
   await S.call('POST', '/api/engine/check', { engine: 'claude' });
 }
 
-test('toàn quyền: mặc định TẮT - hoàn tất không cài sudo, FULL_ACCESS=0', async () => {
+test('toàn quyền: BẬT sẵn; chủ máy bỏ tích -> hoàn tất không cài sudo, FULL_ACCESS=0', async () => {
   const S = await boot();
   try {
-    assert.equal((await S.call('GET', '/api/state')).body.fullAccess, false);
+    assert.equal((await S.call('GET', '/api/state')).body.fullAccess, true);
+    assert.equal((await S.call('POST', '/api/fullaccess', { on: false })).body.fullAccess, false);
     await toFinish(S);
     assert.equal((await S.call('POST', '/api/finish', {})).body.ok, true);
     const env = fs.readFileSync(S.envFile, 'utf8');

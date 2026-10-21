@@ -1,71 +1,35 @@
 'use strict';
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const { noAccent } = require('./kiotviet');
+const { createBook, SECRET_RE } = require('./book');
 
-// BỘ NHỚ DO AGENTOS SỞ HỮU (không phụ thuộc AI nào) để Claude/Codex/Gemini/DeepSeek dùng CHUNG ngữ cảnh mà vẫn tiết kiệm token.
-// Ba tầng, ghép vào đầu câu lệnh mỗi khi AI chưa có phiên (mới chuyển AI, mở phiên mới, /moi):
-//   1) Ghi nhớ lâu dài: tệp GHI-NHO.md (OneDrive/AgentOS/): sự thật về chủ máy/cửa hàng, ngắn, có ngày. /nho, /quen, /trinho; AI cũng tự ghi vào đó.
-//   2) Tóm tắt cuộn của cuộc trò chuyện: các việc CŨ được nén (mô hình rẻ qua khóa API, hoặc cắt gọn nếu không có khóa).
-//   3) Vài việc gần nhất giữ nguyên văn + vài việc cũ LIÊN QUAN tìm lại bằng SQLite FTS5.
-// Trong cùng một AI còn phiên thì chỉ gửi yêu cầu mới (AI đã có lịch sử, được hưởng bộ nhớ đệm của hãng); sau `rotateAfter` lượt thì chốt tóm tắt và mở phiên mới cho gọn.
-const SECRET_RE = /(sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|\b\d{8,}:[A-Za-z0-9_-]{30,}|-----BEGIN|(mật khẩu|mat khau|password|passwd|token|secret|api[ _-]?key)[^\n]{0,25}?(?::|=|(?:\s|^)là(?=\s|$))|\b[A-Za-z0-9+/_-]{40,}\b)/i;
-const today = (ms) => { const d = new Date(ms + 7 * 3600 * 1000); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); };
+// BỘ NHỚ DO AGENTOS SỞ HỮU (không phụ thuộc AI nào): Claude/Codex/Gemini/DeepSeek dùng CHUNG ngữ cảnh mà vẫn tiết kiệm token.
+// Hai phần:
+//   1) SỔ TAY (book.js): kiến thức lâu dài như một cuốn sách: MỤC LỤC (tóm tắt từng chương) + CHI TIẾT từng chương theo chủ đề; thông tin mới thay bản cũ.
+//      Ghép vào câu lệnh: mục lục (AI "lướt") + chi tiết các chương LIÊN QUAN tới yêu cầu (AI "mở chương").
+//   2) NGỮ CẢNH CUỘC TRÒ CHUYỆN: tóm tắt cuộn của các việc cũ + vài việc gần nhất nguyên văn + việc cũ liên quan (SQLite FTS5).
+// Khi nén hội thoại, mô hình rẻ còn đề xuất các "ghi chú" để xếp vào sổ tay (đúng chương, thay mục cũ nếu có cập nhật).
+// Trong cùng một AI còn phiên thì chỉ gửi yêu cầu mới (hưởng bộ nhớ đệm); sau `rotateAfter` lượt thì chốt tóm tắt và mở phiên mới.
 const cut = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
-const SUMMARY_SYSTEM = 'Bạn nén ngữ cảnh cuộc trò chuyện giữa chủ máy và trợ lý AI. Viết bằng tiếng Việt, súc tích, KHÔNG bịa. ' +
-  'Giữ: yêu cầu và quyết định đã chốt, việc còn dở, tên/số/đường dẫn/mã quan trọng, sở thích đã nói. Bỏ: lời chào, chi tiết thừa, kết quả dài đã xong. ' +
-  'Tuyệt đối KHÔNG chép mật khẩu, khóa API, token. Trả về JSON đúng dạng {"summary":"<tối đa 350 từ>","facts":["<điều nên nhớ LÂU DÀI về chủ máy/cửa hàng, tối đa 3 mục, có thể để mảng rỗng>"]} và không gì khác.';
-const COMPACT_SYSTEM = 'Bạn dọn tệp ghi nhớ lâu dài. Gộp các dòng trùng/ý trùng, bỏ điều đã lỗi thời hoặc mâu thuẫn (giữ bản có ngày mới hơn), giữ nguyên ngày. ' +
-  'Mỗi dòng bắt đầu "- [YYYY-MM-DD] ". Không thêm ý mới, không chép bí mật. Chỉ trả về danh sách dòng.';
+const SUMMARY_SYSTEM = 'Bạn nén ngữ cảnh cuộc trò chuyện giữa chủ máy và trợ lý AI, và rút kiến thức bền vững vào SỔ TAY. Viết tiếng Việt, súc tích, KHÔNG bịa. ' +
+  '"summary": giữ yêu cầu và quyết định đã chốt, việc còn dở, tên/số/đường dẫn/mã quan trọng; bỏ lời chào và chi tiết thừa; tối đa 350 từ. ' +
+  '"notes": tối đa 4 điều đáng nhớ LÂU DÀI về chủ máy/cửa hàng/khách/quy trình (không phải việc nhất thời). Mỗi điều: "chapter" (chương chủ đề, dùng lại chương đã có nếu hợp, mới thì 2-4 từ), "text" (MỘT dòng ≤200 ký tự), ' +
+  '"supersedes" (mã dòng cũ trong CHI TIẾT CHƯƠNG LIÊN QUAN mà điều mới cập nhật/thay thế/mâu thuẫn), "summary" (tóm tắt lại chương 1-2 câu). Không có gì đáng nhớ thì notes là mảng rỗng. ' +
+  'Tuyệt đối KHÔNG chép mật khẩu, khóa API, token. Chỉ trả về JSON: {"summary":"...","notes":[{"chapter":"...","text":"...","supersedes":["mã"],"summary":"..."}]}';
 
 function createMemory(o) {
   const db = o.db, log = o.log || (() => {});
   const now = o.now || Date.now;
   const summarizer = o.summarizer || null;
-  const cfg = Object.assign({ enabled: true, recentTurns: 4, rotateAfter: 25, summarizeAfter: 6, factsMax: 4500, summaryMax: 2200, searchHits: 3 }, o.cfg || {});
-  const baseDir = o.dir || '';
-  const factsFile = () => {
-    if (baseDir && fs.existsSync(baseDir)) return path.join(baseDir, 'AgentOS', 'GHI-NHO.md');
-    return o.fallbackFile || path.join(process.cwd(), 'ghi-nho.md');
-  };
+  const cfg = Object.assign({ enabled: true, recentTurns: 4, rotateAfter: 25, summarizeAfter: 6, summaryMax: 2200, searchHits: 3, relevantChapters: 2 }, o.cfg || {});
+  const book = createBook({ dir: o.dir, fallbackDir: o.fallbackDir, summarizer, now, log, cfg: o.bookCfg });
   const busy = new Set();
+  try { const n = book.migrateLegacy(); if (n) log('đã chuyển ' + n + ' dòng ghi nhớ cũ sang sổ tay'); } catch (e) { log('chuyển ghi nhớ cũ lỗi: ' + e.message); }
 
-  // ---------- tầng 1: ghi nhớ lâu dài ----------
-  function readFacts() { try { return fs.readFileSync(factsFile(), 'utf8'); } catch (e) { return ''; } }
-  function writeFacts(text) {
-    const file = factsFile();
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    if (fs.existsSync(file)) { try { fs.copyFileSync(file, file + '.bak'); } catch (e) { /* bỏ qua */ } }
-    fs.writeFileSync(file, text);
-  }
-  const factLines = (text) => String(text).split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l));
-  const factsHash = () => crypto.createHash('sha1').update(readFacts()).digest('hex').slice(0, 12);
+  // ---------- sổ tay: các thao tác cho lệnh /nho /quen /trinho ----------
+  async function addFact(text) { return book.addNote(text); }
+  function forgetFact(query) { return book.forget(query); }
 
-  function addFact(text, tag) {
-    text = String(text || '').replace(/\s+/g, ' ').trim();
-    if (text.length < 4) return { ok: false, error: 'Nội dung quá ngắn.' };
-    if (text.length > 400) return { ok: false, error: 'Nội dung quá dài (tối đa 400 ký tự); chia nhỏ ra.' };
-    if (SECRET_RE.test(text)) return { ok: false, error: 'Nội dung giống mật khẩu/khóa/token nên em KHÔNG ghi nhớ (bộ nhớ được gửi cho hãng AI).' };
-    const cur = readFacts();
-    const key = noAccent(text);
-    if (factLines(cur).some((l) => noAccent(l).includes(key))) return { ok: true, duplicate: true };
-    const head = cur.trim() ? cur.replace(/\s*$/, '\n') : '# Ghi nhớ của AgentOS\n(Chủ máy và AI cùng ghi vào đây; mỗi dòng một điều, có ngày. Dùng /nho, /quen, /trinho trong Telegram.)\n\n';
-    writeFacts(head + '- [' + today(now()) + '] ' + text + (tag ? ' (' + tag + ')' : '') + '\n');
-    return { ok: true };
-  }
-  function forgetFact(query) {
-    const q = noAccent(query);
-    if (q.length < 2) return { removed: 0 };
-    const lines = readFacts().split('\n');
-    const keep = [], gone = [];
-    for (const l of lines) (/^\s*[-*]\s+\S/.test(l) && noAccent(l).includes(q) ? gone : keep).push(l);
-    if (gone.length) writeFacts(keep.join('\n'));
-    return { removed: gone.length, lines: gone };
-  }
-
-  // ---------- tầng 2/3: tóm tắt cuộn ----------
+  // ---------- tóm tắt cuộn ----------
   const kSum = (c) => 'sum:' + c, kUpto = (c) => 'sumupto:' + c;
   const ctxFrom = (c) => Number(db.kvGet('ctxfrom:' + c)) || 0;
   const summaryOf = (c) => db.kvGet(kSum(c)) || '';
@@ -74,14 +38,20 @@ function createMemory(o) {
   // Khối ngữ cảnh ghép vào đầu câu lệnh (chuỗi rỗng nếu không có gì để thêm).
   function contextBlock(job, hasSession, eng) {
     const chat = job.chat_id, parts = [];
-    const facts = readFacts().trim();
-    const hash = factsHash();
-    const sentKey = 'memsent:' + chat + ':' + eng;
-    if (facts && (!hasSession || db.kvGet(sentKey) !== hash)) {
-      const body = facts.length > cfg.factsMax ? facts.slice(0, 200) + '\n…\n' + facts.slice(-(cfg.factsMax - 200)) : facts;
-      parts.push('[Ghi nhớ lâu dài về chủ máy và cửa hàng' + (hasSession ? ' — CẬP NHẬT' : '') + ']\n' + body);
+    // 1) Sổ tay: mục lục để "lướt" (gửi khi AI chưa có phiên, hoặc khi mục lục vừa đổi)
+    const toc = book.toc();
+    const tocH = book.tocHash(), sentKey = 'memsent:' + chat + ':' + eng;
+    if (toc && (!hasSession || db.kvGet(sentKey) !== tocH)) {
+      parts.push('[Sổ tay của chủ máy — MỤC LỤC' + (hasSession ? ' (CẬP NHẬT)' : '') + '. Mỗi dòng: chương (số mục): tóm tắt → tệp chi tiết. Lướt qua; khi yêu cầu liên quan chương nào thì xem phần chi tiết bên dưới hoặc mở tệp chương đó]\n' + toc);
     }
-    db.kvSet(sentKey, hash);
+    db.kvSet(sentKey, tocH);
+    // 2) Chi tiết các chương LIÊN QUAN tới yêu cầu này (chương nào đã gửi trong phiên và chưa đổi thì không gửi lại)
+    for (const ch of book.relevant(job.prompt, cfg.relevantChapters)) {
+      const h = book.hashOf(ch.entries.map((e) => e.id).join(',') + ch.summary), k = 'bookch:' + chat + ':' + eng + ':' + ch.slug;
+      if (!hasSession || db.kvGet(k) !== h) parts.push('[Sổ tay — chi tiết chương liên quan]\n' + book.chapterText(ch));
+      db.kvSet(k, h);
+    }
+    // 3) Ngữ cảnh cuộc trò chuyện (chỉ khi AI chưa có phiên)
     if (!hasSession) {
       const sum = summaryOf(chat);
       if (sum) parts.push('[Tóm tắt cuộc trò chuyện trước đó]\n' + sum);
@@ -107,7 +77,7 @@ function createMemory(o) {
     return all.length > cfg.summaryMax ? '…' + all.slice(-cfg.summaryMax) : all;
   }
 
-  // Gọi sau mỗi việc xong. Trả { rotate:true } nếu nên bỏ phiên hiện tại của AI này (mở phiên mới, ngữ cảnh lấy từ tóm tắt).
+  // Gọi sau mỗi việc xong. Trả { rotate:true } nếu nên bỏ phiên hiện tại của AI này (mở phiên mới, ngữ cảnh lấy từ tóm tắt + sổ tay).
   async function afterJob(job, eng, res) {
     if (!cfg.enabled || !res || !res.ok) return { rotate: false };
     const tk = 'turns:' + job.chat_id + ':' + eng;
@@ -120,27 +90,25 @@ function createMemory(o) {
   function summarizeSoon(chat, force) {
     if (busy.has(chat)) return null;
     busy.add(chat);
-    const p = maybeSummarize(chat, force).catch((e) => log('tóm tắt lỗi: ' + e.message)).finally(() => busy.delete(chat));
-    return p;
+    return maybeSummarize(chat, force).catch((e) => log('tóm tắt lỗi: ' + e.message)).finally(() => busy.delete(chat));
   }
 
   async function maybeSummarize(chat, force) {
-    const last = db.lastJobId(chat);
     const after = uptoOf(chat);
     const done = db.doneAfter(chat, after, null, 60);
     const eligible = done.slice(0, Math.max(0, done.length - cfg.recentTurns));       // việc gần nhất giữ nguyên văn, không tóm tắt
     if (!eligible.length || (!force && eligible.length < cfg.summarizeAfter)) return { done: false };
     const prev = summaryOf(chat);
-    let text = null, via = 'cắt gọn', facts = [];
+    let text = null, via = 'cắt gọn', notes = [];
     if (summarizer && summarizer.available()) {
-      const user = 'TÓM TẮT CŨ:\n' + (prev || '(chưa có)') + '\n\nCÁC VIỆC MỚI CẦN NÉN VÀO TÓM TẮT:\n' +
-        eligible.map((j) => 'Việc #' + j.id + '\nChủ máy: ' + cut(j.prompt, 700) + '\nKết quả: ' + cut(j.result, 900)).join('\n---\n');
+      const jobsText = eligible.map((j) => 'Việc #' + j.id + '\nChủ máy: ' + cut(j.prompt, 700) + '\nKết quả: ' + cut(j.result, 900)).join('\n---\n');
+      const user = 'TÓM TẮT CŨ:\n' + (prev || '(chưa có)') + '\n\n' + book.modelContext(jobsText) + '\n\nCÁC VIỆC MỚI CẦN NÉN:\n' + jobsText;
       const r = await summarizer.run(SUMMARY_SYSTEM, user);
       if (r) {
         try {
           const m = r.text.match(/\{[\s\S]*\}/);
           const j = JSON.parse(m ? m[0] : r.text);
-          if (j && typeof j.summary === 'string' && j.summary.trim()) { text = j.summary.trim(); facts = Array.isArray(j.facts) ? j.facts.slice(0, 3) : []; via = r.via; }
+          if (j && typeof j.summary === 'string' && j.summary.trim()) { text = j.summary.trim(); notes = Array.isArray(j.notes) ? j.notes : (Array.isArray(j.facts) ? j.facts.map((t) => ({ text: String(t) })) : []); via = r.via; }
         } catch (e) { text = r.text.slice(0, cfg.summaryMax); via = r.via; }
       }
     }
@@ -148,34 +116,29 @@ function createMemory(o) {
     if (text.length > cfg.summaryMax * 1.5) text = text.slice(0, cfg.summaryMax * 1.5);
     db.kvSet(kSum(chat), text);
     db.kvSet(kUpto(chat), eligible[eligible.length - 1].id);
-    let added = 0;
-    for (const f of facts) { const r = addFact(String(f), 'tự ghi'); if (r.ok && !r.duplicate) added++; }
-    if (readFacts().length > cfg.factsMax * 1.6) await compactFacts();
-    log('tóm tắt cuộc trò chuyện ' + chat + ': nén ' + eligible.length + ' việc (' + via + ')' + (added ? ', ghi nhớ thêm ' + added + ' điều' : ''));
-    return { done: true, via, compressed: eligible.length, factsAdded: added, upTo: eligible[eligible.length - 1].id, last };
+    const ap = book.applyNotes(notes);
+    let compacted = 0;
+    try { await book.ingestInbox(); compacted = await book.compactAll(); } catch (e) { log('dọn sổ tay lỗi: ' + e.message); }
+    log('tóm tắt cuộc trò chuyện ' + chat + ': nén ' + eligible.length + ' việc (' + via + ')' + (ap.added ? ', ghi ' + ap.added + ' mục vào sổ tay' + (ap.replaced ? ' (thay ' + ap.replaced + ' mục cũ)' : '') : '') + (compacted ? ', gộp gọn ' + compacted + ' chương' : ''));
+    return { done: true, via, compressed: eligible.length, notesAdded: ap.added, replaced: ap.replaced, upTo: eligible[eligible.length - 1].id };
   }
 
-  // Dọn tệp ghi nhớ khi quá dài (bằng mô hình rẻ). Có bản .bak.
-  async function compactFacts() {
-    if (!summarizer || !summarizer.available()) return false;
-    const cur = readFacts();
-    const lines = factLines(cur);
-    if (lines.length < 12) return false;
-    const r = await summarizer.run(COMPACT_SYSTEM, lines.join('\n'));
-    if (!r) return false;
-    const out = r.text.split('\n').filter((l) => /^\s*-\s+\[\d{4}-\d{2}-\d{2}\]/.test(l));
-    if (out.length < Math.max(3, Math.floor(lines.length / 4)) || SECRET_RE.test(out.join('\n'))) return false;      // kết quả bất thường: giữ nguyên
-    writeFacts('# Ghi nhớ của AgentOS\n(Đã gộp gọn ' + today(now()) + '. Bản trước: GHI-NHO.md.bak)\n\n' + out.join('\n') + '\n');
-    return true;
+  // Dọn định kỳ (gọi từ bộ điều phối): xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài.
+  async function housekeeping() {
+    const r = await book.ingestInbox();
+    const o2 = await book.organizeGeneral();
+    const c = await book.compactAll();
+    return { moved: r.moved, organized: o2, compacted: c };
   }
 
-  function resetChat(chat) { db.kvDel(kSum(chat)); db.kvDel(kUpto(chat)); db.kvDelPrefix('turns:' + chat + ':'); db.kvDelPrefix('memsent:' + chat + ':'); }
+  function resetChat(chat) { db.kvDel(kSum(chat)); db.kvDel(kUpto(chat)); db.kvDelPrefix('turns:' + chat + ':'); db.kvDelPrefix('memsent:' + chat + ':'); db.kvDelPrefix('bookch:' + chat + ':'); }
   function info(chat) {
-    const facts = readFacts();
-    return { factsFile: factsFile(), facts, factLines: factLines(facts).length, summary: summaryOf(chat), summaryUpTo: uptoOf(chat), cfg, summarizer: summarizer ? summarizer.provider() : null };
+    const chapters = book.list();
+    return { root: book.root(), toc: book.toc(), chapters: chapters.length, entries: chapters.reduce((s, c) => s + c.entries.length, 0), list: chapters.map((c) => ({ slug: c.slug, title: c.title, summary: c.summary, entries: c.entries.length, updated: c.updated })),
+      summary: summaryOf(chat), summaryUpTo: uptoOf(chat), cfg, summarizer: summarizer ? summarizer.provider() : null };
   }
 
-  return { pack, afterJob, addFact, forgetFact, readFacts, writeFacts, resetChat, info, maybeSummarize, summarizeSoon, compactFacts, factsFile, cfg };
+  return { pack, afterJob, addFact, forgetFact, resetChat, info, maybeSummarize, summarizeSoon, housekeeping, book, cfg };
 }
 
 module.exports = { createMemory, SECRET_RE };

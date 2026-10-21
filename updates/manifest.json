@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.21.6",
-  "file": "agentos-update-2026.10.21.6.tar.gz",
-  "size": 152641,
-  "sha256": "8e340012752bd47178521901d949f66f3639d7c3eca68a6a052614db9f990752",
+  "version": "2026.10.21.8",
+  "file": "agentos-update-2026.10.21.8.tar.gz",
+  "size": 160661,
+  "sha256": "eff7ca5bfc453c6fdb0893a21f1c8bcc2ae78944a62ffd413382668986be0212",
   "date": "2026-10-21",
-  "notes": "Bộ nhớ dùng chung cho mọi AI (ghi nhớ lâu dài, tóm tắt, nén bằng Gemini/DeepSeek rẻ, tìm lại FTS5), chọn AI theo độ khó, xử lý ảnh/video/album/tài liệu qua Telegram, trang Bộ nhớ trong Cài đặt."
+  "notes": "Ngữ cảnh lưu như một cuốn sách: sổ tay có mục lục + chương theo chủ đề, AI lướt tóm tắt và mở chi tiết khi liên quan, thông tin mới thay mục cũ (lưu lịch sử), tự xếp lại ghi chú vào đúng chương khi có khóa Gemini/DeepSeek. Xem/sửa ở Cài đặt → Bộ nhớ của AI."
 }

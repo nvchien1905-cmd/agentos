@@ -73,7 +73,7 @@ async function main() {
     'pdftotext/pdftoppm (đọc PDF), tesseract -l vie (đọc chữ trong ảnh), ImageMagick (convert), ffmpeg, jq, sqlite3. Cần đọc/tạo Excel, Word, PDF, ảnh hóa đơn thì dùng chúng.';
   const ONEDRIVE_HINT = OFFICE_HINT + ' Dữ liệu và trí nhớ của chủ máy nằm ở OneDrive, tự đồng bộ hai chiều với thư mục ' + cfg.oneDriveDir + '. ' +
     'Hãy đọc dữ liệu cần thiết từ đó. Lưu kết quả, báo cáo và điều đáng nhớ vào ' + cfg.oneDriveDir + '/AgentOS/ (tạo nếu chưa có). ' +
-    'Ghi nhớ lâu dài về chủ máy/cửa hàng (tệp ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md) đã được gửi kèm ở đầu câu lệnh khi cần, KHÔNG cần đọc lại tệp. Chỉ khi có điều mới thật sự đáng nhớ LÂU DÀI (sở thích, quy trình, thông tin cửa hàng) thì thêm MỘT dòng "- [YYYY-MM-DD] nội dung ngắn" vào cuối tệp đó (không ghi mật khẩu/khóa). ' +
+    'SỔ TAY của chủ máy (như một cuốn sách, thư mục ' + cfg.oneDriveDir + '/AgentOS/SO-TAY/): mục lục và chi tiết các chương liên quan đã được gửi kèm đầu câu lệnh khi cần; muốn xem chương khác thì mở tệp chuong-*.md ghi trong mục lục. Khi có điều MỚI đáng nhớ LÂU DÀI (khách, hàng hóa, quy trình, sở thích) hoặc điều CẬP NHẬT thay thông tin cũ, thêm MỘT dòng "- điều cần nhớ" vào cuối ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md (hộp thư vào, hệ thống tự xếp vào đúng chương và thay mục cũ); KHÔNG tự sửa tệp chương, KHÔNG ghi mật khẩu/khóa. ' +
     'Không xóa và không ghi đè tệp của chủ máy: chỉ tạo tệp mới (tên có ngày giờ) hoặc thêm vào cuối tệp trong thư mục AgentOS. Tệp lên OneDrive sau khoảng 2 phút. ' +
     'Nếu thư mục không có gì thì có thể chưa kết nối OneDrive: báo chủ máy gõ /onedrive ketnoi.';
   const FULL_HINT = 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
@@ -214,8 +214,10 @@ async function main() {
   const notify = (chatId, text) => tg.sendMessage(chatId, text);
   // Bộ nhớ dùng chung (ghi nhớ lâu dài + tóm tắt cuộn + việc gần nhất + tìm lại FTS5) và nén bằng mô hình rẻ (Gemini/DeepSeek qua khóa API, không có khóa thì cắt gọn)
   const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, log });
-  const memory = createMemory({ db, dir: cfg.oneDriveDir, fallbackFile: path.join(dataDir, 'ghi-nho.md'), summarizer, cfg: cfg.memory, log });
+  const memory = createMemory({ db, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
   log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
+  setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
+  const bookTimer = setInterval(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 10 * 60 * 1000);
   const inboxDir = path.join(cfg.workdir, 'inbox');
   const voice = createVoice({ tg, log, bin: process.env.STT_BIN || undefined });
   const media = createMedia({ tg, dir: inboxDir, log, voice });
@@ -294,7 +296,7 @@ async function main() {
   const shutdown = async (sig) => {
     if (stopping) return; stopping = true;
     log('nhận ' + sig + ', đang dừng...');
-    clearInterval(tick); clearInterval(maintTimer); clearTimeout(maintFirst);
+    clearInterval(tick); clearInterval(bookTimer); clearInterval(maintTimer); clearTimeout(maintFirst);
     health.stop();
     ac.abort();
     await worker.stop();

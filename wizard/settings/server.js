@@ -18,6 +18,7 @@ const fullaccess = require('../lib/fullaccess');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
 const { createSummarizer } = require('../../orchestrator/src/summarizer');
+const { createBook } = require('../../orchestrator/src/book');
 
 const PORT = 8089;
 const SERVICES = { orchestrator: 'agentos-orchestrator', deskd: 'agentos-deskd', onedrive: 'onedrive-agentos', tailscale: 'tailscaled', cups: 'cups', network: 'NetworkManager', capnhat: 'agentos-update.path', saoluu: 'agentos-sao-luu.timer' };
@@ -142,7 +143,8 @@ function createSettings(o) {
   // ---------- OneDrive (chạy bằng người dùng agentos) ----------
   let odChild = null;
   const odUrlFile = () => path.join(o.onedriveConf, 'auth-url.txt'), odRespFile = () => path.join(o.onedriveConf, 'auth-response.txt'), odToken = () => path.join(o.onedriveConf, 'refresh_token');
-  const memFile = () => (fs.existsSync(o.onedriveDir) ? path.join(o.onedriveDir, 'AgentOS', 'GHI-NHO.md') : (o.memFallback || '/var/lib/agentos/data/ghi-nho.md'));
+  const bookOf = () => createBook({ dir: o.onedriveDir, fallbackDir: o.memFallback || '/var/lib/agentos/data/so-tay' });
+  const chownTree = (p) => { chownAgentos(p); try { if (fs.statSync(p).isDirectory()) for (const n of fs.readdirSync(p)) chownTree(path.join(p, n)); } catch (e) { /* bỏ qua */ } };
   const asAgentos = (cmd, args) => ['runuser', ['-u', 'agentos', '--', cmd, ...args]];
   function odStop() { if (odChild) { try { odChild.kill('SIGTERM'); } catch (e) { /* đã thoát */ } odChild = null; } fs.rmSync(odUrlFile(), { force: true }); fs.rmSync(odRespFile(), { force: true }); }
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -295,23 +297,45 @@ function createSettings(o) {
     async 'GET /api/memory'() {
       const text = readEnv() || '';
       const keys = apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, envVal(text, v)])));
-      const file = memFile();
-      let facts = ''; try { facts = fs.readFileSync(file, 'utf8'); } catch (e) { /* chưa có */ }
+      const bk = bookOf();
+      const chapters = bk.list().map((c) => ({ slug: c.slug, title: c.title, summary: c.summary, entries: c.entries.length, updated: c.updated, text: fs.readFileSync(bk.fileOf(c.slug), 'utf8') }));
+      let inbox = ''; try { inbox = fs.readFileSync(bk.inboxFile(), 'utf8'); } catch (e) { /* chưa có */ }
       const flag = (k, d) => { const v = envVal(text, k); return v === '' ? d : v.toLowerCase() !== 'false'; };
-      return { file, facts, configured: readEnv() != null, summarizer: { gemini: !!keys.gemini, deepseek: !!keys.deepseekapi }, config: {
+      return { root: bk.root(), chapters, inbox, configured: readEnv() != null, summarizer: { gemini: !!keys.gemini, deepseek: !!keys.deepseekapi }, config: {
         enabled: flag('MEMORY_ENABLED', true), route: flag('ROUTE_BY_DIFFICULTY', true), provider: envVal(text, 'SUMMARY_PROVIDER') || 'auto', rotateAfter: Number(envVal(text, 'MEMORY_ROTATE_AFTER')) || 25 } };
     },
-    async 'POST /api/memory/facts'(b) {
+    // Sửa trực tiếp một chương (người đọc/chỉnh sổ tay): giữ định dạng, gán mã cho dòng mới, chặn dòng giống bí mật.
+    async 'POST /api/memory/chapter'(b) {
       const text = String(b.text == null ? '' : b.text);
-      if (text.length > 20000) throw new Error('Ghi nhớ quá dài (tối đa 20.000 ký tự). Hãy rút gọn.');
+      if (text.length > 20000) throw new Error('Chương quá dài (tối đa 20.000 ký tự). Hãy tách nhỏ.');
       const bad = text.split('\n').find((l) => SECRET_LINE.test(l));
-      if (bad) throw new Error('Có dòng giống mật khẩu/khóa/token nên không lưu (ghi nhớ được gửi cho hãng AI): ' + bad.slice(0, 60));
-      const file = memFile();
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      if (fs.existsSync(file)) { try { fs.copyFileSync(file, file + '.bak'); } catch (e) { /* bỏ qua */ } }
-      fs.writeFileSync(file, text.replace(/\s*$/, '\n'));
-      chownAgentos(path.dirname(file)); chownAgentos(file);
-      return { saved: true, lines: text.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l)).length };
+      if (bad) throw new Error('Có dòng giống mật khẩu/khóa/token nên không lưu (sổ tay được gửi cho hãng AI): ' + bad.slice(0, 60));
+      const bk = bookOf();
+      const title = (text.match(/^#\s+(.+)$/m) || [])[1];
+      if (!title) throw new Error('Dòng đầu mỗi chương phải là "# Tên chương".');
+      const slug = b.slug ? String(b.slug).replace(/[^a-z0-9-]/g, '') : bk.slugOf(title);
+      if (!slug) throw new Error('Tên chương không hợp lệ');
+      const ch = bk.parse(slug, text); ch.slug = slug;
+      bk.save(ch); chownTree(bk.root());
+      return { saved: true, slug, entries: ch.entries.length };
+    },
+    async 'POST /api/memory/chapter/delete'(b) {
+      if (b.confirm !== true) throw new Error('Cần xác nhận');
+      const bk = bookOf(), slug = String(b.slug || '').replace(/[^a-z0-9-]/g, '');
+      const f = bk.fileOf(slug);
+      if (!slug || !fs.existsSync(f)) throw new Error('Không có chương này');
+      const dir = path.join(bk.root(), '.lichsu'); fs.mkdirSync(dir, { recursive: true });
+      fs.copyFileSync(f, path.join(dir, slug + '.da-xoa-' + new Date().toISOString().slice(0, 10) + '.md'));
+      fs.rmSync(f); bk.save({ slug: '__toc__', title: '', summary: '', updated: '', entries: [] }); fs.rmSync(bk.fileOf('__toc__'), { force: true });
+      chownTree(bk.root());
+      return { deleted: true };
+    },
+    async 'POST /api/memory/note'(b) {
+      const bk = bookOf();
+      const r = await bk.addNote(String(b.text || ''));
+      if (!r.ok) throw new Error(r.error);
+      chownTree(bk.root());
+      return { chapter: r.chapter, replaced: r.replaced || 0, duplicate: !!r.duplicate };
     },
     // Thử gọi mô hình nén bằng khóa đã lưu (một câu ngắn, tốn không đáng kể): cho chủ máy biết khóa Gemini/DeepSeek dùng được chưa.
     async 'POST /api/memory/test'() {

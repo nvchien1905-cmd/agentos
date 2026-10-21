@@ -99,22 +99,27 @@ function createQuick(o) {
         case 'capnhat': return upd ? await upd.command(arg) : '⚠️ Máy này chưa có tính năng cập nhật từ xa.';
         case 'nho': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
-          if (!arg) return 'Cách dùng: /nho <điều cần nhớ lâu dài>, ví dụ /nho Cửa hàng nghỉ chủ nhật. Mọi AI (Claude, Codex, Gemini, DeepSeek) đều dùng chung. /trinho để xem, /quen <từ khóa> để xóa.';
-          const r = mem.addFact(arg);
-          return r.ok ? (r.duplicate ? 'Điều này đã có trong ghi nhớ rồi.' : '🧠 Đã ghi nhớ. Mọi AI sẽ biết điều này (/trinho để xem, /quen để xóa).') : '⚠️ ' + r.error;
+          if (!arg) return 'Cách dùng: /nho <điều cần nhớ lâu dài>, ví dụ /nho Cửa hàng nghỉ chủ nhật. Bot xếp vào đúng CHƯƠNG của sổ tay (cùng chủ đề gom lại; thông tin mới thay mục cũ). Mọi AI dùng chung. /trinho xem, /quen <từ khóa> xóa.';
+          const r = await mem.addFact(arg);
+          if (!r.ok) return '⚠️ ' + r.error;
+          return r.duplicate ? 'Điều này đã có trong sổ tay (chương "' + r.chapter + '").' : '🧠 Đã ghi vào chương "' + r.chapter + '"' + (r.replaced ? ' (thay ' + r.replaced + ' mục cũ đã lỗi thời)' : '') + '. Mọi AI sẽ biết điều này (/trinho để xem, /quen để xóa).';
         }
         case 'quen': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
-          if (!arg) return 'Cách dùng: /quen <từ khóa>: xóa các dòng ghi nhớ có chứa từ khóa đó (có bản sao lưu GHI-NHO.md.bak).';
+          if (!arg) return 'Cách dùng: /quen <từ khóa>: gỡ các mục trong sổ tay có chứa từ khóa đó (mục bị gỡ lưu ở thư mục .lichsu, có thể xem lại).';
           const r = mem.forgetFact(arg);
-          return r.removed ? '🗑️ Đã xóa ' + r.removed + ' dòng ghi nhớ:\n' + r.lines.map((l) => l.trim().slice(0, 140)).join('\n') : 'Không có dòng ghi nhớ nào chứa "' + arg + '".';
+          return r.removed ? '🗑️ Đã gỡ ' + r.removed + ' mục khỏi sổ tay:\n' + r.lines.map((l) => l.slice(0, 150)).join('\n') : 'Không có mục nào chứa "' + arg + '".';
         }
         case 'trinho': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           const i = mem.info(ctx && ctx.chatId);
-          const facts = i.facts.trim() ? (i.facts.length > 2800 ? i.facts.slice(0, 2800) + '\n…(còn nữa, xem tệp ' + i.factsFile + ')' : i.facts.trim()) : '(chưa có điều nào; dùng /nho để thêm)';
-          return '🧠 Ghi nhớ lâu dài (' + i.factLines + ' điều, dùng chung mọi AI)\n' + facts + '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1200) : '(chưa có; có khi hội thoại dài)') +
-            '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt';
+          if (arg) {                                                         // /trinho <chủ đề>: xem CHI TIẾT chương liên quan
+            const hit = mem.book.relevant(arg, 2, 1, 1);
+            return hit.length ? hit.map((c) => mem.book.chapterText(c, 1800)).join('\n\n') : 'Không có chương nào khớp "' + arg + '". Gõ /trinho để xem mục lục.';
+          }
+          return '📖 Sổ tay của chủ máy (' + i.chapters + ' chương, ' + i.entries + ' mục, dùng chung mọi AI)\n' + (i.toc ? i.toc.replace(/ → \S+$/gm, '') : '(chưa có gì; dùng /nho để thêm)') +
+            '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
+            '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
         }
         case 'in': return printing ? await printing.print(arg) : '⚠️ Máy này chưa có tính năng in.';
         default: return null;

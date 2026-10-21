@@ -48,6 +48,17 @@ function openDb(file) {
   if (!cols.includes('engine_pref')) db.exec('ALTER TABLE jobs ADD COLUMN engine_pref TEXT');
   if (!cols.includes('run_after')) db.exec('ALTER TABLE jobs ADD COLUMN run_after INTEGER');
   if (!cols.includes('profile')) db.exec('ALTER TABLE jobs ADD COLUMN profile TEXT');
+  // Tìm lại ngữ cảnh cũ theo nội dung: FTS5 (không phân biệt dấu). Thiếu FTS5 thì bỏ qua (search trả mảng rỗng).
+  let hasFts = false;
+  try {
+    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS jobs_fts USING fts5(prompt, result, content='jobs', content_rowid='id', tokenize='unicode61 remove_diacritics 2')");
+    db.exec("CREATE TRIGGER IF NOT EXISTS jobs_fts_ai AFTER INSERT ON jobs BEGIN INSERT INTO jobs_fts(rowid, prompt, result) VALUES (new.id, new.prompt, COALESCE(new.result, '')); END;");
+    db.exec("CREATE TRIGGER IF NOT EXISTS jobs_fts_ad AFTER DELETE ON jobs BEGIN INSERT INTO jobs_fts(jobs_fts, rowid, prompt, result) VALUES ('delete', old.id, old.prompt, COALESCE(old.result, '')); END;");
+    db.exec("CREATE TRIGGER IF NOT EXISTS jobs_fts_au AFTER UPDATE OF prompt, result ON jobs BEGIN INSERT INTO jobs_fts(jobs_fts, rowid, prompt, result) VALUES ('delete', old.id, old.prompt, COALESCE(old.result, '')); INSERT INTO jobs_fts(rowid, prompt, result) VALUES (new.id, new.prompt, COALESCE(new.result, '')); END;");
+    const built = db.prepare("SELECT v FROM kv WHERE k = 'fts_built'").get();
+    if (!built) { db.exec("INSERT INTO jobs_fts(jobs_fts) VALUES ('rebuild')"); db.prepare("INSERT INTO kv (k, v) VALUES ('fts_built', '1')").run(); }
+    hasFts = true;
+  } catch (e) { hasFts = false; }
   const now = () => Date.now();
 
   const q = {
@@ -70,6 +81,7 @@ function openDb(file) {
     addAudit: db.prepare('INSERT INTO audit (ts, job_id, tool, cls, decision, source, summary) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     recentAudit: db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT ?'),
     jobAudit: db.prepare('SELECT * FROM audit WHERE job_id = ? ORDER BY id'),
+    after: db.prepare("SELECT id, prompt, result FROM jobs WHERE chat_id = ? AND status = 'done' AND id > ? AND id < ? ORDER BY id LIMIT ?"),
     kvGet: db.prepare('SELECT v FROM kv WHERE k = ?'),
     kvSet: db.prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v'),
     kvDel: db.prepare('DELETE FROM kv WHERE k = ?'),
@@ -95,6 +107,22 @@ function openDb(file) {
     recentJobs(chatId, n) { return q.recent.all(String(chatId), n || 5); },
     // Các việc 'done' gần nhất của chat với id trong (afterId, beforeId), cũ -> mới.
     history(chatId, afterId, beforeId, n) { return q.history.all(String(chatId), afterId || 0, beforeId, n || 3).reverse(); },
+    // Các việc 'done' với id trong (afterId, beforeId), cũ -> mới, tối đa n (dùng để tóm tắt cuộn).
+    doneAfter(chatId, afterId, beforeId, n) { return q.after.all(String(chatId), afterId || 0, beforeId == null ? 9007199254740991 : beforeId, n || 40); },
+    // Tìm các việc cũ liên quan tới đoạn văn (FTS5, bỏ dấu). Chỉ trong chat này, id > minId, không nằm trong excludeIds.
+    search(chatId, text, limit, minId, excludeIds) {
+      if (!hasFts) return [];
+      const words = [...new Set(String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').split(/[^a-z0-9]+/).filter((w) => w.length >= 3))].slice(0, 8);
+      if (!words.length) return [];
+      const match = words.map((w) => '"' + w + '"').join(' OR ');
+      try {
+        const rows = db.prepare("SELECT j.id AS id, j.prompt AS prompt, j.result AS result FROM jobs_fts f JOIN jobs j ON j.id = f.rowid WHERE jobs_fts MATCH ? AND j.chat_id = ? AND j.status = 'done' AND j.id > ? ORDER BY bm25(jobs_fts) LIMIT ?")
+          .all(match, String(chatId), minId || 0, (limit || 3) + (excludeIds ? excludeIds.length : 0) + 2);
+        const ex = new Set(excludeIds || []);
+        return rows.filter((r) => !ex.has(r.id)).slice(0, limit || 3);
+      } catch (e) { return []; }
+    },
+    ftsAvailable() { return hasFts; },
     lastJobId(chatId) { return q.lastId.get(String(chatId)).n; },
     queuedCount() { return q.countQueued.get().n; },
     waitingCount() { return q.countWaiting.get().n; },

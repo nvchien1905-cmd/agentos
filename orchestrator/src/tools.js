@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Lệnh Telegram đã dùng, không được đặt tên profile trùng.
-const RESERVED = new Set(['claude', 'codex', 'gemini', 'deepseekapi', 'start', 'help', 'id', 'moi', 'trangthai', 'viec', 'huy', 'nhatky', 'toanquyen', 'baove', 'manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat']);
+const RESERVED = new Set(['claude', 'codex', 'gemini', 'deepseekapi', 'start', 'help', 'id', 'moi', 'trangthai', 'viec', 'huy', 'nhatky', 'toanquyen', 'baove', 'manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho']);
 const NAME_RE = /^[a-z][a-z0-9_]{0,23}$/;
 const KNOWN_ENGINES = ['claude', 'codex', 'gemini', 'deepseekapi'];
 

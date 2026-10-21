@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.21.5",
-  "file": "agentos-update-2026.10.21.5.tar.gz",
-  "size": 136659,
-  "sha256": "bd94d7adc2957a9ec52e92ea51184b95b2ff2664c98736c242c304c754ba9ddb",
+  "version": "2026.10.21.6",
+  "file": "agentos-update-2026.10.21.6.tar.gz",
+  "size": 152641,
+  "sha256": "8e340012752bd47178521901d949f66f3639d7c3eca68a6a052614db9f990752",
   "date": "2026-10-21",
-  "notes": "Ra lệnh cập nhật hệ điều hành từ Telegram: /capnhat hedieuhanh (xem) và /capnhat hedieuhanh co (cập nhật). /capnhat co vẫn cập nhật phần mềm AgentOS."
+  "notes": "Bộ nhớ dùng chung cho mọi AI (ghi nhớ lâu dài, tóm tắt, nén bằng Gemini/DeepSeek rẻ, tìm lại FTS5), chọn AI theo độ khó, xử lý ảnh/video/album/tài liệu qua Telegram, trang Bộ nhớ trong Cài đặt."
 }

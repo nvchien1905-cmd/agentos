@@ -23,7 +23,9 @@ function helpText(profiles) {
     '/huy - hủy việc đang chạy và các việc đang chờ\n' +
     '/toanquyen - bật chế độ TOÀN QUYỀN: AI tự làm một mạch, không hỏi xin phép, có sudo (chỉ quản trị viên)\n' +
     '/baove - quay về chế độ bảo vệ: AI hỏi trước khi ghi file/chạy lệnh (chỉ quản trị viên)\n' +
-    '/moi - bắt đầu cuộc trò chuyện mới (quên ngữ cảnh cũ)\n' +
+    '/moi - bắt đầu cuộc trò chuyện mới (quên ngữ cảnh cũ, GIỮ ghi nhớ lâu dài)\n' +
+    '/nho <điều cần nhớ> · /quen <từ khóa> · /trinho - ghi nhớ LÂU DÀI dùng chung cho mọi AI (Claude/Codex/Gemini/DeepSeek)\n' +
+    '📷 Gửi ảnh, nhiều ảnh (album), video hoặc tài liệu kèm chú thích: bot tải về, trích khung hình + lời nói trong video rồi giao AI xem (tệp tối đa 20 MB)\n' +
     '/id - xem ID Telegram của bạn';
 }
 const HELP = helpText([]);
@@ -34,7 +36,9 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `profiles`: [{ name, description, adminOnly }] các bộ công cụ chọn bằng lệnh /<tên> (ví dụ /web).
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send }) {
+  const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
+  const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
   isAdmin = isAdmin || (() => true);
   const profileByName = new Map(profiles.map((p) => [p.name, p]));
@@ -49,7 +53,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
 
   function handle(msg) {
     if (!msg || !msg.from || !msg.chat) return null;
-    const text = String(msg.text || '').trim();
+    const text = String(msg.text || msg.caption || '').trim();
     const uid = String(msg.from.id);
     const chatId = String(msg.chat.id);
 
@@ -60,13 +64,37 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     }
     // Chỉ nhận chat riêng với người được phép (không nhận trong nhóm).
     if (msg.chat.type && msg.chat.type !== 'private') return null;
+    // Ảnh, video, album, tài liệu: tải về, trích khung hình + lời nói (video), gắn đường dẫn vào câu lệnh rồi xử lý như tin chữ (chú thích = yêu cầu).
+    if (media && media.listAttachments(msg).length) {
+      const finish = async (msgs, last) => {
+        const p = await media.prepare(msgs);
+        const cap = msgs.map((m) => String(m.caption || m.text || '').trim()).filter(Boolean)[0] || '';
+        if (!p.block) return p.errors.length ? '⚠️ ' + p.errors.join('\n') : 'Không đọc được tệp đính kèm.';
+        const ask = cap || 'Anh gửi tệp đính kèm. Hãy xem và mô tả ngắn gọn những gì thấy, rồi hỏi lại nếu chưa rõ anh cần làm gì.';
+        const reply = await handle(Object.assign({}, last, ATT_KEYS, { text: ask + '\n\n' + p.block }));
+        const warn = p.errors.length ? '⚠️ ' + p.errors.join('\n') + '\n' : '';
+        if (reply && typeof reply === 'object') return Object.assign({}, reply, { text: warn + (reply.text || '') });
+        return warn + (reply || '');
+      };
+      if (msg.media_group_id && send) {
+        const g = albums.get(msg.media_group_id) || { msgs: [], timer: null };
+        g.msgs.push(msg); albums.set(msg.media_group_id, g);
+        clearTimeout(g.timer);
+        g.timer = setTimeout(() => {
+          albums.delete(msg.media_group_id);
+          finish(g.msgs, g.msgs[g.msgs.length - 1]).then((r) => (r ? send(chatId, r) : null)).catch((e) => send(chatId, '⚠️ Không xử lý được album: ' + e.message).catch(() => {}));
+        }, 1800);
+        return null;
+      }
+      return finish([msg], msg);
+    }
     // Tin nhắn thoại / file âm thanh: nghe thành chữ rồi xử lý như chủ máy vừa gõ (trừ lệnh nguy hiểm: không có "/" nên không bao giờ thành /tatmay...)
-    const media = msg.voice || msg.audio;
-    if (!text && media && voice) {
+    const vmedia = msg.voice || msg.audio;
+    if (!text && vmedia && voice) {
       if (!isAdmin(uid)) return 'Tin nhắn thoại chỉ dành cho quản trị viên.';
-      if (media.duration && media.duration > 180) return 'Tin nhắn thoại dài quá 3 phút, anh chia nhỏ giúp em.';
+      if (vmedia.duration && vmedia.duration > 180) return 'Tin nhắn thoại dài quá 3 phút, anh chia nhỏ giúp em.';
       return (async () => {
-        const r = await voice.transcribe(media.file_id);
+        const r = await voice.transcribe(vmedia.file_id);
         if (!r.ok) return '🎙 ' + r.error;
         const said = r.text.replace(/^[\/\s]+/, '');                         // chữ nghe được không bao giờ thành lệnh "/..." tự do
         const cmdText = voice.spoken(said);
@@ -106,6 +134,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'moi':
           db.kvDelPrefix('session:' + chatId + ':');
           db.kvSet('ctxfrom:' + chatId, db.lastJobId(chatId));
+          if (memory) memory.resetChat(chatId);                  // xóa tóm tắt cuộn; ghi nhớ lâu dài (GHI-NHO.md) vẫn giữ, xóa bằng /quen
           return 'Đã bắt đầu cuộc trò chuyện mới.';
         case 'trangthai': {
           const cur = worker.currentJobId();

@@ -102,3 +102,17 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - **Khách vẫn kiểm soát được:** bước cuối trình hướng dẫn có ô tích rõ ràng (đã tích sẵn) ghi đủ rủi ro; bỏ tích là chế độ bảo vệ. Tin Telegram đầu tiên ghi rõ chế độ đang bật và cách tắt (`/baove`). Đổi bất cứ lúc nào bằng Cài đặt → Bot Telegram hoặc lệnh `/baove` `/toanquyen`.
 - **Rủi ro cần nói với khách:** AI hiểu nhầm lệnh có thể xóa/sửa dữ liệu; nội dung đọc từ web/tệp có cài lệnh giả (prompt injection) cũng có thể bị làm theo. Chỉ tài khoản Telegram của chủ máy ra lệnh được. Bản sao lưu hằng ngày và hoàn tác cập nhật giúp giảm thiệt hại nhưng không thay thế sự thận trọng.
 - Mã/thiết kế giữ nguyên cơ chế cũ (`fullaccess.js`): sudoers kiểm bằng `visudo -cf`, gỡ giới hạn systemd; test không bao giờ chạm `/etc` thật.
+
+## Bộ nhớ dùng chung cho mọi AI (21/10/2026) — orchestrator/src/memory.js, summarizer.js, router.js
+- **Vấn đề:** phiên (session) của Claude Code, Codex, Gemini lưu riêng, không đọc được của nhau; đổi AI là mất ngữ cảnh. **Giải pháp:** AgentOS giữ bộ nhớ trung lập và ghép vào đầu câu lệnh bất kể AI nào làm.
+- **Ba tầng:** (1) *Ghi nhớ lâu dài* `OneDrive/AgentOS/GHI-NHO.md` (mỗi dòng "- [ngày] nội dung", `/nho` `/quen` `/trinho`, AI và Cài đặt → Bộ nhớ cùng sửa; có `.bak`; dòng giống mật khẩu/khóa/token bị chặn vì nội dung được gửi cho hãng AI). (2) *Tóm tắt cuộn* của từng cuộc trò chuyện (các việc cũ được nén). (3) *Vài việc gần nhất nguyên văn* + vài việc cũ liên quan tìm bằng SQLite FTS5 (bỏ dấu tiếng Việt).
+- **Tiết kiệm token:** AI còn phiên thì chỉ gửi yêu cầu mới (hưởng bộ nhớ đệm của hãng) + ghi nhớ chỉ gửi lại khi vừa đổi; mở phiên mới sau 25 lượt (chỉnh được) với ngữ cảnh lấy từ tóm tắt; tóm tắt/nén bằng **mô hình rẻ qua khóa API** (Gemini flash, hoặc DeepSeek flash), không dùng AI đắt; không có khóa thì cắt gọn (kém chính xác hơn). Mô hình Gemini được hỏi từ danh sách của Google (tên mô hình đổi theo thời gian).
+- **Chọn AI theo độ khó** (`ROUTE_BY_DIFFICULTY`, mặc định bật): câu hỏi nhẹ (ngắn, không thao tác máy/tệp/ảnh) đi AI rẻ trước (`LIGHT_ENGINES`, mặc định deepseekapi, gemini — chỉ khi các AI đó đang được bật), việc nặng dùng thứ tự ưu tiên thường. Ép bằng `/claude`... hoặc dùng bộ công cụ riêng thì không đổi. Việc có ảnh bỏ DeepSeek (chỉ chữ).
+- **Trí nhớ tự ghi:** khi nén, mô hình rẻ có thể đề xuất tối đa 3 điều đáng nhớ lâu dài (ghi chú "(tự ghi)", bỏ qua nếu giống bí mật). Xem/sửa/xóa ở Cài đặt → Bộ nhớ của AI hoặc `/quen`.
+- **Giới hạn:** tóm tắt luôn mất chi tiết; số liệu/mã cần chính xác nên lưu thành tệp. `/moi` xóa tóm tắt cuộc trò chuyện nhưng GIỮ ghi nhớ lâu dài.
+
+## Ảnh, video, album, tài liệu qua Telegram — orchestrator/src/media.js
+- Gửi ảnh/video/tài liệu (kèm chú thích làm yêu cầu); bot tải về `…/work/inbox/` (tệp tối đa **20 MB**, giới hạn của Telegram Bot API; lớn hơn thì báo cách dùng OneDrive), giữ theo `OUT_RETENTION_DAYS`.
+- **Ảnh:** đường dẫn đưa vào câu lệnh; Claude xem bằng công cụ Read, Codex bằng `-i`, Gemini bằng `@đường-dẫn` (hai cách sau chưa thử với tài khoản thật); DeepSeek bị loại khỏi việc có ảnh. **Album** (nhiều ảnh) gom thành MỘT việc sau ~2 giây.
+- **Video:** trích tối đa 6 khung hình đều theo thời gian (ffmpeg) + nhận dạng lời nói trong video (faster-whisper trên máy, không gửi âm thanh ra ngoài) → AI nào cũng nắm được nội dung. Thiếu ffmpeg thì vẫn đưa tệp gốc.
+- Tài liệu (PDF, Word, Excel...): lưu tệp, AI đọc bằng công cụ có sẵn (pdftotext, LibreOffice...).

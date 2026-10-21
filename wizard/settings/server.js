@@ -17,11 +17,13 @@ const envfile = require('../lib/envfile');
 const fullaccess = require('../lib/fullaccess');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
+const { createSummarizer } = require('../../orchestrator/src/summarizer');
 
 const PORT = 8089;
 const SERVICES = { orchestrator: 'agentos-orchestrator', deskd: 'agentos-deskd', onedrive: 'onedrive-agentos', tailscale: 'tailscaled', cups: 'cups', network: 'NetworkManager', capnhat: 'agentos-update.path', saoluu: 'agentos-sao-luu.timer' };
 const RESTARTABLE = ['orchestrator', 'deskd', 'onedrive', 'tailscale', 'cups', 'network'];
 const PKG_RE = /^[a-z0-9][a-z0-9+.-]{1,80}$/;
+const SECRET_LINE = /(sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|\b\d{8,}:[A-Za-z0-9_-]{30,}|-----BEGIN|(mật khẩu|mat khau|password|passwd|token|secret|api[ _-]?key)[^\n]{0,25}?(?::|=|(?:\s|^)là(?=\s|$)))/i;
 
 // Ứng dụng gợi ý (gói trong kho Debian chính thức)
 const CATALOG = [
@@ -140,6 +142,7 @@ function createSettings(o) {
   // ---------- OneDrive (chạy bằng người dùng agentos) ----------
   let odChild = null;
   const odUrlFile = () => path.join(o.onedriveConf, 'auth-url.txt'), odRespFile = () => path.join(o.onedriveConf, 'auth-response.txt'), odToken = () => path.join(o.onedriveConf, 'refresh_token');
+  const memFile = () => (fs.existsSync(o.onedriveDir) ? path.join(o.onedriveDir, 'AgentOS', 'GHI-NHO.md') : (o.memFallback || '/var/lib/agentos/data/ghi-nho.md'));
   const asAgentos = (cmd, args) => ['runuser', ['-u', 'agentos', '--', cmd, ...args]];
   function odStop() { if (odChild) { try { odChild.kill('SIGTERM'); } catch (e) { /* đã thoát */ } odChild = null; } fs.rmSync(odUrlFile(), { force: true }); fs.rmSync(odRespFile(), { force: true }); }
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -286,6 +289,49 @@ function createSettings(o) {
       t = setEnvLine(t, 'FULL_ACCESS', on ? '1' : '0'); t = setEnvLine(t, 'JOB_TIMEOUT_SEC', on ? '3600' : '900');
       saveEnv(t); await restart('agentos-orchestrator');
       return { full: on };
+    },
+
+    // ----- Bộ nhớ dùng chung cho mọi AI, nén ngữ cảnh, định tuyến theo độ khó -----
+    async 'GET /api/memory'() {
+      const text = readEnv() || '';
+      const keys = apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, envVal(text, v)])));
+      const file = memFile();
+      let facts = ''; try { facts = fs.readFileSync(file, 'utf8'); } catch (e) { /* chưa có */ }
+      const flag = (k, d) => { const v = envVal(text, k); return v === '' ? d : v.toLowerCase() !== 'false'; };
+      return { file, facts, configured: readEnv() != null, summarizer: { gemini: !!keys.gemini, deepseek: !!keys.deepseekapi }, config: {
+        enabled: flag('MEMORY_ENABLED', true), route: flag('ROUTE_BY_DIFFICULTY', true), provider: envVal(text, 'SUMMARY_PROVIDER') || 'auto', rotateAfter: Number(envVal(text, 'MEMORY_ROTATE_AFTER')) || 25 } };
+    },
+    async 'POST /api/memory/facts'(b) {
+      const text = String(b.text == null ? '' : b.text);
+      if (text.length > 20000) throw new Error('Ghi nhớ quá dài (tối đa 20.000 ký tự). Hãy rút gọn.');
+      const bad = text.split('\n').find((l) => SECRET_LINE.test(l));
+      if (bad) throw new Error('Có dòng giống mật khẩu/khóa/token nên không lưu (ghi nhớ được gửi cho hãng AI): ' + bad.slice(0, 60));
+      const file = memFile();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      if (fs.existsSync(file)) { try { fs.copyFileSync(file, file + '.bak'); } catch (e) { /* bỏ qua */ } }
+      fs.writeFileSync(file, text.replace(/\s*$/, '\n'));
+      chownAgentos(path.dirname(file)); chownAgentos(file);
+      return { saved: true, lines: text.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l)).length };
+    },
+    // Thử gọi mô hình nén bằng khóa đã lưu (một câu ngắn, tốn không đáng kể): cho chủ máy biết khóa Gemini/DeepSeek dùng được chưa.
+    async 'POST /api/memory/test'() {
+      const text = readEnv() || '';
+      const keys = apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, envVal(text, v)])));
+      let err = '';
+      const s = createSummarizer({ keys, provider: envVal(text, 'SUMMARY_PROVIDER') || 'auto', fetch: fetchImpl, log: (m) => { err = m; } });
+      if (!s.available()) throw new Error('Chưa có khóa Gemini hoặc DeepSeek (hoặc nguồn nén đang đặt là "Không"). Thêm khóa ở mục “AI và khóa API”.');
+      const r = await s.run('Tóm tắt trong một câu tiếng Việt.', 'Chủ máy hỏi giá nồi chiên không dầu, trợ lý trả lời khoảng 2,9 triệu, chủ máy quyết định mua 2 cái cho cửa hàng.');
+      if (!r) throw new Error('Gọi mô hình nén thất bại' + (err ? ' (' + err + ')' : '') + '. Kiểm tra khóa và mạng.');
+      return { via: r.via, text: r.text.slice(0, 400) };
+    },
+    async 'POST /api/memory/config'(b) {
+      let t = needEnv();
+      if (typeof b.enabled === 'boolean') t = setEnvLine(t, 'MEMORY_ENABLED', String(b.enabled));
+      if (typeof b.route === 'boolean') t = setEnvLine(t, 'ROUTE_BY_DIFFICULTY', String(b.route));
+      if (b.provider !== undefined) { if (!['auto', 'gemini', 'deepseek', 'none'].includes(b.provider)) throw new Error('Nguồn nén không hợp lệ'); t = setEnvLine(t, 'SUMMARY_PROVIDER', b.provider); }
+      if (b.rotateAfter !== undefined) { const n = Number(b.rotateAfter); if (!(n >= 5 && n <= 200)) throw new Error('Số lượt mỗi phiên phải từ 5 đến 200'); t = setEnvLine(t, 'MEMORY_ROTATE_AFTER', String(Math.round(n))); }
+      saveEnv(t); await restart('agentos-orchestrator');
+      return { saved: true };
     },
 
     // ----- Mạng -----

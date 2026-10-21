@@ -25,6 +25,10 @@ const { createOneDrive } = require('./onedrive');
 const { createVoice } = require('./voice');
 const apikeys = require('./apikeys');
 const { createUpdateWatcher } = require('./update');
+const { createMemory } = require('./memory');
+const { createSummarizer } = require('./summarizer');
+const router = require('./router');
+const { createMedia, imagePaths } = require('./media');
 const { createSchedule } = require('./schedule');
 const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
@@ -69,7 +73,7 @@ async function main() {
     'pdftotext/pdftoppm (đọc PDF), tesseract -l vie (đọc chữ trong ảnh), ImageMagick (convert), ffmpeg, jq, sqlite3. Cần đọc/tạo Excel, Word, PDF, ảnh hóa đơn thì dùng chúng.';
   const ONEDRIVE_HINT = OFFICE_HINT + ' Dữ liệu và trí nhớ của chủ máy nằm ở OneDrive, tự đồng bộ hai chiều với thư mục ' + cfg.oneDriveDir + '. ' +
     'Hãy đọc dữ liệu cần thiết từ đó. Lưu kết quả, báo cáo và điều đáng nhớ vào ' + cfg.oneDriveDir + '/AgentOS/ (tạo nếu chưa có). ' +
-    'Đầu mỗi việc hãy đọc ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md nếu có (trí nhớ lâu dài về chủ máy và cửa hàng), cuối việc thêm vào tệp đó những điều mới đáng nhớ (ngắn gọn, có ngày). ' +
+    'Ghi nhớ lâu dài về chủ máy/cửa hàng (tệp ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md) đã được gửi kèm ở đầu câu lệnh khi cần, KHÔNG cần đọc lại tệp. Chỉ khi có điều mới thật sự đáng nhớ LÂU DÀI (sở thích, quy trình, thông tin cửa hàng) thì thêm MỘT dòng "- [YYYY-MM-DD] nội dung ngắn" vào cuối tệp đó (không ghi mật khẩu/khóa). ' +
     'Không xóa và không ghi đè tệp của chủ máy: chỉ tạo tệp mới (tên có ngày giờ) hoặc thêm vào cuối tệp trong thư mục AgentOS. Tệp lên OneDrive sau khoảng 2 phút. ' +
     'Nếu thư mục không có gì thì có thể chưa kết nối OneDrive: báo chủ máy gõ /onedrive ketnoi.';
   const FULL_HINT = 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
@@ -140,6 +144,8 @@ async function main() {
   const allMcp = () => ({ mcp: Object.keys(tools.servers || {}) });
 
   // Khóa API (nếu chủ máy nhập): chỉ khóa của đúng AI được đổi sang biến môi trường mà CLI của hãng đọc (apikeys.js)
+  // Gemini CLI đính kèm tệp bằng @đường-dẫn: đổi các đường dẫn ảnh trong câu lệnh thành @đường-dẫn
+  const atImages = (text) => imagePaths(text).reduce((t, p) => t.split(p).join('@' + p), String(text));
   const keyEnv = (name) => apikeys.childEnv(name, cfg.apiKeys, { deepseekModel: cfg.deepseekModel });
   // Claude Code chạy cho cả 'claude' và 'deepseekapi' (DeepSeek qua điểm cuối tương thích Anthropic): chỉ khác biến môi trường
   const claudeRun = (name, { job, prompt, resumeId }) => {
@@ -176,14 +182,14 @@ async function main() {
       if (isFull()) {
         return startCodex({
           bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir, prompt: '[' + FULL_HINT + ']\n\n' + prompt, resumeId,
-          sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), timeoutMs: cfg.jobTimeoutMs, env: keyEnv('codex'),   // không sandbox
+          sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), images: imagePaths(prompt), timeoutMs: cfg.jobTimeoutMs, env: keyEnv('codex'),   // không sandbox
         });
       }
       const p = tools.profile(job.profile);
       return startCodex({
         bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir,
         prompt: '[' + [p.hint, ONEDRIVE_HINT].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId,
-        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('codex'),
+        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), images: imagePaths(prompt), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('codex'),
       });
     },
     // Gemini (Google) KHÔNG đi qua cổng duyệt của AgentOS -> ở chế độ bảo vệ chỉ chạy CHỈ ĐỌC (--approval-mode plan: không ghi tệp, không chạy lệnh, không MCP)
@@ -191,13 +197,13 @@ async function main() {
     gemini: ({ job, prompt, resumeId }) => {
       try { apikeys.setGeminiAuthType(process.env.HOME || require('os').homedir(), cfg.apiKeys.gemini ? 'gemini-api-key' : 'oauth-personal'); } catch (e) { log('không đặt được kiểu đăng nhập Gemini: ' + e.message); }
       if (isFull()) {
-        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir, prompt: '[' + FULL_HINT + ']\n\n' + prompt, resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, env: keyEnv('gemini') });
+        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir, prompt: '[' + FULL_HINT + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, env: keyEnv('gemini') });
       }
       const p = tools.profile(job.profile);
       const note = 'Bạn đang ở chế độ CHỈ ĐỌC (không ghi tệp, không chạy lệnh): nếu cần lưu kết quả, hãy đưa nội dung vào câu trả lời để chủ máy lưu.';
       return startGemini({
         bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir,
-        prompt: '[' + [p.hint, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId,
+        prompt: '[' + [p.hint, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + atImages(prompt), resumeId,
         mode: 'plan', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('gemini'),
       });
     },
@@ -206,8 +212,15 @@ async function main() {
   for (const e of cfg.engineOrder) engines[e] = { start: factories[e] };
 
   const notify = (chatId, text) => tg.sendMessage(chatId, text);
+  // Bộ nhớ dùng chung (ghi nhớ lâu dài + tóm tắt cuộn + việc gần nhất + tìm lại FTS5) và nén bằng mô hình rẻ (Gemini/DeepSeek qua khóa API, không có khóa thì cắt gọn)
+  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, log });
+  const memory = createMemory({ db, dir: cfg.oneDriveDir, fallbackFile: path.join(dataDir, 'ghi-nho.md'), summarizer, cfg: cfg.memory, log });
+  log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
+  const inboxDir = path.join(cfg.workdir, 'inbox');
+  const voice = createVoice({ tg, log, bin: process.env.STT_BIN || undefined });
+  const media = createMedia({ tg, dir: inboxDir, log, voice });
   const worker = createWorker({
-    db, log, notify, engines, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
+    db, log, notify, engines, context: memory, router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     outbox: createOutbox(outDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (isFull() ? cfg.engineOrder : tools.enginesFor(job.profile)),
     retryDelaysMs: cfg.retryDelaysMs,
@@ -225,8 +238,12 @@ async function main() {
   });
   const bot = createBot({
     db, worker, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    voice: createVoice({ tg, log, bin: process.env.STT_BIN || undefined }),
-    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), update: updates, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
+    voice, media, memory,
+    send: async (chat, reply) => {                          // trả lời cho album (không đi qua vòng nhận tin)
+      if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
+      else if (reply) await tg.sendMessage(chat, reply);
+    },
+    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));
@@ -254,7 +271,7 @@ async function main() {
     try {
       const made = maint.backup(db, backupDir, { keep: cfg.backupKeep });
       const pr = db.pruneOld(Date.now() - cfg.jobRetentionDays * DAYS, Date.now() - cfg.auditRetentionDays * DAYS);
-      const files = maint.pruneFiles(outDir, cfg.outRetentionDays * DAYS);
+      const files = maint.pruneFiles(outDir, cfg.outRetentionDays * DAYS) + maint.pruneFiles(inboxDir, cfg.outRetentionDays * DAYS);
       if (made || pr.jobs || pr.audit || files) log('bảo trì: sao lưu ' + (made || '(đã có hôm nay)') + ', xóa ' + pr.jobs + ' việc cũ, ' + pr.audit + ' dòng nhật ký, ' + files + ' file kết quả');
     } catch (e) { log('bảo trì lỗi: ' + e.message); }
   }

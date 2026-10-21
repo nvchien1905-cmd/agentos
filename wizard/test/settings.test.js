@@ -44,7 +44,7 @@ async function boot(extra) {
     port: 0, host: '127.0.0.1', envFile, versionFile: path.join(dir, 'VERSION'), backupDir: path.join(dir, 'bk'), onedriveConf: path.join(dir, 'od'), onedriveDir: path.join(dir, 'odir'),
     run, spawn, fetch: apiFetch, peerUid: () => uid, allowedUids: () => new Set([1000, 0]), pageFile: path.join(__dirname, '..', 'settings', 'index.html'),
     updater: { check: async () => ({ installed: '2026.10.21.2', latest: '2026.10.22.1', newer: true, notes: 'moi' }) }, tsRun: async () => ({ code: 0, out: JSON.stringify({ BackendState: 'NeedsLogin' }), err: '' }),
-    exit: () => {}, fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'dropin', '10-x.conf') }, sleep: (ms) => new Promise((r) => setTimeout(r, 2)), odPollMs: 1, odSettleMs: 0,
+    memFallback: path.join(dir, 'ghi-nho.md'), exit: () => {}, fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'dropin', '10-x.conf') }, sleep: (ms) => new Promise((r) => setTimeout(r, 2)), odPollMs: 1, odSettleMs: 0,
   }, extra || {}));
   const port = await s.listen();
   const call = async (method, p, body, headers) => {
@@ -193,5 +193,29 @@ test('settings: OneDrive — lấy đường dẫn đăng nhập, từ chối đ
     assert.equal((await S.call('GET', 'logs?unit=khong-co')).status, 400);
     assert.equal((await S.call('GET', 'backup')).body.files.length, 0);
     const bk = await S.call('POST', 'backup/run'); assert.equal((await waitJob(S, bk.body.job)).status, 'done');
+  } finally { await S.s.close(); }
+});
+
+test('settings: bộ nhớ chung — đọc/ghi ghi nhớ (chặn dòng giống bí mật, có bản .bak), cấu hình nén/định tuyến ghi vào env và khởi động lại bot', async () => {
+  const S = await boot();
+  try {
+    const m0 = await S.call('GET', 'memory');
+    assert.deepEqual([m0.body.config.enabled, m0.body.config.route, m0.body.config.provider, m0.body.config.rotateAfter, m0.body.summarizer.gemini], [true, true, 'auto', 25, false]);
+    const ok = await S.call('POST', 'memory/facts', { text: '# Ghi nhớ\n- [2026-10-21] Cửa hàng nghỉ chủ nhật\n- [2026-10-21] Khách Lan thích màu xanh' });
+    assert.equal(ok.body.lines, 2);
+    assert.match((await S.call('GET', 'memory')).body.facts, /Cửa hàng nghỉ chủ nhật/);
+    await S.call('POST', 'memory/facts', { text: '- [2026-10-22] Điều mới' });
+    assert.ok(fs.existsSync(path.join(S.dir, 'ghi-nho.md.bak')));
+    for (const bad of ['- mật khẩu: abc', '- api key = sk-abcdefghijklmnopqrstuv', '- Mật khẩu wifi là nhà-minh'])
+      assert.equal((await S.call('POST', 'memory/facts', { text: bad })).status, 400, bad);
+    assert.equal((await S.call('POST', 'memory/facts', { text: 'a'.repeat(20001) })).status, 400);
+    const c = await S.call('POST', 'memory/config', { enabled: false, route: false, provider: 'gemini', rotateAfter: 40 });
+    assert.equal(c.status, 200);
+    assert.match(S.env(), /^MEMORY_ENABLED=false$/m); assert.match(S.env(), /^ROUTE_BY_DIFFICULTY=false$/m); assert.match(S.env(), /^SUMMARY_PROVIDER=gemini$/m); assert.match(S.env(), /^MEMORY_ROTATE_AFTER=40$/m);
+    assert.ok(S.calls.some((x) => x[0] === 'systemctl' && x[1] === 'restart' && x[2] === 'agentos-orchestrator.service'));
+    assert.match((await S.call('POST', 'memory/test')).body.error, /Chưa có khóa Gemini hoặc DeepSeek/);
+    assert.equal((await S.call('POST', 'memory/config', { provider: 'khac' })).status, 400);
+    assert.equal((await S.call('POST', 'memory/config', { rotateAfter: 2 })).status, 400);
+    const g = await S.call('GET', 'memory'); assert.deepEqual([g.body.config.enabled, g.body.config.route, g.body.config.provider], [false, false, 'gemini']);
   } finally { await S.s.close(); }
 });

@@ -16,7 +16,9 @@ function fmtTime(ms) {
 // `engineFilter(job)` (tùy chọn) trả danh sách engine được phép chạy việc đó (theo bộ công cụ); null = tất cả.
 // `preflight(job)` (tùy chọn) trả chuỗi lỗi nếu máy chưa sẵn sàng chạy việc (ví dụ ổ đĩa gần đầy), null nếu ổn.
 // `retryDelaysMs`: khoảng chờ giữa các lần thử lại khi gặp lỗi tạm thời (mặc định 15s, 60s, 180s).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs }) {
+// `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
+// `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router }) {
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
   log = log || (() => {});
   now = now || Date.now;
@@ -47,7 +49,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
 
   // Khi engine mới chưa có phiên (vừa chuyển engine hoặc phiên mất), đưa kèm tóm tắt các việc trước
   // trong cuộc trò chuyện để nó nối tiếp được. /moi đặt mốc cắt nên không lòi ngữ cảnh cũ.
-  function buildPrompt(job, hasSession) {
+  function buildPrompt(job, hasSession, eng) {
+    if (context) return context.pack(job, hasSession, eng);
     if (hasSession) return job.prompt;
     const after = Number(db.kvGet('ctxfrom:' + job.chat_id)) || 0;
     const hist = db.history(job.chat_id, after, job.id, 3);
@@ -69,7 +72,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   async function runWithRetry(job, eng, resumeId) {
     for (let n = 0; ; n++) {
       let h;
-      try { h = engines[eng].start({ job, prompt: buildPrompt(job, !!resumeId), resumeId }); } catch (e) {
+      try { h = engines[eng].start({ job, prompt: buildPrompt(job, !!resumeId, eng), resumeId }); } catch (e) {
         return { ok: false, limit: false, error: 'Không khởi động được ' + name(eng) + ': ' + e.message };
       }
       current = { jobId: job.id, chatId: job.chat_id, kill: h.kill };
@@ -97,6 +100,10 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       break;
     }
     if (res.ok && res.sessionId) db.kvSet(sessionKey(job.chat_id, eng), res.sessionId);
+    if (res.ok && context) {
+      try { const r = await context.afterJob(job, eng, res); if (r && r.rotate) { db.kvDel(sessionKey(job.chat_id, eng)); log('xoay phiên ' + name(eng) + ' của cuộc trò chuyện ' + job.chat_id + ' (ngữ cảnh đã được tóm tắt)'); } }
+      catch (e) { log('cập nhật ngữ cảnh lỗi: ' + e.message); }
+    }
     return res;
   }
 
@@ -105,7 +112,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     if (!job) return false;
     const wasWaiting = job.run_after != null;
     const permitted = engineFilter ? engineFilter(job) : null;
-    const cands = (job.engine_pref ? [job.engine_pref] : order).filter((e) => engines[e] && (!permitted || permitted.includes(e)));
+    let cands = (job.engine_pref ? [job.engine_pref] : order).filter((e) => engines[e] && (!permitted || permitted.includes(e)));
+    if (router && cands.length) cands = router.order(job, cands);
     if (!cands.length) {
       // Ví dụ: /web chỉ chạy trên Claude (Codex không qua cổng duyệt) mà người dùng ép /codex, hoặc Claude không được bật.
       const why = 'Việc #' + job.id + ' không chạy được: bộ công cụ' + (job.profile ? ' /' + job.profile : '') + ' chỉ chạy trên ' +

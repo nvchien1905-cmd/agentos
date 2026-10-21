@@ -63,6 +63,16 @@ function load(env) {
     kiotviet: { clientId: env.KIOTVIET_CLIENT_ID || '', clientSecret: env.KIOTVIET_CLIENT_SECRET || '', retailer: env.KIOTVIET_RETAILER || '' },
     reportTime: /^\d{2}:\d{2}$/.test(env.REPORT_TIME || '') ? env.REPORT_TIME : '21:30',      // giờ gửi báo cáo hằng ngày (giờ VN); đổi bằng /baocao gio
     updateUrl: env.UPDATE_URL || '',                              // nơi lấy bản cập nhật (mặc định: kho GitHub chính thức)
+    // Bộ nhớ dùng chung cho mọi AI (memory.js) + nén ngữ cảnh bằng mô hình rẻ (summarizer.js) + chọn AI theo độ khó (router.js)
+    memory: {
+      enabled: String(env.MEMORY_ENABLED === undefined ? 'true' : env.MEMORY_ENABLED).toLowerCase() !== 'false',
+      recentTurns: Number(env.MEMORY_RECENT_TURNS) || 4, rotateAfter: Number(env.MEMORY_ROTATE_AFTER) || 25,
+      summarizeAfter: Number(env.MEMORY_SUMMARIZE_AFTER) || 6, factsMax: Number(env.MEMORY_FACTS_MAX) || 4500,
+    },
+    summaryProvider: (env.SUMMARY_PROVIDER || 'auto').toLowerCase(),         // auto | gemini | deepseek | none
+    summaryModel: env.SUMMARY_MODEL || '',                                  // trống = tự chọn mô hình Gemini flash còn dùng được
+    routeByDifficulty: String(env.ROUTE_BY_DIFFICULTY === undefined ? 'true' : env.ROUTE_BY_DIFFICULTY).toLowerCase() !== 'false',
+    lightEngines: list(env.LIGHT_ENGINES === undefined ? 'deepseekapi,gemini' : env.LIGHT_ENGINES).map((s) => s.toLowerCase()),
     toolsFile: env.TOOLS_FILE ? path.resolve(env.TOOLS_FILE) : '',
     chromePath: env.CHROME_PATH || '',
     display: env.DISPLAY || ':99',

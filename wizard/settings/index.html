@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['net', '📶', 'Mạng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -142,6 +142,23 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         on('ows', function () { api('POST', 'bot/owner', { ids: document.getElementById('ow').value }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
         on('m0', function () { api('POST', 'bot/mode', { full: false }).then(function () { toast('Đã chuyển sang chế độ Bảo vệ'); render(); }).catch(fail); });
         on('m1', function () { if (ask('BẬT TOÀN QUYỀN: AI sẽ tự làm không hỏi và có quyền quản trị trên máy này. Bạn chắc chắn?')) api('POST', 'bot/mode', { full: true }).then(function () { toast('Đã bật Toàn quyền'); render(); }).catch(fail); });
+      }).catch(fail);
+    },
+    mem: function () {
+      api('GET', 'memory').then(function (r) {
+        var c = r.config, hasKey = r.summarizer.gemini || r.summarizer.deepseek;
+        set('<h2>Bộ nhớ của AI</h2><p class="mute">Một bộ nhớ chung do AgentOS giữ, mọi AI (Claude, Codex, Gemini, DeepSeek) dùng chung. Khi chuyển AI hay mở phiên mới, AI vẫn biết chủ máy và công việc đang dở mà không tốn token đọc lại cả lịch sử.</p>' +
+          '<div class="card"><h3>Ghi nhớ lâu dài</h3><p class="mute">Mỗi dòng một điều, dạng <b>- [2026-10-21] nội dung</b>. Bạn và AI cùng ghi vào đây (trên Telegram: /nho, /quen, /trinho). Không ghi mật khẩu hay khóa.<br>Tệp: ' + esc(r.file) + '</p>' +
+          '<textarea id="mf" style="width:100%;min-height:220px;font:13px/1.5 ui-monospace,monospace;padding:10px;border:1px solid var(--line);border-radius:8px">' + esc(r.facts) + '</textarea><div class="row" style="margin-top:8px"><button class="b p" id="ms">Lưu ghi nhớ</button><small id="mc"></small></div></div>' +
+          '<div class="card"><h3>Nén ngữ cảnh (tiết kiệm token)</h3><p>' + (hasKey ? '<span class="ok">✓ Đang nén bằng mô hình rẻ: ' + (r.summarizer.gemini ? 'Gemini' : 'DeepSeek') + '</span>' : '<span class="warn">Chưa có khóa Gemini/DeepSeek: đang nén bằng cách cắt gọn (kém chính xác hơn).</span> Thêm khóa ở mục “AI và khóa API”.') + '</p>' +
+          '<div class="row"><label>Nguồn nén <select id="mp"><option value="auto">Tự chọn (Gemini rồi DeepSeek)</option><option value="gemini">Gemini</option><option value="deepseek">DeepSeek</option><option value="none">Không (cắt gọn)</option></select></label>' +
+          '<label>Mở phiên mới sau <input type="number" id="mr" min="5" max="200" value="' + c.rotateAfter + '" style="width:80px"> lượt</label></div>' +
+          '<div style="margin:10px 0"><label><input type="checkbox" id="me" ' + (c.enabled ? 'checked' : '') + '> Bật bộ nhớ chung</label><br><label><input type="checkbox" id="mt" ' + (c.route ? 'checked' : '') + '> Chọn AI theo độ khó (câu hỏi nhẹ đi AI rẻ trước, việc nặng dùng AI mạnh)</label></div>' +
+          '<div class="row"><button class="b p" id="mk">Lưu cài đặt</button><button class="b" id="mt2">Thử nén ngay</button><small id="mr2"></small></div></div>');
+        document.getElementById('mp').value = c.provider;
+        on('ms', function () { api('POST', 'memory/facts', { text: document.getElementById('mf').value }).then(function (j) { document.getElementById('mc').textContent = 'Đã lưu (' + j.lines + ' điều)'; toast('Đã lưu ghi nhớ'); }).catch(fail); });
+        on('mt2', function () { document.getElementById('mr2').textContent = 'Đang thử...'; api('POST', 'memory/test').then(function (j) { document.getElementById('mr2').innerHTML = '<span class="ok">✓ ' + esc(j.via) + ' trả lời: ' + esc(j.text) + '</span>'; }).catch(function (e) { document.getElementById('mr2').innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; }); });
+        on('mk', function () { api('POST', 'memory/config', { enabled: document.getElementById('me').checked, route: document.getElementById('mt').checked, provider: document.getElementById('mp').value, rotateAfter: document.getElementById('mr').value }).then(function () { toast('Đã lưu, bot đang khởi động lại'); }).catch(fail); });
       }).catch(fail);
     },
     net: function () {

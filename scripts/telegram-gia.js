@@ -19,6 +19,13 @@ function takeInput() {
     if (line.startsWith('@duyet')) {
       if (lastBtnMsg) { ups.push({ update_id: ++uid, callback_query: { id: 'cb' + uid, from: { id: OWNER, first_name: 'Chu' }, message: { message_id: lastBtnMsg.mid, chat: { id: OWNER, type: 'private' } }, data: lastBtnMsg.btns[0].callback_data } }); log('[CHU bam nut] ' + lastBtnMsg.btns[0].text); }
       else log('[CHU] không có lời hỏi duyệt nào để bấm');
+    } else if (line.startsWith('@anh ') || line.startsWith('@video ')) {   // "@anh /duong/dan/a.jpg | chú thích" / "@video /duong/dan/v.mp4 | chú thích"
+      const isPhoto = line.startsWith('@anh ');
+      const [p, cap] = line.slice(isPhoto ? 5 : 7).split('|').map((x) => x.trim());
+      const size = fs.statSync(p).size;
+      const media = isPhoto ? { photo: [{ file_id: p, file_size: Math.floor(size / 2), width: 320, height: 240 }, { file_id: p, file_size: size, width: 1280, height: 960 }] } : { video: { file_id: p, file_name: p.split('/').pop(), mime_type: 'video/mp4', file_size: size, duration: 5 } };
+      ups.push({ update_id: ++uid, message: Object.assign({ message_id: ++mid, from: { id: OWNER, first_name: 'Chu', is_bot: false }, chat: { id: OWNER, type: 'private' }, date: Math.floor(Date.now() / 1000) }, media, cap ? { caption: cap } : {}) });
+      log('[CHU ' + (isPhoto ? 'ảnh' : 'video') + '] ' + p + (cap ? ' | ' + cap : ''));
     } else if (line.startsWith('@thoai ')) {                       // "@thoai /duong/dan/am-thanh.ogg" = chủ máy gửi tin nhắn thoại (file_id = đường dẫn tệp)
       ups.push({ update_id: ++uid, message: { message_id: ++mid, from: { id: OWNER, first_name: 'Chu', is_bot: false }, chat: { id: OWNER, type: 'private' }, date: Math.floor(Date.now() / 1000), voice: { file_id: line.slice(7).trim(), duration: 4 } } });
       log('[CHU thoại] ' + line.slice(7).trim());

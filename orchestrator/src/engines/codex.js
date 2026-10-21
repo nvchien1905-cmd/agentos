@@ -24,7 +24,9 @@ function startCodex(opts) {
   if (opts.resumeId) args.push('resume', opts.resumeId);
   args.push('--json', '--skip-git-repo-check');
   if (opts.extraArgs) args.push(...opts.extraArgs); // ví dụ -c mcp_servers... (chưa kiểm với Codex thật)
+  for (const im of opts.images || []) args.push('-i', im);          // ảnh đính kèm (một cờ -i cho mỗi ảnh)
   if (!opts.resumeId && opts.sandbox) args.push('--sandbox', opts.sandbox);
+  if (opts.images && opts.images.length) args.push('--');           // sau -i, dấu '--' để '-' (prompt từ stdin) không bị coi là tên ảnh
   args.push('-'); // đọc prompt từ stdin
 
   const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap });

@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory;
   const clock = () => { const d = new Date(Date.now() + 7 * 3600 * 1000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
 
   async function run(name, arg, ctx) {
@@ -97,6 +97,25 @@ function createQuick(o) {
           return 'Cách dùng: /tailscale (tình trạng) · /tailscale ketnoi · /tailscale ngat co';
         }
         case 'capnhat': return upd ? await upd.command(arg) : '⚠️ Máy này chưa có tính năng cập nhật từ xa.';
+        case 'nho': {
+          if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
+          if (!arg) return 'Cách dùng: /nho <điều cần nhớ lâu dài>, ví dụ /nho Cửa hàng nghỉ chủ nhật. Mọi AI (Claude, Codex, Gemini, DeepSeek) đều dùng chung. /trinho để xem, /quen <từ khóa> để xóa.';
+          const r = mem.addFact(arg);
+          return r.ok ? (r.duplicate ? 'Điều này đã có trong ghi nhớ rồi.' : '🧠 Đã ghi nhớ. Mọi AI sẽ biết điều này (/trinho để xem, /quen để xóa).') : '⚠️ ' + r.error;
+        }
+        case 'quen': {
+          if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
+          if (!arg) return 'Cách dùng: /quen <từ khóa>: xóa các dòng ghi nhớ có chứa từ khóa đó (có bản sao lưu GHI-NHO.md.bak).';
+          const r = mem.forgetFact(arg);
+          return r.removed ? '🗑️ Đã xóa ' + r.removed + ' dòng ghi nhớ:\n' + r.lines.map((l) => l.trim().slice(0, 140)).join('\n') : 'Không có dòng ghi nhớ nào chứa "' + arg + '".';
+        }
+        case 'trinho': {
+          if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
+          const i = mem.info(ctx && ctx.chatId);
+          const facts = i.facts.trim() ? (i.facts.length > 2800 ? i.facts.slice(0, 2800) + '\n…(còn nữa, xem tệp ' + i.factsFile + ')' : i.facts.trim()) : '(chưa có điều nào; dùng /nho để thêm)';
+          return '🧠 Ghi nhớ lâu dài (' + i.factLines + ' điều, dùng chung mọi AI)\n' + facts + '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1200) : '(chưa có; có khi hội thoại dài)') +
+            '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt';
+        }
         case 'in': return printing ? await printing.print(arg) : '⚠️ Máy này chưa có tính năng in.';
         default: return null;
       }

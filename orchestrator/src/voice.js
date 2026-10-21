@@ -52,7 +52,16 @@ function createVoice(o) {
       return { ok: false, error: 'Không xử lý được tin nhắn thoại: ' + e.message };
     } finally { fs.rm(dest, { force: true }, () => {}); }
   }
-  return { transcribe, spoken };
+  // Nhận dạng từ tệp âm thanh có sẵn trên máy (dùng cho lời nói trong video). Trả { ok, text } hoặc { ok:false, error }.
+  async function transcribePath(file) {
+    try {
+      const r = await run(file);
+      if (r.code !== 0) return { ok: false, error: (r.err || r.out).slice(0, 200) };
+      const text = r.out.trim();
+      return text ? { ok: true, text } : { ok: false, error: 'không nghe thấy lời nói' };
+    } catch (e) { return { ok: false, error: e.message }; }
+  }
+  return { transcribe, transcribePath, spoken };
 }
 
 module.exports = { createVoice, spoken };

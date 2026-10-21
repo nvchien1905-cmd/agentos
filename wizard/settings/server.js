@@ -175,6 +175,12 @@ function createSettings(o) {
       const dpkgOpts = ['-o', 'Dpkg::Options::=--force-confold', '-o', 'Dpkg::Options::=--force-confdef'];
       return { job: startJob('Cập nhật hệ điều hành (Debian)', [['apt-get', ['update']], ['apt-get', ['-y', ...dpkgOpts, 'dist-upgrade']], ['apt-get', ['-y', 'autoremove']]]) };
     },
+    // Sau khi cập nhật AgentOS: tự thoát để systemd (Restart=always) chạy lại bằng mã mới. Chỉ khi không có công việc nền nào đang chạy.
+    async 'POST /api/self-restart'() {
+      if (busy()) throw new Error('Đang có công việc chạy, thử lại sau khi xong.');
+      setTimeout(() => (o.exit || process.exit)(0), 600);
+      return { ok: true };
+    },
     async 'POST /api/power'(b) {
       if (b.confirm !== true) throw new Error('Cần xác nhận');
       if (b.action !== 'reboot' && b.action !== 'poweroff') throw new Error('Thao tác không hợp lệ');

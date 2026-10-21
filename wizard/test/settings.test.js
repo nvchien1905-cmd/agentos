@@ -44,7 +44,7 @@ async function boot(extra) {
     port: 0, host: '127.0.0.1', envFile, versionFile: path.join(dir, 'VERSION'), backupDir: path.join(dir, 'bk'), onedriveConf: path.join(dir, 'od'), onedriveDir: path.join(dir, 'odir'),
     run, spawn, fetch: apiFetch, peerUid: () => uid, allowedUids: () => new Set([1000, 0]), pageFile: path.join(__dirname, '..', 'settings', 'index.html'),
     updater: { check: async () => ({ installed: '2026.10.21.2', latest: '2026.10.22.1', newer: true, notes: 'moi' }) }, tsRun: async () => ({ code: 0, out: JSON.stringify({ BackendState: 'NeedsLogin' }), err: '' }),
-    fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'dropin', '10-x.conf') }, sleep: (ms) => new Promise((r) => setTimeout(r, 2)), odPollMs: 1, odSettleMs: 0,
+    exit: () => {}, fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'dropin', '10-x.conf') }, sleep: (ms) => new Promise((r) => setTimeout(r, 2)), odPollMs: 1, odSettleMs: 0,
   }, extra || {}));
   const port = await s.listen();
   const call = async (method, p, body, headers) => {
@@ -97,6 +97,8 @@ test('settings: cập nhật AgentOS (kiểm + công việc nền có nhật ký
     const u = await S.call('POST', 'updates/os/upgrade'); await waitJob(S, u.body.job);
     const cmds = S.spawned.map((x) => x.join(' '));
     assert.ok(cmds.some((x) => /^apt-get -y .*dist-upgrade$/.test(x) && x.includes('force-confold'))); assert.ok(cmds.some((x) => x === 'apt-get -y autoremove'));
+    let exited = 0; // self-restart: chỉ khi rảnh
+    assert.equal((await S.call('POST', 'self-restart')).body.ok, true);
     assert.equal((await S.call('POST', 'power', { action: 'reboot' })).status, 400);               // cần xác nhận
     assert.equal((await S.call('POST', 'power', { action: 'format', confirm: true })).status, 400);
   } finally { await S.s.close(); }

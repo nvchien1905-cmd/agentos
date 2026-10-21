@@ -41,6 +41,12 @@ Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
 
+# Sửa màn hình trắng của trình hướng dẫn lần đầu trên một số card đồ họa: tắt tăng tốc GPU của Chromium kiosk
+W=/etc/xdg/autostart/agentos-wizard.desktop
+if [ -f "$W" ] && ! grep -q -- '--disable-gpu' "$W"; then
+  sed -i 's/exec chromium --kiosk /exec chromium --kiosk --disable-gpu --disable-gpu-compositing /' "$W"
+fi
+
 # Biểu tượng ứng dụng mới cho người dùng mới (skel) và người dùng đã có
 for f in agentos-claudeweb agentos-chatgpt; do
   src=/usr/share/applications/$f.desktop

@@ -47,7 +47,7 @@ function plan(version, applyFile) {
   pick('usr/local/sbin', /^agentos-[\w-]+$/, 'usr/local/sbin/');
   pick('etc/systemd/system', /^(agentos-[\w.-]+|onedrive-agentos\.[\w.-]+)$/, 'etc/systemd/system/');
   pick('etc/systemd/system/tailscaled.service.d', /^[\w.-]+$/, 'etc/systemd/system/tailscaled.service.d/');
-  pick('etc/xdg/autostart', /^agentos-[\w-]+\.desktop$/, 'etc/xdg/autostart/');
+  // KHÔNG đóng gói etc/xdg/autostart: máy đã cài từ ISO cũ chưa có đường dẫn này trong danh sách cho phép nên sẽ từ chối cả gói. Sửa tệp đó bằng apply.sh.
   pick('usr/share/applications', /^agentos-[\w-]+\.desktop$/, 'usr/share/applications/');
   pick('usr/share/icons/hicolor/scalable/apps', /^agentos-[\w-]+\.svg$/, 'usr/share/icons/hicolor/scalable/apps/');
   if (applyFile) map.push([path.resolve(applyFile), 'apply.sh']);

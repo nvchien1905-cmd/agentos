@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.1",
-  "file": "agentos-update-2026.10.26.1.tar.gz",
-  "size": 220521,
-  "sha256": "6c59d27fcf15ec269d4c9429af4a3ea4dcb26a547a203fb72a923fd526b4693c",
+  "version": "2026.10.26.2",
+  "file": "agentos-update-2026.10.26.2.tar.gz",
+  "size": 220699,
+  "sha256": "3f8ffcdfc916b336e5f66fa1dc8094c014553b3f5a7ad24bae7ac3cebd5a986f",
   "date": "2026-10-25",
-  "notes": "OneDrive tự nhận mã đăng nhập (sửa lỗi wrongplace của Microsoft), trang Tài khoản đã lưu (che bớt bí mật)"
+  "notes": "Sửa: Cài đặt AgentOS tự khởi động lại sau cập nhật (trước đây trang mới chạy với máy chủ cũ)"
 }

@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('fs');
+const { toTelegramChunks } = require('./tgFormat');
 
 const MAX_LEN = 4000; // giới hạn Telegram là 4096
 
@@ -62,6 +63,29 @@ function createTelegram(token, fetchImpl) {
       return upload(chatId, file, false);
     },
     getMe: () => call('getMe'),
+    // --- Trả lời "đẹp" như Claude Code: Markdown -> HTML Telegram, tiến trình sửa liên tục, hiện "đang gõ" ---
+    sendChatAction: (chatId, action) => call('sendChatAction', { chat_id: chatId, action: action || 'typing' }).catch(() => null),
+    async sendHtml(chatId, html, extra) {
+      const m = await call('sendMessage', Object.assign({ chat_id: chatId, text: html, parse_mode: 'HTML', disable_web_page_preview: true }, extra || {}));
+      return m && m.message_id;
+    },
+    async editHtml(chatId, messageId, html) {
+      try { return await call('editMessageText', { chat_id: chatId, message_id: messageId, text: html, parse_mode: 'HTML', disable_web_page_preview: true }); }
+      catch (e) { if (/not modified/i.test(e.message)) return null; throw e; }
+    },
+    deleteMessage: (chatId, messageId) => call('deleteMessage', { chat_id: chatId, message_id: messageId }).catch(() => null),
+    // Gửi Markdown: đổi sang HTML, chia tin ≤ 3800 ký tự không cắt đôi khối mã; Telegram từ chối định dạng thì gửi bản chữ thường của đúng đoạn đó.
+    async sendRich(chatId, markdown) {
+      for (const c of toTelegramChunks(markdown)) {
+        if (!c.html) continue;
+        try { await call('sendMessage', { chat_id: chatId, text: c.html, parse_mode: 'HTML', disable_web_page_preview: true }); }
+        catch (e) {
+          if (e.retryAfter) throw e;
+          if (/parse entities|can't parse|unsupported start tag|can't find end/i.test(e.message)) await call('sendMessage', { chat_id: chatId, text: c.text || c.html.replace(/<[^>]+>/g, ''), disable_web_page_preview: true });
+          else throw e;
+        }
+      }
+    },
     // Tải tệp người dùng gửi (tin nhắn thoại...) về `dest`. Giới hạn 20MB của Telegram Bot API.
     async downloadFile(fileId, dest) {
       const info = await call('getFile', { file_id: fileId });

@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.21.8",
-  "file": "agentos-update-2026.10.21.8.tar.gz",
-  "size": 160661,
-  "sha256": "eff7ca5bfc453c6fdb0893a21f1c8bcc2ae78944a62ffd413382668986be0212",
-  "date": "2026-10-21",
-  "notes": "Ngữ cảnh lưu như một cuốn sách: sổ tay có mục lục + chương theo chủ đề, AI lướt tóm tắt và mở chi tiết khi liên quan, thông tin mới thay mục cũ (lưu lịch sử), tự xếp lại ghi chú vào đúng chương khi có khóa Gemini/DeepSeek. Xem/sửa ở Cài đặt → Bộ nhớ của AI."
+  "version": "2026.10.25.1",
+  "file": "agentos-update-2026.10.25.1.tar.gz",
+  "size": 168260,
+  "sha256": "e9aae3e711c79e14ef2d29cbdcebf73ea5f3c1ff47be371b4ba9b1125f6ebdf0",
+  "date": "2026-10-25",
+  "notes": "Trả lời kiểu Claude Code: định dạng đẹp, tin trạng thái trực tiếp, bỏ tin Đã nhận việc"
 }

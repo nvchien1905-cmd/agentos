@@ -1,6 +1,7 @@
 'use strict';
 const { runProcess, abnormal } = require('./proc');
 const { classifyFailure, parseResetTime } = require('../limits');
+const { lineReader, fromClaude } = require('../progress');
 
 // Lấy đối tượng JSON kiểu {"type":"result",...} từ đầu ra của `claude -p --output-format json`.
 function parseOutput(stdout) {
@@ -19,7 +20,9 @@ function parseOutput(stdout) {
 // Chạy một việc bằng Claude Code. Trả { done: Promise<kết quả>, kill() }.
 // Kết quả: { ok, text, sessionId, costUsd, limit, resetAt, cancelled, timedOut, error }
 function startClaude(opts) {
-  const args = [].concat(opts.binArgs || [], ['-p', '--output-format', 'json']);
+  // Có onProgress: dùng luồng sự kiện (stream-json) để báo từng bước đang làm như màn hình Claude Code; kết quả cuối lấy từ sự kiện type 'result'.
+  const stream = typeof opts.onProgress === 'function';
+  const args = [].concat(opts.binArgs || [], ['-p', '--output-format', stream ? 'stream-json' : 'json'], stream ? ['--verbose'] : []);
   // Chế độ toàn quyền: bỏ mọi bước hỏi xin phép của Claude Code (chỉ dùng cho máy cá nhân của chủ, xem index.js FULL_HINT)
   if (opts.skipPermissions) args.push('--dangerously-skip-permissions');
   if (opts.allowedTools) args.push('--allowedTools', opts.allowedTools);
@@ -32,11 +35,17 @@ function startClaude(opts) {
   if (opts.appendSystemPrompt) args.push('--append-system-prompt', opts.appendSystemPrompt);
   if (opts.resumeId) args.push('--resume', opts.resumeId);
 
-  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap });
+  let finalEv = null;
+  const reader = stream ? lineReader((line) => {
+    let ev; try { ev = JSON.parse(line); } catch (e) { return; }
+    if (ev && ev.type === 'result') finalEv = ev; else fromClaude(ev, opts.onProgress);
+  }) : null;
+  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
   const done = p.done.then((r) => {
+    if (reader) reader.flush();
     const ab = abnormal(r, opts.bin);
     if (ab) return ab;
-    const j = parseOutput(r.out);
+    const j = finalEv || parseOutput(r.out);
     const text = j && typeof j.result === 'string' ? j.result : '';
     const isError = !j || j.is_error === true || r.code !== 0;
     const hay = text + '\n' + r.err;

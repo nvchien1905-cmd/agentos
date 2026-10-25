@@ -36,7 +36,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `profiles`: [{ name, description, adminOnly }] các bộ công cụ chọn bằng lệnh /<tên> (ví dụ /web).
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -48,6 +48,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     const id = db.addJob(chatId, prompt, pref, profile);
     const ahead = db.aheadOf(id);
     setImmediate(() => worker.wake());
+    if (quietAck) return ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó). Gõ /huy để hủy.' : null;        // việc làm ngay: bot hiện "đang gõ" + tin trạng thái thay cho tin báo nhận
     return ahead > 0 ? 'Đã nhận việc #' + id + ' (còn ' + ahead + ' việc trước đó).' : 'Đã nhận việc #' + id + ', đang làm...';
   }
 

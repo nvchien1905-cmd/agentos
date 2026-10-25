@@ -18,7 +18,7 @@ function killTree(child, sig) {
 // Chạy một tiến trình, đưa `input` qua stdin. Trả { done, kill }.
 // done -> { code, out, err, killedBy: null|'timeout'|'cancelled', spawnError }
 // `wrap({bin,args,cwd})` (tùy chọn) bọc lệnh vào sandbox (xem sandbox.js).
-function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap }) {
+function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
   let spec = { bin, args, cwd };
   let spawnError = null;
   try { if (wrap) spec = wrap(spec); } catch (e) { spawnError = e; }
@@ -39,7 +39,7 @@ function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap }) {
   };
   const timer = timeoutMs ? setTimeout(() => kill('timeout'), timeoutMs) : null;
 
-  child.stdout.on('data', (d) => { if (out.length < MAX_OUT) out += d; });
+  child.stdout.on('data', (d) => { if (onStdout) { try { onStdout(String(d)); } catch (e) { /* bỏ qua */ } } if (out.length < MAX_OUT) out += d; });
   child.stderr.on('data', (d) => { if (err.length < MAX_OUT) err += d; });
   child.stdin.on('error', () => { /* tiến trình thoát sớm */ });
   child.stdin.end(input);

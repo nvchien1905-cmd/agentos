@@ -1,6 +1,7 @@
 'use strict';
 const { runProcess, abnormal } = require('./proc');
 const { classifyFailure, parseResetTime } = require('../limits');
+const { lineReader, fromCodex } = require('../progress');
 
 // Đọc luồng JSONL của `codex exec --json`:
 //   thread.started {thread_id} · item.completed {item:{type:'agent_message',text}} · turn.failed / error {message}
@@ -29,8 +30,10 @@ function startCodex(opts) {
   if (opts.images && opts.images.length) args.push('--');           // sau -i, dấu '--' để '-' (prompt từ stdin) không bị coi là tên ảnh
   args.push('-'); // đọc prompt từ stdin
 
-  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap });
+  const reader = typeof opts.onProgress === 'function' ? lineReader((line) => { let ev; try { ev = JSON.parse(line); } catch (e) { return; } fromCodex(ev, opts.onProgress); }) : null;
+  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
   const done = p.done.then((r) => {
+    if (reader) reader.flush();
     const ab = abnormal(r, opts.bin);
     if (ab) return ab;
     const ev = parseEvents(r.out);

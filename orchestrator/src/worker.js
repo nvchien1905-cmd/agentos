@@ -17,8 +17,9 @@ function fmtTime(ms) {
 // `preflight(job)` (tùy chọn) trả chuỗi lỗi nếu máy chưa sẵn sàng chạy việc (ví dụ ổ đĩa gần đầy), null nếu ổn.
 // `retryDelaysMs`: khoảng chờ giữa các lần thử lại khi gặp lỗi tạm thời (mặc định 15s, 60s, 180s).
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
+// `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer }) {
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
   log = log || (() => {});
   now = now || Date.now;
@@ -72,7 +73,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   async function runWithRetry(job, eng, resumeId) {
     for (let n = 0; ; n++) {
       let h;
-      try { h = engines[eng].start({ job, prompt: buildPrompt(job, !!resumeId, eng), resumeId }); } catch (e) {
+      try { h = engines[eng].start({ job, prompt: buildPrompt(job, !!resumeId, eng), resumeId, onProgress: ui ? (ev) => ui.step(job, ev) : undefined }); } catch (e) {
         return { ok: false, limit: false, error: 'Không khởi động được ' + name(eng) + ': ' + e.message };
       }
       current = { jobId: job.id, chatId: job.chat_id, kill: h.kill };
@@ -132,6 +133,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     let res = null, used = null;
     log('bắt đầu việc #' + job.id + (wasWaiting ? ' (sau khi chờ hạn mức)' : ''));
 
+    if (ui) { try { ui.begin(job); } catch (e) { log('bắt đầu tin trạng thái lỗi: ' + e.message); } }
+    try {
     for (;;) {
       const eng = cands.find((e) => !tried.has(e) && available(e));
       if (!eng) break;
@@ -145,6 +148,10 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       const next = cands.find((e) => !tried.has(e) && available(e));
       if (next) await safeNotify(job.chat_id, name(eng) + ' đã hết hạn mức (hồi khoảng ' + fmtTime(until) + '). Chuyển việc #' + job.id + ' sang ' + name(next) + '.');
     }
+
+    } catch (e) { if (ui) await Promise.resolve(ui.end(job)).catch(() => {}); throw e; }
+    let meta = { secs: 0, steps: 0 };
+    if (ui) { try { meta = await ui.end(job); } catch (e) { /* bỏ qua */ } }
 
     // Không còn engine nào dùng được lúc này -> chờ engine hồi sớm nhất.
     if (!res || res.limit) {
@@ -161,7 +168,11 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     const tag = 'Việc #' + job.id + (used !== order[0] ? ' (' + name(used) + ')' : '');
     if (res.ok) {
       db.finishJob(job.id, 'done', { result: res.text, sessionId: res.sessionId, costUsd: res.costUsd });
-      await safeNotify(job.chat_id, tag + ' xong:\n' + (res.text || '(không có nội dung trả về)'));
+      const body = res.text || '(không có nội dung trả về)';
+      if (answer) {
+        try { await answer(job, body, { engine: used, primary: order[0], name: name(used), secs: meta.secs, steps: meta.steps }); }
+        catch (e) { log('gửi câu trả lời đẹp lỗi: ' + e.message); await safeNotify(job.chat_id, tag + ' xong:\n' + body); }
+      } else await safeNotify(job.chat_id, tag + ' xong:\n' + body);
       await sendOutputs(job);
     } else if (res.cancelled) {
       db.finishJob(job.id, 'cancelled', { error: res.error });

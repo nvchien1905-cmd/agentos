@@ -15,6 +15,8 @@ const engines = require('../lib/engines');
 const apikeys = require('../lib/apikeys');
 const envfile = require('../lib/envfile');
 const fullaccess = require('../lib/fullaccess');
+const odauth = require('../lib/odauth');
+const mask = require('../lib/mask');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
 const { createSummarizer } = require('../../orchestrator/src/summarizer');
@@ -146,7 +148,45 @@ function createSettings(o) {
   const bookOf = () => createBook({ dir: o.onedriveDir, fallbackDir: o.memFallback || '/var/lib/agentos/data/so-tay' });
   const chownTree = (p) => { chownAgentos(p); try { if (fs.statSync(p).isDirectory()) for (const n of fs.readdirSync(p)) chownTree(path.join(p, n)); } catch (e) { /* bỏ qua */ } };
   const asAgentos = (cmd, args) => ['runuser', ['-u', 'agentos', '--', cmd, ...args]];
-  function odStop() { if (odChild) { try { odChild.kill('SIGTERM'); } catch (e) { /* đã thoát */ } odChild = null; } fs.rmSync(odUrlFile(), { force: true }); fs.rmSync(odRespFile(), { force: true }); }
+  let odAuth = null, odListener = null;                     // đăng nhập tự động: { state, status: waiting|exchanging|done|error, error, clientId, scope, redirect }
+  const odAccountFile = () => path.join(o.onedriveConf, 'account.json');
+  function odCloseListener() { if (odListener) { const l = odListener; odListener = null; try { l.close(); if (l.closeAllConnections) l.closeAllConnections(); } catch (e) { /* đã đóng */ } } }
+  function odStop() { odCloseListener(); if (odChild) { try { odChild.kill('SIGTERM'); } catch (e) { /* đã thoát */ } odChild = null; } fs.rmSync(odUrlFile(), { force: true }); fs.rmSync(odRespFile(), { force: true }); }
+  const writeToken = (t) => { fs.mkdirSync(o.onedriveConf, { recursive: true }); fs.writeFileSync(odToken(), String(t).trim(), { mode: 0o600 }); chownAgentos(odToken()); };
+  const saveAccount = (who) => { try { fs.writeFileSync(odAccountFile(), JSON.stringify({ name: who.name || '', email: who.email || '', driveType: who.driveType || '', at: Date.now() }), { mode: 0o600 }); chownAgentos(odAccountFile()); } catch (e) { /* bỏ qua */ } };
+  const readAccount = () => { try { return JSON.parse(fs.readFileSync(odAccountFile(), 'utf8')); } catch (e) { return null; } };
+
+  // Cổng nhận mã đăng nhập ở máy này (127.0.0.1): trang đăng nhập Microsoft chuyển trình duyệt về đây kèm mã
+  async function odFinishAuto(a, code) {
+    const ex = await odauth.exchange({ fetch: fetchImpl, clientId: a.clientId, scope: a.scope, code, redirect: a.redirect });
+    writeToken(ex.refreshToken);
+    const who = ex.accessToken ? await odauth.whoami(fetchImpl, ex.accessToken) : null;
+    if (who) saveAccount(who);
+    odStop();                                                  // tắt tiến trình xin mã của client (đã có khóa)
+    await run('systemctl', ['start', 'onedrive-agentos.service']);
+    a.status = 'done';
+  }
+  function odOnRedirect(req, res) {
+    const a = odAuth;
+    let u; try { u = new URL(req.url, 'http://127.0.0.1'); } catch (e) { res.writeHead(400); return res.end(); }
+    if (u.pathname !== '/') { res.writeHead(404); return res.end(); }
+    const page = (ok, msg) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AgentOS</title><body style="font-family:system-ui,sans-serif;max-width:560px;margin:48px auto;padding:0 16px"><h2>' + (ok ? '✅ ' : '⚠️ ') + msg + '</h2><p>Quay lại cửa sổ <b>Cài đặt AgentOS</b> (OneDrive sẽ tự báo đã kết nối). Có thể đóng trang này.</p></body>'); };
+    if (!a || a.status !== 'waiting' || u.searchParams.get('state') !== a.state) return page(false, 'Yêu cầu không hợp lệ hoặc đã hết hạn.');
+    const err = u.searchParams.get('error_description') || u.searchParams.get('error');
+    if (err) { a.status = 'error'; a.error = String(err).replace(/\s+/g, ' ').slice(0, 300); res.on('finish', odCloseListener); return page(false, 'Microsoft báo lỗi: ' + a.error.slice(0, 120)); }
+    const code = u.searchParams.get('code');
+    if (!code) return page(false, 'Thiếu mã đăng nhập.');
+    a.status = 'exchanging'; res.on('finish', odCloseListener);          // đóng cổng SAU khi đã trả trang cho trình duyệt
+    page(true, 'Đã nhận mã đăng nhập, đang hoàn tất...');
+    odFinishAuto(a, code).catch((e) => { a.status = 'error'; a.error = e.message; odStop(); });
+  }
+  function odListen() {
+    return new Promise((resolve) => {
+      const l = http.createServer(odOnRedirect);
+      l.once('error', () => resolve(null));                    // cổng bận: chỉ còn cách dán địa chỉ bằng tay
+      l.listen(o.odPort === undefined ? 53100 : o.odPort, '127.0.0.1', () => { odListener = l; const t = setTimeout(odCloseListener, 15 * 60 * 1000); if (t.unref) t.unref(); resolve(l.address().port); });
+    });
+  }
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const chownAgentos = (p) => { try { const l = fs.readFileSync('/etc/passwd', 'utf8').split('\n').find((x) => x.startsWith('agentos:')).split(':'); fs.chownSync(p, Number(l[2]), Number(l[3])); } catch (e) { /* máy thử */ } };
 
@@ -260,6 +300,68 @@ function createSettings(o) {
     },
 
     // ----- Bot Telegram -----
+    // Tổng hợp MỌI tài khoản/khóa/thông tin đã lưu trên máy để khách biết cái gì đã có; bí mật được che bớt (mask.js), không bao giờ trả giá trị đầy đủ
+    async 'GET /api/accounts'() {
+      const text = readEnv() || '';
+      const val = (k) => envVal(text, k);
+      const home = o.homeDir || engines.HOME;
+      const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } };
+      const jwtEmail = (t) => { try { const p = JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')); return p.email || ''; } catch (e) { return ''; } };
+      const keys = apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, val(v)])));
+      const order = val('ENGINE_ORDER').split(',').map((x) => x.trim()).filter(Boolean);
+      const groups = [];
+
+      // Telegram
+      const token = val('TELEGRAM_TOKEN');
+      let bot = null; if (token) { try { bot = await tgLib.getMe(token, { fetch: fetchImpl }); } catch (e) { bot = null; } }
+      const owners = val('ALLOWED_USER_IDS').split(',').filter(Boolean), admins = val('ADMIN_USER_IDS').split(',').filter(Boolean);
+      groups.push({ id: 'telegram', icon: '💬', title: 'Bot Telegram', status: !token ? 'none' : (bot ? 'ok' : 'warn'),
+        rows: [['Token bot', token ? mask.telegramToken(token) : 'chưa có'], ['Tên bot', bot ? '@' + bot.username : (token ? 'không hỏi được Telegram (kiểm tra mạng hoặc token)' : '—')], ['Người được phép (ID Telegram)', owners.length ? owners.join(', ') : 'chưa đặt'], ['Quản trị viên', admins.length ? admins.join(', ') : 'như người được phép']],
+        hint: token ? '' : 'Vào "Bot Telegram" để dán token bot.' });
+
+      // AI
+      for (const e of apikeys.ENGINES) {
+        const ver = await engines.installed(run, e).catch(() => null);
+        let login = null, who = '';
+        if (e === 'claude') {
+          const c = readJson(home + '/.claude.json'), cred = fs.existsSync(home + '/.claude/.credentials.json');
+          if (val('CLAUDE_CODE_OAUTH_TOKEN')) login = 'Token đăng nhập dài hạn ' + mask.secret(val('CLAUDE_CODE_OAUTH_TOKEN'));
+          else if (cred || (c && c.oauthAccount)) { login = 'Đã đăng nhập tài khoản Claude'; who = c && c.oauthAccount && c.oauthAccount.emailAddress ? mask.email(c.oauthAccount.emailAddress) : ''; }
+        } else if (e === 'codex') {
+          const a = readJson(home + '/.codex/auth.json');
+          if (a) { login = 'Đã đăng nhập tài khoản ChatGPT/OpenAI'; who = a.tokens && a.tokens.id_token ? (jwtEmail(a.tokens.id_token) ? mask.email(jwtEmail(a.tokens.id_token)) : '') : ''; }
+        } else if (e === 'gemini') {
+          if (fs.existsSync(engines.GEMINI_CREDS.replace(engines.HOME, home))) { const g = readJson(home + '/.gemini/google_accounts.json'); login = 'Đã đăng nhập tài khoản Google'; who = g && g.active ? mask.email(g.active) : ''; }
+        }
+        const rows = [['Phần mềm', ver || 'chưa cài'], ['Khóa API', keys[e] ? mask.secret(keys[e]) : 'chưa có'], ['Đăng nhập tài khoản', login ? login + (who ? ' (' + who + ')' : '') : 'chưa']];
+        const have = !!(keys[e] || login);
+        groups.push({ id: 'ai-' + e, icon: '🤖', title: apikeys.NAMES[e], status: have ? (ver ? 'ok' : 'warn') : 'none', rows: rows.concat([['Đang bật dùng', order.includes(e) ? 'có (theo thứ tự ưu tiên ' + (order.indexOf(e) + 1) + ')' : 'không']]), hint: have ? (ver ? '' : 'Có tài khoản/khóa nhưng chưa cài phần mềm: vào "AI và khóa API" để cài.') : 'Chưa có khóa hoặc đăng nhập: vào "AI và khóa API".' });
+      }
+
+      // OneDrive
+      const odConnected = fs.existsSync(odToken()), acc = odConnected ? readAccount() : null;
+      let odFiles = null; try { odFiles = fs.readdirSync(o.onedriveDir).filter((n) => !n.startsWith('.')).length; } catch (e) { /* chưa có */ }
+      groups.push({ id: 'onedrive', icon: '☁️', title: 'OneDrive (Microsoft)', status: odConnected ? ((await isActive('onedrive-agentos')) === 'active' ? 'ok' : 'warn') : 'none',
+        rows: [['Kết nối', odConnected ? 'đã kết nối (khóa đăng nhập đã lưu, không hiện)' : 'chưa'], ['Tài khoản', acc ? ((acc.email ? mask.email(acc.email) : mask.name(acc.name)) + (acc.driveType ? ' · ' + (acc.driveType === 'personal' ? 'cá nhân' : acc.driveType) : '')) : (odConnected ? 'đã kết nối (chưa ghi nhận tên — kết nối lại để hiện)' : '—')], ['Đồng bộ', odConnected ? (await isActive('onedrive-agentos')) === 'active' ? 'đang chạy' : 'KHÔNG chạy' : '—'], ['Thư mục', o.onedriveDir + (odFiles == null ? '' : ' (' + odFiles + ' mục)')]],
+        hint: odConnected ? '' : 'Vào "Kết nối" để đăng nhập OneDrive.' });
+
+      // Tailscale
+      const t = await ts.info().catch(() => ({ state: 'unknown' }));
+      groups.push({ id: 'tailscale', icon: '🔐', title: 'Tailscale (đường vào dự phòng)', status: t.state === 'Running' ? 'ok' : t.state === 'missing' ? 'none' : 'warn',
+        rows: [['Trạng thái', t.state === 'Running' ? 'đã đăng nhập' : t.state === 'missing' ? 'chưa cài' : 'chưa đăng nhập (' + t.state + ')'], ['Địa chỉ', t.state === 'Running' ? ((t.ips || [])[0] || '') + (t.dns ? ' · ' + t.dns : '') : '—']], hint: t.state === 'Running' ? '' : 'Vào "Kết nối" để đăng nhập Tailscale.' });
+
+      // KiotViet
+      const kid = val('KIOTVIET_CLIENT_ID'), ksec = val('KIOTVIET_CLIENT_SECRET'), kret = val('KIOTVIET_RETAILER');
+      groups.push({ id: 'kiotviet', icon: '🧾', title: 'KiotViet (doanh số, tồn kho)', status: kid && ksec && kret ? 'ok' : (kid || ksec || kret ? 'warn' : 'none'),
+        rows: [['Cửa hàng (retailer)', kret || 'chưa có'], ['Client ID', kid ? mask.secret(kid) : 'chưa có'], ['Client Secret', ksec ? mask.secret(ksec) : 'chưa có']], hint: kid && ksec && kret ? '' : 'Muốn dùng /doanhso và /ton: thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào ' + o.envFile + '.' });
+
+      // Hệ thống
+      let fp = ''; try { fp = require('crypto').createHash('sha256').update(fs.readFileSync(o.updatePubkey || '/etc/agentos/update-pubkey.pem')).digest('hex').slice(0, 16); } catch (e) { /* không có */ }
+      groups.push({ id: 'system', icon: '🛡️', title: 'Bảo mật hệ thống', status: 'ok',
+        rows: [['Chế độ AI toàn quyền (sudo)', fullaccess.isEnabled(o.fullAccessPaths) ? 'ĐANG BẬT' : 'tắt'], ['Khóa kiểm chữ ký bản cập nhật', fp ? 'đã cài (dấu vân ' + fp + ')' : 'chưa có'], ['Tệp cấu hình bí mật', readEnv() == null ? 'chưa có' : o.envFile + ' (chỉ chủ máy đọc được, không hiện ở đây)']], hint: '' });
+
+      return { groups, note: 'Khóa, token và mật khẩu chỉ hiện vài ký tự đầu/cuối để nhận ra; giá trị đầy đủ không bao giờ hiện ở đây.' };
+    },
     async 'GET /api/bot'() {
       const t = readEnv();
       if (t == null) return { configured: false };
@@ -367,7 +469,8 @@ function createSettings(o) {
     async 'GET /api/onedrive'() {
       const connected = fs.existsSync(odToken());
       let files = null; try { files = fs.readdirSync(o.onedriveDir).filter((n) => !n.startsWith('.')).length; } catch (e) { /* chưa có */ }
-      return { connected, service: await isActive('onedrive-agentos'), dir: o.onedriveDir, entries: files, authPending: !!odChild };
+      const acc = connected ? readAccount() : null;
+      return { connected, service: await isActive('onedrive-agentos'), dir: o.onedriveDir, entries: files, authPending: !!odChild, account: acc ? { name: acc.name ? mask.name(acc.name) : '', email: acc.email ? mask.email(acc.email) : '', driveType: acc.driveType } : null };
     },
     async 'POST /api/onedrive/start'() {
       odStop();
@@ -375,16 +478,30 @@ function createSettings(o) {
       const [cmd, args] = asAgentos('onedrive', ['--confdir', o.onedriveConf, '--auth-files', odUrlFile() + ':' + odRespFile()]);
       odChild = spawn(cmd, args, { stdio: 'ignore' });
       odChild.on('error', () => {}); odChild.on('exit', () => { odChild = null; });
-      for (let i = 0; i < 50; i++) { if (fs.existsSync(odUrlFile()) && fs.statSync(odUrlFile()).size > 20) return { url: fs.readFileSync(odUrlFile(), 'utf8').trim() }; await sleep(o.odPollMs || 500); }
+      for (let i = 0; i < 50; i++) {
+        if (fs.existsSync(odUrlFile()) && fs.statSync(odUrlFile()).size > 20) {
+          const url = fs.readFileSync(odUrlFile(), 'utf8').trim();
+          const p = odauth.parseAuthUrl(url);
+          odAuth = null;
+          let auto = null;
+          if (p) {
+            const port = await odListen();
+            if (port) { const redirect = 'http://127.0.0.1:' + port + '/'; odAuth = { state: odauth.newState(), status: 'waiting', error: '', clientId: p.clientId, scope: p.scope, redirect }; auto = odauth.autoUrl(url, redirect, odAuth.state); }
+          }
+          return { url, autoUrl: auto, auto: !!auto };
+        }
+        await sleep(o.odPollMs || 500);
+      }
       odStop(); throw new Error('Không lấy được đường dẫn đăng nhập (kiểm tra mạng).');
     },
+    async 'GET /api/onedrive/auth-status'() { return odAuth ? { status: odAuth.status, error: odAuth.error } : { status: 'none', error: '' }; },
     async 'POST /api/onedrive/finish'(b) {
       const u = String(b.response || '').trim();
       if (!/^https:\/\/login\.microsoftonline\.com\/common\/oauth2\/nativeclient\?/.test(u) || !/[?&]code=/.test(u)) throw new Error('Đó không phải địa chỉ đăng nhập OneDrive. Sau khi đăng nhập Microsoft, trình duyệt hiện trang trắng: copy TOÀN BỘ địa chỉ trên thanh địa chỉ và dán vào đây.');
       if (!odChild) throw new Error('Chưa bắt đầu kết nối (hoặc đã quá lâu). Bấm "Kết nối OneDrive" để lấy đường dẫn mới.');
       fs.writeFileSync(odRespFile(), u + '\n', { mode: 0o644 }); chownAgentos(odRespFile());
       for (let i = 0; i < 180; i++) { if (fs.existsSync(odToken())) break; await sleep(o.odPollMs || 500); }
-      const ok = fs.existsSync(odToken()); await sleep(o.odSettleMs === undefined ? 3000 : o.odSettleMs); odStop();
+      const ok = fs.existsSync(odToken()); await sleep(o.odSettleMs === undefined ? 3000 : o.odSettleMs); odStop(); if (odAuth) odAuth.status = ok ? 'done' : 'error';
       if (!ok) throw new Error('Microsoft không chấp nhận mã (chỉ dùng được một lần, hết hạn sau vài phút). Bấm kết nối lại.');
       await run('systemctl', ['start', 'onedrive-agentos.service']);
       return { connected: true };
@@ -392,7 +509,7 @@ function createSettings(o) {
     async 'POST /api/onedrive/sync'() { const r = await run('pkill', ['-USR1', '-x', 'onedrive']); if (r.code !== 0) throw new Error('Dịch vụ đồng bộ không chạy'); return { ok: true }; },
     async 'POST /api/onedrive/disconnect'(b) {
       if (b.confirm !== true) throw new Error('Cần xác nhận');
-      odStop(); await run('pkill', ['-TERM', '-x', 'onedrive']); fs.rmSync(odToken(), { force: true }); return { connected: false };
+      odStop(); odAuth = null; await run('pkill', ['-TERM', '-x', 'onedrive']); fs.rmSync(odToken(), { force: true }); fs.rmSync(odAccountFile(), { force: true }); return { connected: false };
     },
 
     // ----- Tailscale -----

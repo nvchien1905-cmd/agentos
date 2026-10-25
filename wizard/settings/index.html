@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -177,18 +177,47 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         }).catch(fail); });
       }).catch(fail);
     },
+    acc: function () {
+      set('<h2>Tài khoản và thông tin đã lưu</h2><p class="mute">Đang tải...</p>');
+      api('GET', 'accounts').then(function (r) {
+        var lab = { ok: '<span class="ok">✓ Đã có</span>', none: '<span class="bad">✗ Chưa có</span>', warn: '<span style="color:#b26a00;font-weight:600">⚠ Cần chú ý</span>' };
+        var out = '<h2>Tài khoản và thông tin đã lưu</h2><p class="mute">' + esc(r.note) + '</p>';
+        r.groups.forEach(function (g) {
+          out += '<div class="card"><h3>' + esc(g.icon) + ' ' + esc(g.title) + ' &nbsp; ' + lab[g.status] + '</h3><table>';
+          g.rows.forEach(function (x) { out += '<tr><td class="mute" style="width:42%">' + esc(x[0]) + '</td><td>' + esc(x[1]) + '</td></tr>'; });
+          out += '</table>' + (g.hint ? '<p class="mute">' + esc(g.hint) + '</p>' : '') + '</div>';
+        });
+        set(out);
+      }).catch(function (e) { set('<h2>Tài khoản và thông tin đã lưu</h2><p class="bad">' + esc(e.message) + '</p>'); });
+    },
     link: function () {
       Promise.all([api('GET', 'onedrive'), api('GET', 'tailscale')]).then(function (a) {
         var od = a[0], ts = a[1];
-        set('<h2>Kết nối</h2><div class="card"><h3>OneDrive (Microsoft)</h3><p>' + (od.connected ? '<span class="ok">✓ Đã kết nối</span> · đồng bộ ' + dot(od.service) + ' · thư mục <b>' + esc(od.dir) + '</b> (' + (od.entries == null ? '?' : od.entries) + ' mục)' : '<span class="mute">Chưa kết nối</span>') + '</p><p class="mute">AI đọc dữ liệu và lưu kết quả vào OneDrive của bạn. Đồng bộ hai chiều với tài khoản Microsoft thật.</p><div class="row" id="odb"></div><div id="odx"></div></div>' +
+        set('<h2>Kết nối</h2><div class="card"><h3>OneDrive (Microsoft)</h3><p>' + (od.connected ? '<span class="ok">✓ Đã kết nối</span>' + (od.account && (od.account.email || od.account.name) ? ' · tài khoản <b>' + esc(od.account.email || od.account.name) + '</b>' : '') + ' · đồng bộ ' + dot(od.service) + ' · thư mục <b>' + esc(od.dir) + '</b> (' + (od.entries == null ? '?' : od.entries) + ' mục)' : '<span class="mute">Chưa kết nối</span>') + '</p><p class="mute">AI đọc dữ liệu và lưu kết quả vào OneDrive của bạn. Đồng bộ hai chiều với tài khoản Microsoft thật.</p><div class="row" id="odb"></div><div id="odx"></div></div>' +
           '<div class="card"><h3>Tailscale (đường vào dự phòng)</h3><p>' + (ts.state === 'Running' ? '<span class="ok">✓ Đã kết nối</span> · ' + esc((ts.ips || [])[0] || '') + ' ' + esc(ts.dns || '') : ts.state === 'missing' ? '<span class="bad">Chưa cài</span>' : '<span class="mute">Chưa đăng nhập (' + esc(ts.state) + ')</span>') + '</p><div class="row" id="tsb"></div><div id="tsx"></div></div>');
         var ob = document.getElementById('odb');
         ob.innerHTML = od.connected ? '<button class="b" id="os">Đồng bộ ngay</button><button class="b d" id="od">Ngắt kết nối</button>' : '<button class="b p" id="oc">Kết nối OneDrive</button>';
         on('os', function () { api('POST', 'onedrive/sync').then(function () { toast('Đã yêu cầu đồng bộ'); }).catch(fail); });
         on('od', function () { if (ask('Ngắt kết nối OneDrive? (tệp đã tải về vẫn giữ nguyên)')) api('POST', 'onedrive/disconnect', { confirm: true }).then(render).catch(fail); });
         on('oc', function () { toast('Đang lấy đường dẫn đăng nhập...'); api('POST', 'onedrive/start').then(function (j) {
-          document.getElementById('odx').innerHTML = '<ol><li>Mở đường dẫn này (chuột phải → Mở), đăng nhập Microsoft và bấm Đồng ý: <br><a href="' + esc(j.url) + '" target="_blank" rel="noopener">' + esc(j.url.slice(0, 70)) + '...</a></li><li>Trình duyệt hiện <b>trang trắng</b>. Copy TOÀN BỘ địa chỉ trên thanh địa chỉ.</li><li>Dán vào đây: <div class="row"><input type="text" id="odr" placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=..."><button class="b p" id="odf">Hoàn tất</button></div></li></ol>';
-          on('odf', function () { toast('Đang xác nhận...'); api('POST', 'onedrive/finish', { response: document.getElementById('odr').value }).then(function () { toast('✔ Đã kết nối OneDrive'); render(); }).catch(fail); }); }).catch(fail); });
+          var manual = '<details' + (j.auto ? '' : ' open') + '><summary>' + (j.auto ? 'Không được? Dùng cách dán địa chỉ bằng tay' : 'Đăng nhập bằng cách dán địa chỉ') + '</summary><ol><li>Mở đường dẫn này, đăng nhập Microsoft và bấm Đồng ý: <br><a href="' + esc(j.url) + '" target="_blank" rel="noopener">' + esc(j.url.slice(0, 70)) + '...</a></li><li>Trang kết quả hiện cảnh báo vài giây rồi <b>tự chuyển</b> sang "Đây không phải là trang phù hợp". Đó là Microsoft đổi trang, KHÔNG phải lỗi của máy. Hãy copy TOÀN BỘ địa chỉ trên thanh địa chỉ ngay khi thấy (có chữ <b>nativeclient?code=</b>), hoặc bấm nút <b>←</b> Quay lại một lần rồi copy.</li><li>Dán vào đây: <div class="row"><input type="text" id="odr" placeholder="https://login.microsoftonline.com/common/oauth2/nativeclient?code=..."><button class="b p" id="odf">Hoàn tất</button></div></li></ol></details>';
+          var auto = j.auto ? '<ol><li>Bấm nút bên dưới (mở cửa sổ mới), đăng nhập Microsoft và bấm <b>Đồng ý</b>.</li><li>Cửa sổ đó báo "Đã nhận mã đăng nhập" là xong: Cài đặt tự hoàn tất, <b>không cần copy gì</b>.</li></ol><p><a class="b p" style="display:inline-block;text-decoration:none" href="' + esc(j.autoUrl) + '" target="_blank" rel="noopener">Đăng nhập Microsoft</a> <span class="mute" id="ods">đang chờ bạn đăng nhập...</span></p>' : '';
+          document.getElementById('odx').innerHTML = auto + manual;
+          on('odf', function () { toast('Đang xác nhận...'); api('POST', 'onedrive/finish', { response: document.getElementById('odr').value }).then(function () { toast('✔ Đã kết nối OneDrive'); render(); }).catch(fail); });
+          if (j.auto) {
+            var tries = 0;
+            (function poll() {
+              if (cur !== 'link' || ++tries > 600) return;
+              api('GET', 'onedrive/auth-status').then(function (s) {
+                var el = document.getElementById('ods'); if (!el) return;
+                if (s.status === 'done') { toast('✔ Đã kết nối OneDrive'); return render(); }
+                if (s.status === 'error') { el.className = 'bad'; el.textContent = 'Lỗi: ' + s.error + ' — dùng cách dán địa chỉ bên dưới.'; var d = document.querySelector('#odx details'); if (d) d.open = true; return; }
+                el.textContent = s.status === 'exchanging' ? 'đang hoàn tất...' : 'đang chờ bạn đăng nhập...';
+                setTimeout(poll, 1500);
+              }).catch(function () { setTimeout(poll, 3000); });
+            })();
+          }
+        }).catch(fail); });
         var tb = document.getElementById('tsb');
         tb.innerHTML = ts.state === 'Running' ? '<button class="b d" id="td">Đăng xuất Tailscale</button>' : ts.state === 'missing' ? '' : '<button class="b p" id="tc">Kết nối Tailscale</button>';
         on('td', function () { if (ask('Đăng xuất Tailscale? Máy mất đường vào dự phòng.')) api('POST', 'tailscale/disconnect', { confirm: true }).then(render).catch(fail); });

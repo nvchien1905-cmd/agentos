@@ -72,7 +72,7 @@ function createQuick(o) {
             const r = await od.startAuth();
             if (!r.ok) return '⚠️ ' + r.error;
             return '🔑 Kết nối OneDrive (làm trong 15 phút):\n1) Mở link này trên điện thoại hoặc máy tính và đăng nhập tài khoản Microsoft có OneDrive, bấm "Đồng ý/Accept":\n' + r.url +
-              '\n2) Sau đó trình duyệt hiện trang TRẮNG. Hãy copy TOÀN BỘ địa chỉ trên thanh địa chỉ của trang trắng đó (bắt đầu bằng https://login.microsoftonline.com/common/oauth2/nativeclient?code=...).\n3) Dán và gửi địa chỉ đó cho em ngay trong chat này.';
+              '\n2) Sau đó trình duyệt hiện trang có cảnh báo, vài giây sau TỰ CHUYỂN sang "Đây không phải là trang phù hợp" (Microsoft đổi trang, không phải lỗi của máy). Hãy copy TOÀN BỘ địa chỉ trên thanh địa chỉ NGAY khi thấy (bắt đầu bằng https://login.microsoftonline.com/common/oauth2/nativeclient?code=...); lỡ rồi thì bấm nút ← Quay lại MỘT lần rồi copy.\n3) Dán và gửi địa chỉ đó cho em ngay trong chat này.\n💡 Dễ hơn: ngồi ở mini PC, mở "Cài đặt AgentOS" → Kết nối → Kết nối OneDrive: máy tự nhận mã, không cần copy gì.';
           }
           if (w === 'dongbo' || w === 'sync') { const r = await od.sync(); return r.ok ? '🔄 Đã yêu cầu đồng bộ ngay. Gõ /onedrive sau vài phút để xem.' : '⚠️ ' + r.error; }
           if (w === 'thumuc') { const f = od.folders(); return f ? (f.length ? '📂 ' + od.dir + ':\n' + f.join('\n') : 'Thư mục trống (chưa kết nối hoặc chưa đồng bộ xong).') : '⚠️ Không đọc được ' + od.dir; }

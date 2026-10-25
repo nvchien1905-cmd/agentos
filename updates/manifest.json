@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.8",
-  "file": "agentos-update-2026.10.25.8.tar.gz",
-  "size": 213900,
-  "sha256": "7628fee23d02a1e8d7583ab7bb140c59ca45fc7835bf39ad812055478f3973dd",
+  "version": "2026.10.26.1",
+  "file": "agentos-update-2026.10.26.1.tar.gz",
+  "size": 220521,
+  "sha256": "6c59d27fcf15ec269d4c9429af4a3ea4dcb26a547a203fb72a923fd526b4693c",
   "date": "2026-10-25",
-  "notes": "Tự chẩn đoán /tuchan + giám sát chủ động, việc nền /nen, /tieptuc, sự kiện /sukien + webhook, phân vai /vaitro, hàng rào /hangrao, sửa lỗ hổng toàn quyền cho nhân viên"
+  "notes": "OneDrive tự nhận mã đăng nhập (sửa lỗi wrongplace của Microsoft), trang Tài khoản đã lưu (che bớt bí mật)"
 }

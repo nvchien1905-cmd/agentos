@@ -104,7 +104,7 @@ test('quick /onedrive: tình trạng, kết nối (gửi link + hướng dẫn),
   const q = createQuick({ desk: { call: async () => ({ ok: true }) }, onedrive: od });
   assert.equal(await q.run('onedrive', ''), 'TRẠNG THÁI');
   const k = await q.run('onedrive', 'ketnoi');
-  assert.ok(k.includes(SIGNIN) && /trang TRẮNG/.test(k) && /nativeclient\?code=/.test(k));
+  assert.ok(k.includes(SIGNIN) && /TỰ CHUYỂN/.test(k) && /nativeclient\?code=/.test(k));
   assert.match(await q.run('onedrive', GOOD), /Đã kết nối OneDrive/); assert.deepEqual(calls[0], ['finish', GOOD]);
   assert.match(await q.run('onedrive', 'dongbo'), /đồng bộ ngay/);
   assert.match(await q.run('onedrive', 'thumuc'), /AgentOS/);

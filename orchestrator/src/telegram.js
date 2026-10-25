@@ -36,11 +36,12 @@ function createTelegram(token, fetchImpl) {
   }
 
   async function call(method, params, signal) {
+    const guard = signal || AbortSignal.timeout(40000);                      // getUpdates tự đặt giới hạn riêng; lệnh khác quá 40 giây coi như treo
     const r = await f(base + method, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(params || {}),
-      signal,
+      signal: guard,
     });
     return parse(r, method);
   }
@@ -51,7 +52,7 @@ function createTelegram(token, fetchImpl) {
     const form = new FormData();
     form.set('chat_id', String(chatId));
     form.set(asPhoto ? 'photo' : 'document', new Blob([fs.readFileSync(file.path)]), file.name);
-    return parse(await f(base + method, { method: 'POST', body: form }), method);
+    return parse(await f(base + method, { method: 'POST', body: form, signal: AbortSignal.timeout(180000) }), method);
   }
 
   return {

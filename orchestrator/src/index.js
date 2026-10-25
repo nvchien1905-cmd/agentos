@@ -33,6 +33,7 @@ const { createSchedule } = require('./schedule');
 const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
 const { createLive } = require('./live');
+const { createTgWatch } = require('./tgwatch');
 
 const log = (m) => console.log(new Date().toISOString() + ' ' + m);
 const fwd = (p) => String(p).replace(/\\/g, '/');
@@ -274,10 +275,14 @@ async function main() {
   // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
   const tick = setInterval(() => { worker.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); updates.tick().catch((e) => log('kiểm bản cập nhật lỗi: ' + e.message)); updates.autoTick().catch((e) => log('tự cập nhật lỗi: ' + e.message)); updates.announceResult().catch((e) => log('báo kết quả cập nhật lỗi: ' + e.message)); }, 30000);
 
+  // Bot "điếc" (409 trùng token / webhook, 401 token hỏng): tiến trình vẫn khỏe nên watchdog không bắt được -> phát hiện riêng và nhắn chủ máy
+  const tgwatch = createTgWatch({ tg, db, log, admins: [...cfg.adminUserIds] });
+
   // Nhịp tim cho systemd watchdog + file heartbeat (scripts/healthcheck.js).
   const health = createHealth({
     db, log, file: path.join(dataDir, 'heartbeat.json'),
     stats: () => ({ running: worker.currentJobId(), queued: db.queuedCount() }),
+    extra: () => tgwatch.state(),
   });
   health.start();
 
@@ -329,6 +334,7 @@ async function main() {
     try {
       const updates = await tg.getUpdates(offset, 30, ac.signal);
       health.markPoll();
+      tgwatch.onOk().catch(() => {});
       backoff = 1000;
       for (const u of updates) {
         offset = u.update_id + 1;
@@ -347,11 +353,16 @@ async function main() {
               if (reply.text) await tg.sendMessage(chat, reply.text);
             } else if (reply) await tg.sendMessage(chat, reply);
           }
-        } catch (e) { log('xử lý tin lỗi: ' + e.message); }
+        } catch (e) {
+          log('xử lý tin lỗi: ' + (e && e.stack || e));
+          const cid = u.message && u.message.chat && u.message.chat.id;                 // không để chủ máy nhắn mà im lặng
+          if (cid && u.message.from && cfg.allowedUserIds.has(String(u.message.from.id))) tg.sendMessage(cid, '⚠️ Em gặp lỗi khi xử lý tin này: ' + String(e && e.message || e).slice(0, 300) + '\nAnh thử gửi lại, hoặc gõ /trangthai.').catch(() => {});
+        }
       }
     } catch (e) {
       if (stopping) break;
-      const wait = e.retryAfter ? e.retryAfter * 1000 : backoff;
+      tgwatch.onError(e).catch(() => {});
+      const wait = e.retryAfter ? e.retryAfter * 1000 : (e.code === 409 ? 2000 : backoff);          // 409: thử lại ngay để giành lại tin, không chờ lâu
       log('lỗi Telegram: ' + e.message + ' (thử lại sau ' + Math.round(wait / 1000) + 's)');
       await new Promise((r) => setTimeout(r, wait));
       backoff = Math.min(backoff * 2, 60000);

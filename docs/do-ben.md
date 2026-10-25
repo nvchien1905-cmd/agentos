@@ -45,3 +45,9 @@ Giới hạn: file đăng nhập của chính CLI (`~/.claude`) nằm trong home
 - **Tất cả phần Linux/systemd/bwrap chưa chạy thử** (máy dev là Windows): unit, watchdog, sandbox, `ProtectSystem=strict` có thể cần chỉnh khi chạy thật (đặc biệt: Chromium trong bwrap cần `/dev/shm`, user namespace không đặc quyền phải bật). `SANDBOX=auto` + thông báo khởi động để lỗi không âm thầm.
 - Giới hạn tài nguyên theo từng việc (hiện chỉ giới hạn cả dịch vụ); không tự dọn cache Chromium; chưa có cảnh báo SMART/nhiệt độ.
 - Telegram thật chưa thử; chưa thử chạy nhiều ngày liên tục (cần máy Linux thật + soak test, GĐ 7).
+
+### Bot "điếc" — tiến trình khỏe nhưng tin không tới (25/10/2026) — orchestrator/src/tgwatch.js
+- Watchdog chỉ bắt được tiến trình treo. Còn một kiểu im lặng khác: tiến trình khỏe nhưng Telegram không giao tin — **409 Conflict** (chương trình khác, ví dụ agent Hermes, nhận tin bằng CHÍNH token này, hoặc token đang đặt webhook; hai bên giành tin nên bot lúc nhận lúc không) hoặc **401/404** (token bị thu hồi).
+- tgwatch: 3 lần 409 liên tiếp → ghi log, kiểm `getWebhookInfo` để nói rõ nguyên nhân, nhắn quản trị viên MỘT lần (tối đa mỗi 6 giờ; gửi tin đi vẫn được khi nhận bị tranh) kèm cách sửa dứt điểm (tạo bot riêng ở @BotFather, dán token mới vào Cài đặt). Hết xung đột thì báo "đã bình thường lại". Trạng thái nằm trong `heartbeat.json` (`telegram`, `telegramError`). 409 thử lại sau 2 giây để giành lại tin.
+- Mọi lệnh gọi Telegram (trừ getUpdates, tự có giới hạn) có giới hạn 40 giây, tải file 180 giây — gửi tin không thể treo vô hạn.
+- Lỗi khi xử lý tin của người được phép: bot nhắn "⚠️ Em gặp lỗi…" thay vì im lặng.

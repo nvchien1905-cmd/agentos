@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.1",
-  "file": "agentos-update-2026.10.25.1.tar.gz",
-  "size": 168260,
-  "sha256": "e9aae3e711c79e14ef2d29cbdcebf73ea5f3c1ff47be371b4ba9b1125f6ebdf0",
+  "version": "2026.10.25.2",
+  "file": "agentos-update-2026.10.25.2.tar.gz",
+  "size": 170144,
+  "sha256": "f3de9648403847c28141f20997e464ce7ae30a0ab6968e2b25dcb46e9c82d71a",
   "date": "2026-10-25",
-  "notes": "Trả lời kiểu Claude Code: định dạng đẹp, tin trạng thái trực tiếp, bỏ tin Đã nhận việc"
+  "notes": "Chống bot bị điếc: phát hiện trùng token Telegram (409), giới hạn thời gian gọi Telegram, báo lỗi thay vì im lặng"
 }

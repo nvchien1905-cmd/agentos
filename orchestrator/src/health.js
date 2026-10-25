@@ -18,7 +18,7 @@ function systemdNotify(assignments) {
 // Mất mạng KHÔNG tính là không khỏe (khởi động lại không chữa được mạng): chỉ đo vòng nhận tin còn quay hay không.
 //   tickLoop()  gọi mỗi vòng nhận tin (kể cả vòng lỗi)      markPoll()  gọi khi nhận tin Telegram thành công
 //   stats()     -> { running, queued }
-function createHealth({ db, file, log, notify, intervalMs, loopStaleMs, now, stats }) {
+function createHealth({ db, file, log, notify, intervalMs, loopStaleMs, now, stats, extra }) {
   log = log || (() => {});
   notify = notify || systemdNotify;
   intervalMs = intervalMs || 10000;
@@ -34,7 +34,8 @@ function createHealth({ db, file, log, notify, intervalMs, loopStaleMs, now, sta
     const loopOk = now() - st.lastLoop < loopStaleMs;
     const ok = dbOk && loopOk;
     const s = stats() || {};
-    const beat = { ts: now(), pid: process.pid, startedAt: st.startedAt, ok, dbOk, loopOk, lastPoll: st.lastPoll, running: s.running || null, queued: s.queued || 0 };
+    let more = {}; try { more = (extra && extra()) || {}; } catch (e) { /* bỏ qua */ }
+    const beat = { telegram: more.kind || 'ok', telegramError: more.lastError || '', ts: now(), pid: process.pid, startedAt: st.startedAt, ok, dbOk, loopOk, lastPoll: st.lastPoll, running: s.running || null, queued: s.queued || 0 };
     if (file) {
       try {
         const tmp = file + '.tmp';

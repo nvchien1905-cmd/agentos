@@ -11,6 +11,7 @@ function helpText(profiles) {
     '🕹 ĐIỀU KHIỂN TỪ XA: /maytinh - tình trạng máy (CPU, RAM, ổ đĩa, nhiệt độ, dịch vụ) · /lenh <lệnh> - chạy lệnh dòng lệnh (có sudo, cần chế độ toàn quyền) · /lay <tệp> - lấy tệp từ máy gửi về đây\n' +
     '/go <chữ> · /phim <phím> · /bam <x> <y> [dup|phai] - gõ chữ, bấm phím, bấm chuột trên màn hình máy (sau mỗi thao tác bot tự chụp lại)\n' +
     '/guilen - tạo link để gửi tệp LỚN (tới 5 GB) từ điện thoại lên máy · /lay <tệp> - tệp quá 49 MB tự tạo link tải về · /tuxa - mở RustDesk, bot gửi ID + mật khẩu tạm vào đây để anh điều khiển trực tiếp từ xa (/tuxa dong để đóng)\n' +
+    '/timchu <chữ> · /bamchu <chữ> - tìm/bấm đúng nút theo CHỮ trên màn hình (đọc chữ OCR, không cần đoán toạ độ) · /chuyen <tên cửa sổ> · /dan [chữ] - xem/chép bộ nhớ tạm của máy · /mokhoa · /saoluu [nhãn|ds] - điểm khôi phục cấu hình · /bat <tên|MAC> - bật máy khác trong nhà (Wake-on-LAN)\n' +
     '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
@@ -21,7 +22,8 @@ function helpText(profiles) {
     '/tailscale [ketnoi|ngat co] - đường vào dự phòng khi Telegram/mạng lỗi · /in <tệp trong OneDrive> [may <tên>] - in qua máy in của máy\n' +
     '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +
-    '/nhatky - nhật ký các lần AI xin dùng công cụ (cho phép/từ chối)\n' +
+    '/nhatky - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ\n' +
+    '/dung - NÚT DỪNG KHẨN CẤP: hủy mọi việc và ngắt điều khiển từ xa ngay\n' +
     '/trangthai - hàng đợi và tình trạng hạn mức\n' +
     '/huy - hủy việc đang chạy và các việc đang chờ\n' +
     '/toanquyen - bật chế độ TOÀN QUYỀN: AI tự làm một mạch, không hỏi xin phép, có sudo (chỉ quản trị viên)\n' +
@@ -39,6 +41,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `profiles`: [{ name, description, adminOnly }] các bộ công cụ chọn bằng lệnh /<tên> (ví dụ /web).
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
+// Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat']);
 function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -124,6 +128,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
       // Lệnh nhanh không qua AI (màn hình, mở/đóng ứng dụng, DeepSeek web, KiotViet): trả về Promise
       if (quick && quick.has(name)) {
         if (!isAdmin(uid)) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên.';
+        if (db.addAudit && AUDITED.has(name)) { try { db.addAudit({ tool: '/' + name, cls: 'remote', decision: 'allow', source: 'user', summary: name === 'go' ? '(' + String(cmd[3] || '').length + ' ký tự)' : String(cmd[3] || '').replace(/(token|pass\w*|mat\s?khau|secret|key)\S*\s*[=:]?\s*\S+/gi, '$1 ***') }); } catch (e) { /* nhật ký lỗi không chặn lệnh */ } }
         return quick.run(name, cmd[3], { chatId, uid });
       }
       if (profileByName.has(name)) {
@@ -159,7 +164,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           const SRC = { auto: 'tự động', policy: 'bị chặn', user: 'bạn quyết', timeout: 'hết giờ', cancel: 'việc dừng', error: 'lỗi' };
           return rows.map((a) => {
             const d = new Date(a.ts), p = (n) => String(n).padStart(2, '0');
-            return p(d.getHours()) + ':' + p(d.getMinutes()) + ' #' + a.job_id + ' ' + (MARK[a.decision] || '?') + ' ' + (SRC[a.source] || a.source) +
+            return p(d.getHours()) + ':' + p(d.getMinutes()) + ' ' + (a.job_id == null ? 'lệnh' : '#' + a.job_id) + ' ' + (MARK[a.decision] || '?') + ' ' + (SRC[a.source] || a.source) +
               ' · ' + a.tool + ': ' + String(a.summary || '').replace(/\s+/g, ' ').slice(0, 70);
           }).join('\n');
         }
@@ -171,6 +176,12 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           return on
             ? '⚡ ĐÃ BẬT chế độ TOÀN QUYỀN. AI tự làm một mạch, không hỏi xin phép, được dùng sudo trên máy này. Gõ /baove để quay về chế độ có hỏi.'
             : '🛡️ ĐÃ BẬT chế độ bảo vệ: AI hỏi bạn trước khi ghi file hoặc chạy lệnh, chạy trong hộp cô lập. Gõ /toanquyen để bật lại toàn quyền.';
+        }
+        case 'dung': {                                   // NÚT DỪNG KHẨN CẤP: hủy mọi việc, ngắt điều khiển từ xa
+          const queued = db.cancelQueued(chatId), running = worker.cancelRunning(chatId);
+          const base = '🛑 DỪNG: ' + (running ? 'đã hủy việc đang chạy' : 'không có việc đang chạy') + (queued ? ', hủy ' + queued + ' việc đang chờ' : '') + '.';
+          if (!(quick && isAdmin(uid))) return base;
+          return quick.run('tuxa', 'dong').then((r) => base + '\n' + (typeof r === 'string' ? r : r.text), (e) => base + '\n⚠️ Không đóng được điều khiển từ xa: ' + e.message);
         }
         case 'huy': {
           const queued = db.cancelQueued(chatId);

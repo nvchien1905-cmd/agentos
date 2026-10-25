@@ -151,3 +151,40 @@ test('rê chuột / kéo thả / cuộn: đúng lệnh xdotool, kiểm tra đầ
   assert.deepEqual(calls.filter((c) => c.cmd === 'xdotool').pop().args, ['click', '--repeat', '5', '--delay', '30', '4']);
   for (const bad of [{ cmd: 'move', x: -1, y: 1 }, { cmd: 'drag', x: 1, y: 1, x2: 'a', y2: 2 }, { cmd: 'scroll', dir: 'sideways' }, { cmd: 'scroll', dir: 'down', amount: 99 }, { cmd: 'scroll', dir: 'down', amount: 0 }]) assert.equal((await desk.handle(bad)).ok, false, JSON.stringify(bad));
 });
+
+const TSV = ['level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext',
+  '5\t1\t1\t1\t1\t1\t100\t200\t50\t20\t95\tHủy', '5\t1\t1\t1\t1\t2\t160\t200\t40\t20\t90\tbỏ',
+  '5\t1\t2\t1\t1\t1\t300\t500\t60\t24\t96\tGửi', '5\t1\t3\t1\t1\t1\t300\t600\t60\t24\t92\tGUI', '5\t1\t3\t1\t1\t2\t400\t600\t60\t24\t90\tđi'].join('\n');
+
+test('tìm chữ trên màn hình (OCR): bỏ dấu/hoa thường, cụm nhiều từ, trả toạ độ giữa; bấm đúng chữ thứ n', async () => {
+  const { desk, calls } = make({ run: (cmd, args) => (cmd === 'tesseract' ? { code: 0, out: TSV, err: '' } : null) });
+  const f = await desk.handle({ cmd: 'findtext', text: 'gui' });
+  assert.equal(f.ok, true); assert.equal(f.matches.length, 2); assert.deepEqual(f.matches.map((m) => [m.cx, m.cy]), [[330, 512], [330, 612]]);
+  const two = await desk.handle({ cmd: 'findtext', text: 'HỦY BỎ' }); assert.equal(two.matches.length, 1); assert.deepEqual([two.matches[0].x, two.matches[0].w], [100, 100]);
+  assert.equal((await desk.handle({ cmd: 'findtext', text: 'không có' })).matches.length, 0);
+  const c = await desk.handle({ cmd: 'clicktext', text: 'Gửi', nth: 2 });
+  assert.equal(c.ok, true); assert.deepEqual([c.x, c.y, c.found], [330, 612, 2]);
+  assert.deepEqual(calls.filter((x) => x.cmd === 'xdotool').pop().args.slice(0, 3), ['mousemove', '330', '612']);
+  assert.equal((await desk.handle({ cmd: 'clicktext', text: 'Gửi', nth: 5 })).ok, false);
+  assert.equal((await desk.handle({ cmd: 'clicktext', text: 'xyz' })).ok, false);
+  assert.equal((await desk.handle({ cmd: 'findtext', text: '' })).ok, false);
+  assert.ok(!fs.readdirSync(calls.find((x) => x.cmd === 'scrot').args[1].replace(/[^/]+$/, '')).some((n) => n.startsWith('ocr-')), 'xóa ảnh OCR tạm');
+});
+
+test('info / focus / clipget / unlock', async () => {
+  const { desk, calls } = make({ run: (cmd, args) => {
+    if (cmd === 'xdotool' && args[0] === 'getdisplaygeometry') return { code: 0, out: '1920 1080\n', err: '' };
+    if (cmd === 'xdotool' && args[0] === 'getactivewindow') return { code: 0, out: 'Chrome\n', err: '' };
+    if (cmd === 'xclip') return { code: 0, out: 'nội dung chép', err: '' };
+    return null;
+  } });
+  assert.deepEqual(await desk.handle({ cmd: 'info' }), { ok: true, width: 1920, height: 1080, active: 'Chrome' });
+  assert.equal((await desk.handle({ cmd: 'focus', name: 'Zalo' })).ok, true);
+  assert.deepEqual(calls.filter((c) => c.cmd === 'xdotool').pop().args, ['windowactivate', '--sync', '100']);
+  assert.equal((await desk.handle({ cmd: 'focus', name: '' })).ok, false);
+  assert.equal((await desk.handle({ cmd: 'clipget' })).text, 'nội dung chép');
+  assert.deepEqual(await desk.handle({ cmd: 'unlock' }), { ok: true, already: true });          // không khóa thì thôi
+  const locked = make({ sess: Object.assign({}, SESS, { active: false }), run: (cmd) => (cmd === 'loginctl' ? { code: 0, out: '', err: '' } : null) });
+  const u = await locked.desk.handle({ cmd: 'unlock' });
+  assert.ok(locked.calls.some((c) => c.cmd === 'loginctl' && c.args[0] === 'unlock-sessions')); assert.equal(u.ok, false, 'vẫn khóa sau lệnh thì báo thật, không nói dối');
+});

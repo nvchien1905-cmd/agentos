@@ -6,6 +6,11 @@
 //   agentos-desk open <ứng dụng>         zalo | kiotviet | deepseek | chrome | rustdesk | claude | codex | gemini
 //   agentos-desk close <ứng dụng>
 //   agentos-desk click <x> <y> [nút] [double]
+//   agentos-desk info                    kích thước màn hình + cửa sổ đang chọn (toạ độ ảnh chụp = toạ độ thật)
+//   agentos-desk focus <tên cửa sổ>      đưa cửa sổ có tên chứa chữ đó lên trước
+//   agentos-desk find "chữ"              tìm chữ trên màn hình (OCR): in toạ độ giữa (cx,cy) của từng chỗ thấy
+//   agentos-desk clicktext "chữ" [--nth=2] [--double]   bấm đúng vào chữ đó (nút, menu, ô theo tên) thay vì đoán toạ độ
+//   agentos-desk clipget                 đọc chữ đang ở bộ nhớ tạm
 //   agentos-desk move <x> <y>            rê chuột tới điểm (không bấm)
 //   agentos-desk drag <x1> <y1> <x2> <y2>   kéo thả
 //   agentos-desk scroll <up|down|left|right> [số nấc] [x y]   cuộn chuột
@@ -43,6 +48,9 @@ if (require.main === module) {
     clip: () => ({ cmd: 'clip', text: a.slice(1).join(' ') }),
     move: () => ({ cmd: 'move', x: a[1], y: a[2] }), drag: () => ({ cmd: 'drag', x: a[1], y: a[2], x2: a[3], y2: a[4] }),
     scroll: () => ({ cmd: 'scroll', dir: a[1], amount: a[2], x: a[3], y: a[4] }),
+    info: () => ({ cmd: 'info' }), focus: () => ({ cmd: 'focus', name: a.slice(1).join(' ') }),
+    find: () => ({ cmd: 'findtext', text: a.slice(1).join(' ') }), clicktext: () => ({ cmd: 'clicktext', text: a.slice(1).filter((x) => !/^--(nth=\d+|double)$/.test(x)).join(' '), nth: (a.find((x) => /^--nth=\d+$/.test(x)) || '').slice(6) || 1, double: a.includes('--double') }),
+    clipget: () => ({ cmd: 'clipget' }), unlock: () => ({ cmd: 'unlock' }),
   };
   if (!map[cmd]) { console.error(require('fs').readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n')); process.exit(2); }
   call(map[cmd]()).then((r) => {

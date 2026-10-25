@@ -11,6 +11,15 @@ const MAX_OUT = 3500;
 const MAX_FILE = 49 * 1024 * 1024;                       // Telegram cho bot gửi tệp tối đa 50 MB
 const IMG = /\.(png|jpe?g|gif|webp)$/i;
 
+// Lệnh có thể làm mất dữ liệu / hỏng máy: phải gõ "/lenh xacnhan <lệnh>" mới chạy (bot tự tạo điểm khôi phục cấu hình trước)
+const DANGER = [
+  /\brm\s+(-\S*\s+)*-\S*[rRfF]/, /\brm\s+.*\s\/(\s|$)/, /\bmkfs/, /\bdd\s+[^|;&]*\bof=/, /\bwipefs\b/, /\b(fdisk|parted|sfdisk|gdisk)\b/, />\s*\/dev\/(sd|nvme|mmcblk|vd)/,
+  /\b(shutdown|reboot|poweroff|halt)\b/, /\binit\s+[06]\b/, /\bsystemctl\s+(poweroff|reboot|halt)\b/,
+  /\b(userdel|deluser|passwd|chpasswd|usermod)\b/, /\bchmod\s+-R\b/, /\bchown\s+-R\b/,
+  /\bsystemctl\s+(disable|mask|stop)\s+(--now\s+)?(agentos|ssh|sshd|networking|NetworkManager|tailscaled|rustdesk)/,
+  /\bapt(-get)?\s+(-\S+\s+)*(remove|purge|autoremove)\b/, /:\(\)\s*\{/, /\bgit\s+(reset\s+--hard|clean\s+-\S*f)/, /\bfind\b[^|;&]*-delete\b/, /\btruncate\b/, /\bmv\s+\S+\s+\/dev\/null\b/,
+];
+const isDangerous = (cmd) => DANGER.some((re) => re.test(cmd));
 const tail = (s, n) => (s.length > n ? '…(cắt bớt phần đầu)\n' + s.slice(s.length - n) : s);
 
 function createRemote(o) {
@@ -19,12 +28,26 @@ function createRemote(o) {
   const sh = o.shell || '/bin/bash';
   const timeoutMs = o.timeoutMs || 60000;
   const isFull = o.isFull || (() => true);
+  const snapshot = o.snapshot || null;                       // async (nhãn) -> { ok, file, error }
 
   // Chạy một dòng lệnh bằng bash. Trả { text } hoặc { text, files } để bot gửi lại.
   function runShell(cmd) {
     cmd = String(cmd || '').trim();
+    let confirmed = false;
+    const cf = cmd.match(/^(xacnhan|xác nhận|ok-chac)\s+([\s\S]+)$/i);
+    if (cf) { confirmed = true; cmd = cf[2].trim(); }
     if (!cmd) return Promise.resolve({ text: 'Cách dùng: /lenh <lệnh>, ví dụ /lenh df -h hoặc /lenh sudo systemctl restart agentos-orchestrator. Quá ' + Math.round(timeoutMs / 1000) + ' giây thì bị dừng (việc dài hãy nhờ AI).' });
     if (!isFull()) return Promise.resolve({ text: '⚠️ /lenh chỉ dùng được ở chế độ TOÀN QUYỀN. Gõ /toanquyen để bật.' });
+    if (isDangerous(cmd) && !confirmed) return Promise.resolve({ text: '⚠️ Lệnh này có thể làm MẤT DỮ LIỆU hoặc hỏng máy:\n' + cmd.slice(0, 300) + '\n\nNếu đúng ý anh, gõ lại: /lenh xacnhan ' + cmd.slice(0, 300) + '\n(bot sẽ tạo điểm khôi phục cấu hình trước khi chạy)' });
+    return (async () => {
+      let note = '';
+      if (confirmed && snapshot) { const s = await snapshot('truoc-lenh'); note = s.ok ? '💾 Đã tạo điểm khôi phục: ' + path.basename(s.file) + '\n' : '⚠️ Không tạo được điểm khôi phục (' + s.error + '), vẫn chạy theo lệnh xác nhận.\n'; }
+      const r = await execShell(cmd);
+      return note ? { text: note + r.text } : r;
+    })();
+  }
+
+  function execShell(cmd) {
     return new Promise((resolve) => {
       let out = '', killed = false;
       let child;
@@ -113,6 +136,7 @@ function createRemote(o) {
     const test = await sudo(['-v']).catch(() => ({ code: 1 }));
     await sudo(['systemctl', 'enable', '--now', 'rustdesk']);
     await sudo(['rustdesk', '--option', 'approve-mode', 'password']);              // vào bằng mật khẩu, không cần ai bấm "Chấp nhận" trên máy
+    await sudo(['rustdesk', '--option', 'verification-method', 'use-permanent-password']);   // chỉ nhận mật khẩu cố định ta vừa đặt (không nhận mật khẩu một lần cũ)
     const pw = randomPw();
     const okPw = await setPassword(pw);
     if (deskOpen) { try { await deskOpen(); } catch (e) { /* không mở được cửa sổ cũng không sao: dịch vụ vẫn chạy nền */ } }

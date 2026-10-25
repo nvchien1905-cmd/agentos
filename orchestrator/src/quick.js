@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'bat'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -127,6 +127,51 @@ function createQuick(o) {
           return '📖 Sổ tay của chủ máy (' + i.chapters + ' chương, ' + i.entries + ' mục, dùng chung mọi AI)\n' + (i.toc ? i.toc.replace(/ → \S+$/gm, '') : '(chưa có gì; dùng /nho để thêm)') +
             '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
             '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
+        }
+        case 'timchu': {
+          if (!arg) return 'Cách dùng: /timchu <chữ>, ví dụ /timchu Gửi. Bot đọc chữ trên màn hình máy và báo toạ độ từng chỗ thấy.';
+          const r = await desk.call({ cmd: 'findtext', text: arg });
+          if (!r.ok) return '⚠️ ' + r.error;
+          return r.matches.length ? '🔎 Thấy "' + arg + '" ' + r.matches.length + ' chỗ:\n' + r.matches.map((m, i) => (i + 1) + '. (' + m.cx + ', ' + m.cy + ') "' + m.text + '"').join('\n') + '\nBấm bằng /bamchu ' + arg + ' (thêm "lan 2" để bấm chỗ thứ 2).' : 'Không thấy chữ "' + arg + '" trên màn hình. Gõ /manhinh để xem.';
+        }
+        case 'bamchu': {
+          const m = arg.match(/^([\s\S]*?)(?:\s+lan\s+(\d{1,2}))?(\s+dup)?$/i);
+          const text = (m && m[1] || '').trim();
+          if (!text) return 'Cách dùng: /bamchu <chữ trên nút/menu>, ví dụ /bamchu Lưu hoặc /bamchu Gửi lan 2 (chỗ thứ 2) hoặc /bamchu Mở dup (bấm đôi).';
+          const r = await desk.call({ cmd: 'clicktext', text, nth: m[2] ? Number(m[2]) : 1, double: !!m[3] });
+          return r.ok ? await withShot('🖱️ Đã bấm vào "' + r.text + '" tại (' + r.x + ', ' + r.y + ')' + (r.found > 1 ? ' — thấy ' + r.found + ' chỗ, bấm chỗ ' + (m[2] || 1) : '') + '.') : '⚠️ ' + r.error;
+        }
+        case 'chuyen': {
+          if (!arg) return 'Cách dùng: /chuyen <tên cửa sổ>, ví dụ /chuyen Chrome. Xem tên bằng /cuaso.';
+          const r = await desk.call({ cmd: 'focus', name: arg });
+          return r.ok ? await withShot('🪟 Đã đưa cửa sổ "' + arg + '" lên trước.') : '⚠️ ' + r.error;
+        }
+        case 'dan': {
+          if (!arg) { const r = await desk.call({ cmd: 'clipget' }); return r.ok ? (r.text ? '📋 Bộ nhớ tạm trên máy:\n' + r.text.slice(0, 3500) : '📋 Bộ nhớ tạm trên máy đang trống.') : '⚠️ ' + r.error; }
+          const r = await desk.call({ cmd: 'clip', text: arg });
+          return r.ok ? '📋 Đã chép ' + arg.length + ' ký tự vào bộ nhớ tạm của máy. Trên máy bấm Ctrl+V để dán (hoặc /phim ctrl+v).' : '⚠️ ' + r.error;
+        }
+        case 'mokhoa': {
+          const r = await desk.call({ cmd: 'unlock' });
+          return r.ok ? (r.already ? '🔓 Màn hình không khóa.' : await withShot('🔓 Đã mở khóa màn hình.')) : '⚠️ ' + r.error;
+        }
+        case 'saoluu': {
+          if (!snap) return '⚠️ Máy này chưa có tính năng điểm khôi phục.';
+          if (/^(ds|danhsach|list)$/.test(noAccent(arg).replace(/ /g, ''))) { const l = snap.list(); return l.length ? '💾 Các điểm khôi phục (mới nhất cuối):\n' + l.map((x) => '• ' + x.name + ' (' + Math.max(1, Math.round(x.size / 1024)) + ' KB)').join('\n') + '\nKhôi phục cấu hình: nhờ AI hoặc /lenh xacnhan sudo tar -xzf ' + snap.dir + '/<tên> -C /' : 'Chưa có điểm khôi phục nào. Gõ /saoluu để tạo.'; }
+          const r = await snap.create(arg || 'tay');
+          return r.ok ? '💾 Đã tạo điểm khôi phục cấu hình (/etc + dữ liệu AgentOS): ' + require('path').basename(r.file) + ' (' + Math.max(1, Math.round(r.size / 1024)) + ' KB). Không chứa tệp cá nhân hay chương trình đã cài.' : '⚠️ ' + r.error;
+        }
+        case 'bat': {
+          if (!wol) return '⚠️ Máy này chưa có tính năng bật máy khác.';
+          const w = arg.split(/\s+/).filter(Boolean); const list = devices.get() || {};
+          const key = (x) => noAccent(x).replace(/ /g, '');
+          if (!w.length || key(w[0]) === 'ds') return Object.keys(list).length ? '🖧 Máy đã lưu:\n' + Object.keys(list).map((k) => '• ' + k + ' — ' + list[k]).join('\n') + '\nBật: /bat <tên>' : 'Chưa lưu máy nào. Thêm: /bat them <tên> <MAC>, ví dụ /bat them maychinh AA:BB:CC:DD:EE:FF. Bật theo MAC luôn: /bat AA:BB:CC:DD:EE:FF. (Máy kia phải bật Wake-on-LAN trong BIOS.)';
+          if (key(w[0]) === 'them') { const mac = wol.parseMac(w[2]); if (!w[1] || !mac) return 'Cách dùng: /bat them <tên> <MAC>'; list[w[1].toLowerCase()] = mac; devices.set(list); return '✅ Đã lưu "' + w[1].toLowerCase() + '" = ' + mac + '. Bật bằng /bat ' + w[1].toLowerCase(); }
+          if (key(w[0]) === 'xoa') { delete list[(w[1] || '').toLowerCase()]; devices.set(list); return '🗑️ Đã xóa "' + (w[1] || '') + '".'; }
+          const mac = list[w[0].toLowerCase()] || wol.parseMac(w[0]);
+          if (!mac) return 'Không biết máy "' + w[0] + '". Gõ /bat ds để xem danh sách hoặc /bat them <tên> <MAC>.';
+          const r = await wol.send(mac);
+          return r.ok ? '⚡ Đã gửi tín hiệu bật máy ' + mac + ' (Wake-on-LAN). Chờ 30-60 giây. Không có phản hồi nên em không biết chắc máy đã lên: máy cần bật WoL trong BIOS và nối dây mạng.' : '⚠️ ' + r.error;
         }
         case 'tuxa': {
           if (!remote) return '⚠️ Máy này chưa có điều khiển từ xa.';

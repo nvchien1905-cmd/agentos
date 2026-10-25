@@ -27,6 +27,32 @@ const APPS = {
 };
 const KEY_RE = /^[A-Za-z0-9_+\- ]{1,60}$/;      // tên phím xdotool: Return, ctrl+v, alt+F4...
 const MAX_TYPE = 2000;
+// Bỏ dấu + chữ thường để so khớp chữ trên màn hình (OCR hay sai dấu): "Gửi" khớp "gui"
+const fold = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// Đọc bảng TSV của tesseract -> các dòng chữ { words:[{t,l,t,w,h}] } rồi tìm cụm từ (nhiều từ liền nhau trong cùng một dòng)
+function ocrFind(tsv, phrase) {
+  const want = fold(phrase).split(' ').filter(Boolean); if (!want.length) return [];
+  const lines = new Map();
+  for (const row of String(tsv).split('\n').slice(1)) {
+    const c = row.split('\t'); if (c.length < 12 || c[0] !== '5') continue;
+    const txt = c.slice(11).join('\t').trim(); if (!txt) continue;
+    const k = c[2] + '.' + c[3] + '.' + c[4];
+    if (!lines.has(k)) lines.set(k, []);
+    lines.get(k).push({ txt, f: fold(txt), l: Number(c[6]), t: Number(c[7]), w: Number(c[8]), h: Number(c[9]), conf: Number(c[10]) });
+  }
+  const out = [];
+  for (const ws of lines.values()) {
+    for (let i = 0; i + want.length <= ws.length; i++) {
+      let ok = true;
+      for (let j = 0; j < want.length; j++) { const f = ws[i + j].f; if (!(want.length === 1 ? f.includes(want[0]) : f === want[j])) { ok = false; break; } }
+      if (!ok) continue;
+      const seg = ws.slice(i, i + want.length);
+      const l = Math.min(...seg.map((w) => w.l)), t = Math.min(...seg.map((w) => w.t)), r = Math.max(...seg.map((w) => w.l + w.w)), b = Math.max(...seg.map((w) => w.t + w.h));
+      out.push({ text: seg.map((w) => w.txt).join(' '), x: l, y: t, w: r - l, h: b - t, cx: Math.round((l + r) / 2), cy: Math.round((t + b) / 2), conf: Math.round(seg.reduce((a, w) => a + w.conf, 0) / seg.length) });
+    }
+  }
+  return out.sort((a, b) => a.y - b.y || a.x - b.x).slice(0, 10);
+}
 const point = (x, y) => { const a = Math.round(Number(x)), b = Math.round(Number(y)); return Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0 && a <= 20000 && b <= 20000 ? { x: a, y: b } : null; };
 
 // Chạy lệnh (không qua shell). Trả { code, out, err }; không bao giờ ném lỗi.
@@ -164,6 +190,74 @@ function createDesk(o) {
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
+    // Kích thước màn hình, cửa sổ đang chọn, vị trí chuột: để biết toạ độ trong ảnh chụp khớp với màn hình thật
+    async info() {
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      const g = await run('xdotool', ['getdisplaygeometry'], { env: xenv(s), timeoutMs: 5000 });
+      const w = await run('xdotool', ['getactivewindow', 'getwindowname'], { env: xenv(s), timeoutMs: 5000 });
+      const m = String(g.out).trim().split(/\s+/).map(Number);
+      return { ok: true, width: m[0] || null, height: m[1] || null, active: String(w.out).trim() || null };
+    },
+
+    // Đưa cửa sổ có tên chứa <name> lên trước (nhận bàn phím)
+    async focus(req) {
+      const name = String(req.name || '').trim();
+      if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name)) return fail('Tên cửa sổ phải dài 1-80 ký tự');
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      const f = await run('xdotool', ['search', '--onlyvisible', '--name', name], { env: xenv(s), timeoutMs: 8000 });
+      const id = String(f.out).split('\n').filter((x) => /^\d+$/.test(x))[0];
+      if (!id) return fail('Không thấy cửa sổ nào có tên chứa "' + name + '". Gõ /cuaso để xem danh sách.');
+      const a = await run('xdotool', ['windowactivate', '--sync', id], { env: xenv(s), timeoutMs: 8000 });
+      return a.code === 0 ? { ok: true } : fail('Không đưa được cửa sổ lên trước: ' + String(a.err).trim().slice(0, 150));
+    },
+
+    // Tìm chữ trên màn hình (OCR tesseract) -> toạ độ để bấm đúng nút/ô theo tên, không phải đoán toạ độ từ ảnh
+    async findtext(req) {
+      const text = String(req.text || '').trim();
+      if (!text || text.length > 80) return fail('Chữ cần tìm phải dài 1-80 ký tự');
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      fs.mkdirSync(outDir, { recursive: true });
+      const file = path.join(outDir, 'ocr-' + now() + '.png');
+      const sc = await run('scrot', ['-o', file], { env: xenv(s), timeoutMs: 15000 });
+      if (sc.code !== 0) return fail('Không chụp được màn hình: ' + String(sc.err || sc.out).trim().slice(0, 150));
+      const oc = await run('tesseract', [file, 'stdout', '-l', 'vie+eng', '--psm', '11', 'tsv'], { timeoutMs: 60000 });
+      try { fs.rmSync(file, { force: true }); } catch (e) { /* bỏ qua */ }
+      if (oc.code !== 0) return fail('Không đọc được chữ trên màn hình (tesseract): ' + String(oc.err).trim().slice(0, 150));
+      return { ok: true, matches: ocrFind(oc.out, text) };
+    },
+
+    // Bấm vào chữ tìm thấy (lần thứ n, mặc định 1)
+    async clicktext(req) {
+      const r = await cmds.findtext(req); if (!r.ok) return r;
+      if (!r.matches.length) return fail('Không thấy chữ "' + req.text + '" trên màn hình.');
+      const n = Math.max(1, Math.round(Number(req.nth) || 1));
+      const m = r.matches[n - 1]; if (!m) return fail('Chỉ thấy ' + r.matches.length + ' chỗ có chữ "' + req.text + '", không có chỗ thứ ' + n + '.');
+      const c = await cmds.click({ x: m.cx, y: m.cy, button: req.button || 1, double: !!req.double });
+      return c.ok ? { ok: true, x: m.cx, y: m.cy, text: m.text, found: r.matches.length } : c;
+    },
+
+    // Đọc chữ đang ở bộ nhớ tạm của màn hình chính (để chuyển sang điện thoại)
+    async clipget() {
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      const r = await run('xclip', ['-selection', 'clipboard', '-o'], { env: xenv(s), timeoutMs: 5000 });
+      if (r.code !== 0) return { ok: true, text: '' };                      // bộ nhớ tạm trống cũng trả về mã lỗi
+      return { ok: true, text: String(r.out).slice(0, 20000) };
+    },
+
+    // Mở khóa màn hình qua systemd-logind (không cần mật khẩu, deskd chạy bằng root); phụ thuộc bộ khóa có nghe tín hiệu Unlock.
+    async unlock() {
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính (máy ở màn hình đăng nhập: cần nhập mật khẩu trực tiếp).');
+      if (live(s)) return { ok: true, already: true };
+      const r = await run('loginctl', ['unlock-sessions'], { timeoutMs: 8000 });
+      if (r.code !== 0) return fail('Không mở khóa được: ' + String(r.err).trim().slice(0, 150));
+      await new Promise((x) => setTimeout(x, 1200));
+      const s2 = await session();
+      return s2 && live(s2) ? { ok: true } : fail('Đã gửi lệnh mở khóa nhưng màn hình vẫn khóa (bộ khóa không nghe lệnh). Nhập mật khẩu trực tiếp trên máy.');
+    },
+
     // Rê chuột tới một điểm (không bấm): mở menu rê chuột, xem gợi ý...
     async move(req) {
       const p = point(req.x, req.y); if (!p) return fail('Toạ độ không hợp lệ');
@@ -296,4 +390,4 @@ if (require.main === module) {
   console.log('deskd nghe ở ' + SOCK);
 }
 
-module.exports = { createDesk, serve, APPS };
+module.exports = { createDesk, serve, APPS, ocrFind, fold };

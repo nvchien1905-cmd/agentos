@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.3",
-  "file": "agentos-update-2026.10.25.3.tar.gz",
-  "size": 172996,
-  "sha256": "fe7370aa6522a71b8325d6d9af2f0f9822fd15d494c64b05a710fcbf5d953b87",
+  "version": "2026.10.25.4",
+  "file": "agentos-update-2026.10.25.4.tar.gz",
+  "size": 179076,
+  "sha256": "acf6544d0c1cb531f8dccef1dea630d44912adaba1cb9aaf3a4a69b6605fe26e",
   "date": "2026-10-25",
-  "notes": "Điều khiển từ xa: /maytinh /lenh /lay /go /phim /bam"
+  "notes": "Kéo thả/cuộn/rê chuột, tự chụp màn hình sau thao tác, link tạm tệp lớn 5GB, /tuxa"
 }

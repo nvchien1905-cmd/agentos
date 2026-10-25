@@ -6,6 +6,9 @@
 //   agentos-desk open <ứng dụng>         zalo | kiotviet | deepseek | chrome | rustdesk | claude | codex | gemini
 //   agentos-desk close <ứng dụng>
 //   agentos-desk click <x> <y> [nút] [double]
+//   agentos-desk move <x> <y>            rê chuột tới điểm (không bấm)
+//   agentos-desk drag <x1> <y1> <x2> <y2>   kéo thả
+//   agentos-desk scroll <up|down|left|right> [số nấc] [x y]   cuộn chuột
 //   agentos-desk type "<chữ>"            gõ chữ vào ô đang chọn
 //   agentos-desk key <phím>              VD: Return, ctrl+v, alt+F4
 //   agentos-desk clip "<chữ>"            chép chữ vào bộ nhớ tạm (người dùng bấm Ctrl+V)
@@ -38,6 +41,8 @@ if (require.main === module) {
     click: () => ({ cmd: 'click', x: a[1], y: a[2], button: /^[1-5]$/.test(a[3] || '') ? a[3] : 1, double: a.includes('double') }),
     type: () => ({ cmd: 'type', text: a.slice(1).join(' ') }), key: () => ({ cmd: 'key', key: a.slice(1).join(' ') }),
     clip: () => ({ cmd: 'clip', text: a.slice(1).join(' ') }),
+    move: () => ({ cmd: 'move', x: a[1], y: a[2] }), drag: () => ({ cmd: 'drag', x: a[1], y: a[2], x2: a[3], y2: a[4] }),
+    scroll: () => ({ cmd: 'scroll', dir: a[1], amount: a[2], x: a[3], y: a[4] }),
   };
   if (!map[cmd]) { console.error(require('fs').readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n')); process.exit(2); }
   call(map[cmd]()).then((r) => {

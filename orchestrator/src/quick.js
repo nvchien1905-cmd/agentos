@@ -5,14 +5,21 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'keo', 'cuon', 're', 'tuxa', 'guilen'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
+  async function withShot(text) {
+    if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
+    let r = null; try { r = await desk.call({ cmd: 'screenshot' }); } catch (e) { /* không chụp được thì chỉ báo chữ */ }
+    if (r && r.ok && r.file) return { text: text + ' (ảnh màn hình sau thao tác)', files: [{ path: r.file, name: 'manhinh.png', kind: 'photo', temp: true }] };
+    return text;
+  }
   const clock = () => { const d = new Date(Date.now() + 7 * 3600 * 1000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
 
   async function run(name, arg, ctx) {
@@ -121,25 +128,49 @@ function createQuick(o) {
             '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
             '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
         }
+        case 'keo': {
+          const n = (arg.match(/\d{1,5}/g) || []).map(Number);
+          if (n.length !== 4) return 'Cách dùng: /keo <x1> <y1> <x2> <y2> - nhấn giữ chuột ở điểm 1, kéo sang điểm 2 rồi thả (kéo thả tệp, kéo thanh trượt, chọn vùng).';
+          const r = await desk.call({ cmd: 'drag', x: n[0], y: n[1], x2: n[2], y2: n[3] });
+          return r.ok ? await withShot('🖱️ Đã kéo (' + n[0] + ', ' + n[1] + ') → (' + n[2] + ', ' + n[3] + ').') : '⚠️ ' + r.error;
+        }
+        case 'cuon': {
+          const w = noAccent(arg).split(/\s+/).filter(Boolean);
+          const dir = ({ len: 'up', up: 'up', xuong: 'down', down: 'down', trai: 'left', left: 'left', phai: 'right', right: 'right' })[w[0] || 'xuong'];
+          if (!dir) return 'Cách dùng: /cuon <len|xuong|trai|phai> [số nấc 1-50] [x y], ví dụ /cuon xuong 10 hoặc /cuon len 5 640 360.';
+          const nums = w.slice(1).map(Number).filter((x) => Number.isFinite(x));
+          const req = { cmd: 'scroll', dir, amount: nums[0] || 5 };
+          if (nums.length >= 3) { req.x = nums[1]; req.y = nums[2]; }
+          const r = await desk.call(req);
+          return r.ok ? await withShot('🖱️ Đã cuộn ' + w[0] + ' ' + req.amount + ' nấc.') : '⚠️ ' + r.error;
+        }
+        case 're': {
+          const n = (arg.match(/\d{1,5}/g) || []).map(Number);
+          if (n.length !== 2) return 'Cách dùng: /re <x> <y> - rê chuột tới điểm đó (không bấm), để mở menu rê chuột hoặc xem gợi ý.';
+          const r = await desk.call({ cmd: 'move', x: n[0], y: n[1] });
+          return r.ok ? await withShot('🖱️ Đã rê chuột tới (' + n[0] + ', ' + n[1] + ').') : '⚠️ ' + r.error;
+        }
+        case 'tuxa': return remote ? await remote.access() : '⚠️ Máy này chưa có điều khiển từ xa.';
+        case 'guilen': return links ? await links.uploadLink(ctx && ctx.chatId) : '⚠️ Máy này chưa có tính năng gửi tệp lớn.';
         case 'lenh': return remote ? await remote.runShell(arg) : '⚠️ Máy này chưa có điều khiển từ xa.';
-        case 'lay': return remote ? remote.getFile(arg) : '⚠️ Máy này chưa có điều khiển từ xa.';
+        case 'lay': return remote ? remote.getFile(arg, links) : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'maytinh': return remote ? await remote.sysinfo() : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'go': {
           if (!arg) return 'Cách dùng: /go <chữ> - gõ chữ vào ô đang chọn trên màn hình máy (dùng /manhinh để xem trước).';
           const r = await desk.call({ cmd: 'type', text: arg });
-          return r.ok ? '⌨️ Đã gõ ' + arg.length + ' ký tự. Gõ /manhinh để xem.' : '⚠️ ' + r.error;
+          return r.ok ? await withShot('⌨️ Đã gõ ' + arg.length + ' ký tự.') : '⚠️ ' + r.error;
         }
         case 'phim': {
           if (!arg) return 'Cách dùng: /phim <phím>, ví dụ /phim Return, /phim ctrl+s, /phim alt+Tab, /phim ctrl+l.';
           const r = await desk.call({ cmd: 'key', key: arg });
-          return r.ok ? '⌨️ Đã bấm ' + arg + '. Gõ /manhinh để xem.' : '⚠️ ' + r.error;
+          return r.ok ? await withShot('⌨️ Đã bấm ' + arg + '.') : '⚠️ ' + r.error;
         }
         case 'bam': {
           const m = arg.match(/^(\d{1,5})[\s,x]+(\d{1,5})(.*)$/i);
           if (!m) return 'Cách dùng: /bam <x> <y> [dup|phai], ví dụ /bam 640 360 hoặc /bam 640 360 dup. Toạ độ tính theo ảnh /manhinh (góc trên trái là 0 0).';
           const rest = noAccent(m[3] || '');
           const r = await desk.call({ cmd: 'click', x: Number(m[1]), y: Number(m[2]), button: /phai|right/.test(rest) ? 3 : 1, double: /dup|double|doi/.test(rest) });
-          return r.ok ? '🖱️ Đã bấm (' + m[1] + ', ' + m[2] + '). Gõ /manhinh để xem.' : '⚠️ ' + r.error;
+          return r.ok ? await withShot('🖱️ Đã bấm (' + m[1] + ', ' + m[2] + ').') : '⚠️ ' + r.error;
         }
         case 'in': return printing ? await printing.print(arg) : '⚠️ Máy này chưa có tính năng in.';
         default: return null;

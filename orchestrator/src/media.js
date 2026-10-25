@@ -87,7 +87,7 @@ function createMedia(o) {
     for (const msg of msgs) {
       for (const a of listAttachments(msg)) {
         n++;
-        if (a.size && a.size > MAX_BYTES) { errors.push('"' + a.name + '" nặng ' + Math.round(a.size / 1048576) + ' MB: Telegram chỉ cho bot tải tệp tới 20 MB. Gửi bản nhẹ hơn, hoặc bỏ tệp vào OneDrive rồi nhắn đường dẫn.'); continue; }
+        if (a.size && a.size > MAX_BYTES) { errors.push('"' + a.name + '" nặng ' + Math.round(a.size / 1048576) + ' MB: Telegram chỉ cho bot tải tệp tới 20 MB. Tệp lớn thì gõ /guilen để nhận link gửi tệp tới 5 GB (hoặc bỏ tệp vào OneDrive rồi nhắn đường dẫn).'); continue; }
         const ext = (path.extname(a.name).slice(1) || EXT_BY_MIME[a.mime] || (a.kind === 'image' ? 'jpg' : a.kind === 'video' ? 'mp4' : 'bin')).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'bin';
         const base = path.join(dir, stamp() + '-' + msg.message_id + '-' + n);
         const dest = base + '.' + ext;

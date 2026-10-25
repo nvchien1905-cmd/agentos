@@ -34,6 +34,7 @@ const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
 const { createLive } = require('./live');
 const { createRemote } = require('./remote');
+const { createLinks, fmtSize } = require('./filelink');
 const { createTgWatch } = require('./tgwatch');
 
 const log = (m) => console.log(new Date().toISOString() + ' ' + m);
@@ -254,6 +255,12 @@ async function main() {
     db, log, notify, admins: [...cfg.adminUserIds], url: cfg.updateUrl || undefined,
     idle: () => !worker.currentJobId() && !db.queuedCount(),
   });
+  const tailscale = createTailscale();
+  // Link tạm để chuyển tệp LỚN (tới 5 GB) giữa điện thoại và máy, vượt giới hạn của Telegram (xem filelink.js)
+  const links = createLinks({
+    dir: inboxDir, tailscale, log,
+    onUpload: (f) => tg.sendMessage(f.chat, '📥 Đã nhận tệp "' + f.name + '" (' + fmtSize(f.size) + ') qua link.\nĐường dẫn trên máy: ' + f.path + '\nNhờ AI xử lý bằng cách nhắn: "đọc tệp ' + f.path + ' rồi …".'),
+  });
   const bot = createBot({
     db, worker, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
     voice, media, memory, quietAck: true,
@@ -261,7 +268,7 @@ async function main() {
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
       else if (reply) await tg.sendMessage(chat, reply);
     },
-    quick: createQuick({ remote: createRemote({ cwd: cfg.workdir, isFull }), desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
+    quick: createQuick({ remote: createRemote({ cwd: cfg.workdir, isFull, tailscale }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));

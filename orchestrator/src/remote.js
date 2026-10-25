@@ -43,7 +43,7 @@ function createRemote(o) {
   }
 
   // Lấy một tệp từ máy gửi về Telegram
-  function getFile(p) {
+  async function getFile(p, links) {
     p = String(p || '').trim().replace(/^["']|["']$/g, '');
     if (!p) return { text: 'Cách dùng: /lay <đường dẫn tệp>, ví dụ /lay /srv/onedrive/AgentOS/bao-cao.xlsx (tối đa 49 MB; thư mục thì nén lại trước bằng /lenh zip -r).' };
     if (p.startsWith('~')) p = path.join(os.homedir(), p.slice(1));
@@ -52,7 +52,7 @@ function createRemote(o) {
     try { st = fs.statSync(p); } catch (e) { return { text: '⚠️ Không thấy tệp: ' + p }; }
     if (st.isDirectory()) return { text: '⚠️ Đây là thư mục. Nén lại trước: /lenh cd ' + path.dirname(p) + ' && zip -r /tmp/' + path.basename(p) + '.zip ' + path.basename(p) + ' rồi /lay /tmp/' + path.basename(p) + '.zip' };
     if (!st.isFile()) return { text: '⚠️ Không phải tệp thường: ' + p };
-    if (st.size > MAX_FILE) return { text: '⚠️ Tệp quá lớn (' + Math.round(st.size / 1048576) + ' MB, giới hạn 49 MB của Telegram). Chia nhỏ hoặc đưa lên OneDrive.' };
+    if (st.size > MAX_FILE) return links ? links.downloadLink(p) : { text: '⚠️ Tệp quá lớn (' + Math.round(st.size / 1048576) + ' MB, giới hạn 49 MB của Telegram). Chia nhỏ hoặc đưa lên OneDrive.' };
     return { text: '📎 ' + path.basename(p) + ' (' + (st.size < 1048576 ? Math.max(1, Math.round(st.size / 1024)) + ' KB' : (st.size / 1048576).toFixed(1) + ' MB') + ')', files: [{ path: p, name: path.basename(p), kind: IMG.test(p) && st.size < 9 * 1024 * 1024 ? 'photo' : 'document' }] };
   }
 
@@ -81,7 +81,20 @@ function createRemote(o) {
     return { text: L.join('\n') };
   }
 
-  return { runShell, getFile, sysinfo };
+  // Cách NHÌN và ĐIỀU KHIỂN TRỰC TIẾP màn hình (mượt hơn chụp từng ảnh): Tailscale + RustDesk
+  async function access() {
+    const L = ['🔭 Điều khiển trực tiếp màn hình máy (không qua Telegram):'];
+    let ts = null; try { ts = o.tailscale ? await o.tailscale.info() : null; } catch (e) { /* bỏ qua */ }
+    if (ts && ts.state === 'Running') L.push('✅ Tailscale đã kết nối: ' + (ts.ips[0] || '?') + (ts.dns ? ' · ' + ts.dns : '') + '\n   Cài app Tailscale trên điện thoại/máy tính, đăng nhập cùng tài khoản, rồi SSH: ssh <người-dùng>@' + (ts.ips[0] || ts.dns));
+    else L.push('❌ Tailscale chưa kết nối. Gõ /tailscale ketnoi để nhận link đăng nhập (làm một lần).');
+    const id = await run('rustdesk', ['--get-id']);
+    if (id && /^\d{6,}$/.test(id)) L.push('✅ RustDesk ID của máy: ' + id + '\n   Cài RustDesk trên điện thoại/máy tính, nhập ID này; mật khẩu cố định đặt ở RustDesk → Cài đặt → Bảo mật trên màn hình máy (anh nên đặt mật khẩu dài).');
+    else L.push('ℹ️ RustDesk: gõ /mo rustdesk để mở trên màn hình máy, đọc ID ở đó (chưa cài thì chạy lại trình cài AgentOS). Dùng RustDesk qua Tailscale cho mượt và an toàn.');
+    L.push('Xem nhanh một lần thì dùng /manhinh; thao tác từng bước thì /bam /keo /cuon /go /phim (tự chụp lại).');
+    return { text: L.join('\n') };
+  }
+
+  return { runShell, getFile, sysinfo, access };
 }
 
 module.exports = { createRemote };

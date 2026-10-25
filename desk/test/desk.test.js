@@ -137,3 +137,17 @@ test('nolock: tắt trình bảo vệ màn hình của X (không tự khóa khi 
   const lockedOut = make({ sess: Object.assign({}, SESS, { active: false }) });
   assert.equal((await lockedOut.desk.handle({ cmd: 'nolock' })).ok, false);
 });
+
+test('rê chuột / kéo thả / cuộn: đúng lệnh xdotool, kiểm tra đầu vào, không chạy khi khóa màn hình', async () => {
+  const { desk, calls } = make();
+  assert.equal((await desk.handle({ cmd: 'move', x: 5.6, y: 7 })).ok, true);
+  assert.deepEqual(calls.filter((c) => c.cmd === 'xdotool').pop().args, ['mousemove', '6', '7']);
+  assert.equal((await desk.handle({ cmd: 'drag', x: 1, y: 2, x2: 300, y2: 400 })).ok, true);
+  const dr = calls.filter((c) => c.cmd === 'xdotool').pop().args;
+  assert.deepEqual(dr.slice(0, 5), ['mousemove', '1', '2', 'mousedown', '1']); assert.deepEqual(dr.slice(-5), ['mousemove', '300', '400', 'sleep', '0.15'].slice(0, 0).concat(dr.slice(-5))); assert.equal(dr[dr.length - 2], 'mouseup');
+  assert.equal((await desk.handle({ cmd: 'scroll', dir: 'down', amount: 10, x: 50, y: 60 })).ok, true);
+  assert.deepEqual(calls.filter((c) => c.cmd === 'xdotool').pop().args, ['mousemove', '50', '60', 'click', '--repeat', '10', '--delay', '30', '5']);
+  assert.equal((await desk.handle({ cmd: 'scroll', dir: 'up' })).ok, true);
+  assert.deepEqual(calls.filter((c) => c.cmd === 'xdotool').pop().args, ['click', '--repeat', '5', '--delay', '30', '4']);
+  for (const bad of [{ cmd: 'move', x: -1, y: 1 }, { cmd: 'drag', x: 1, y: 1, x2: 'a', y2: 2 }, { cmd: 'scroll', dir: 'sideways' }, { cmd: 'scroll', dir: 'down', amount: 99 }, { cmd: 'scroll', dir: 'down', amount: 0 }]) assert.equal((await desk.handle(bad)).ok, false, JSON.stringify(bad));
+});

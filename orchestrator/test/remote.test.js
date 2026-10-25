@@ -21,27 +21,29 @@ test('lenh: chạy được, in kết quả, báo mã lỗi, dừng khi quá gi�
   assert.match((await createRemote({ isFull: () => false }).runShell('echo hi')).text, /TOÀN QUYỀN/);
 });
 
-test('lay: gửi tệp về (ảnh thành photo), từ chối thư mục / không có / quá lớn', () => {
+test('lay: gửi tệp về (ảnh thành photo), từ chối thư mục / không có / quá lớn', async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-'));
   fs.writeFileSync(path.join(d, 'a.txt'), 'abc'); fs.writeFileSync(path.join(d, 'b.png'), 'x');
   const r = createRemote({ cwd: d });
-  const a = r.getFile('a.txt'); assert.equal(a.files[0].kind, 'document'); assert.equal(a.files[0].path, path.join(d, 'a.txt'));
-  assert.equal(r.getFile(path.join(d, 'b.png')).files[0].kind, 'photo');
-  assert.match(r.getFile(d).text, /thư mục/); assert.match(r.getFile('khong-co.txt').text, /Không thấy/); assert.match(r.getFile('').text, /Cách dùng/);
+  const a = await r.getFile('a.txt'); assert.equal(a.files[0].kind, 'document'); assert.equal(a.files[0].path, path.join(d, 'a.txt'));
+  assert.equal((await r.getFile(path.join(d, 'b.png'))).files[0].kind, 'photo');
+  assert.match((await r.getFile(d)).text, /thư mục/); assert.match((await r.getFile('khong-co.txt')).text, /Không thấy/); assert.match((await r.getFile('')).text, /Cách dùng/);
   fs.rmSync(d, { recursive: true, force: true });
 });
 
 test('quick: /go /phim /bam gọi đúng lệnh màn hình; /bam kiểm tra toạ độ; bot chỉ cho quản trị viên', async () => {
   const calls = [];
   const desk = { call: async (c) => { calls.push(c); return { ok: true }; } };
-  const q = createQuick({ desk, remote: createRemote({}) });
+  const q = createQuick({ desk, remote: createRemote({}), shotWaitMs: 0 });
   assert.ok(q.has('lenh') && q.has('lay') && q.has('maytinh') && q.has('go') && q.has('phim') && q.has('bam'));
   assert.match(await q.run('go', 'xin chào'), /Đã gõ 8/);
   assert.match(await q.run('phim', 'ctrl+s'), /Đã bấm ctrl\+s/);
   assert.match(await q.run('bam', '640 360 dup'), /Đã bấm \(640, 360\)/);
   await q.run('bam', '10,20 phải');
-  assert.deepEqual(calls.map((c) => c.cmd), ['type', 'key', 'click', 'click']);
-  assert.equal(calls[2].double, true); assert.equal(calls[2].button, 1); assert.equal(calls[3].button, 3);
+  const acts = calls.filter((c) => c.cmd !== 'screenshot');
+  assert.deepEqual(acts.map((c) => c.cmd), ['type', 'key', 'click', 'click']);
+  assert.equal(calls.filter((c) => c.cmd === 'screenshot').length, 4, 'tự chụp lại sau mỗi thao tác');
+  assert.equal(acts[2].double, true); assert.equal(acts[2].button, 1); assert.equal(acts[3].button, 3);
   assert.match(await q.run('bam', 'abc'), /Cách dùng/);
   const db = openDb(':memory:');
   const bot = createBot({ db, worker: { wake() {}, currentJobId: () => null, engineNames: () => ['claude'] }, allowed: new Set(['1', '2']), isAdmin: (u) => u === '1', quick: q });

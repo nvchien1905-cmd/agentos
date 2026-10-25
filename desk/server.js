@@ -27,6 +27,7 @@ const APPS = {
 };
 const KEY_RE = /^[A-Za-z0-9_+\- ]{1,60}$/;      // tên phím xdotool: Return, ctrl+v, alt+F4...
 const MAX_TYPE = 2000;
+const point = (x, y) => { const a = Math.round(Number(x)), b = Math.round(Number(y)); return Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= 0 && a <= 20000 && b <= 20000 ? { x: a, y: b } : null; };
 
 // Chạy lệnh (không qua shell). Trả { code, out, err }; không bao giờ ném lỗi.
 function realRun(cmd, args, opts) {
@@ -159,6 +160,40 @@ function createDesk(o) {
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
       const args = ['mousemove', String(x), String(y), 'click'].concat(req.double ? ['--repeat', '2', '--delay', '80'] : [], [b]);
+      const r = await run('xdotool', args, { env: xenv(s) });
+      return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
+    },
+
+    // Rê chuột tới một điểm (không bấm): mở menu rê chuột, xem gợi ý...
+    async move(req) {
+      const p = point(req.x, req.y); if (!p) return fail('Toạ độ không hợp lệ');
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      const r = await run('xdotool', ['mousemove', String(p.x), String(p.y)], { env: xenv(s) });
+      return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
+    },
+
+    // Kéo thả: nhấn giữ nút chuột ở (x,y), kéo tới (x2,y2) rồi thả.
+    async drag(req) {
+      const a = point(req.x, req.y), b = point(req.x2, req.y2); if (!a || !b) return fail('Toạ độ không hợp lệ');
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      const args = ['mousemove', String(a.x), String(a.y), 'mousedown', '1', 'sleep', '0.15', 'mousemove_relative', '--', '1', '1',
+        'sleep', '0.1', 'mousemove', String(b.x), String(b.y), 'sleep', '0.15', 'mouseup', '1'];
+      const r = await run('xdotool', args, { env: xenv(s), timeoutMs: 20000 });
+      return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
+    },
+
+    // Cuộn chuột: hướng up|down|left|right, số nấc 1-50; có x,y thì rê chuột tới đó trước.
+    async scroll(req) {
+      const dir = String(req.dir || 'down').toLowerCase();
+      const btn = { up: '4', down: '5', left: '6', right: '7' }[dir]; if (!btn) return fail('Hướng cuộn: up, down, left, right');
+      const n = Math.round(Number(req.amount === undefined ? 5 : req.amount)); if (!Number.isFinite(n) || n < 1 || n > 50) return fail('Số nấc cuộn phải từ 1 đến 50');
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      const args = [];
+      if (req.x !== undefined && req.y !== undefined) { const p = point(req.x, req.y); if (!p) return fail('Toạ độ không hợp lệ'); args.push('mousemove', String(p.x), String(p.y)); }
+      args.push('click', '--repeat', String(n), '--delay', '30', btn);
       const r = await run('xdotool', args, { env: xenv(s) });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },

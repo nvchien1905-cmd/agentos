@@ -5,7 +5,7 @@ const { LABEL } = require('./policy');
 //   ask(chatId, text, buttons) -> Promise<messageId>     buttons: [[{text, data}]]
 //   edit(chatId, messageId, text) -> Promise
 //   isAdmin(userId) -> bool        người không phải admin không duyệt được lệnh/ghi file/công cụ lạ
-function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now }) {
+function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat }) {
   log = log || (() => {});
   now = now || Date.now;
   isAdmin = isAdmin || (() => true);
@@ -13,7 +13,7 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now }) {
   const pending = new Map();
   let seq = 0;
 
-  const header = (job, d) => '🔐 Việc #' + job.id + ' xin quyền: ' + (LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
+  const header = (job, d) => '🔐 Việc #' + job.id + (job.lane === 'hook' ? ' (từ webhook)' : '') + ' xin quyền: ' + (LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
     (d.warn ? '\n\n⚠️ ' + d.warn : '');
 
   async function finish(id, allowed, remember, source, by, label) {
@@ -22,7 +22,7 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now }) {
     pending.delete(id);
     clearTimeout(p.timer);
     try { db.addAudit({ jobId: p.job.id, tool: p.tool, cls: p.d.cls, decision: allowed ? 'allow' : 'deny', source, summary: p.d.summary }); } catch (e) { log('ghi nhật ký lỗi: ' + e.message); }
-    if (p.msgId) edit(p.job.chat_id, p.msgId, header(p.job, p.d) + '\n\n' + label).catch(() => {});
+    if (p.msgId) edit(p.target, p.msgId, header(p.job, p.d) + '\n\n' + label).catch(() => {});
     p.resolve({ allowed, remember: !!remember, source, by });
     return true;
   }
@@ -32,13 +32,13 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now }) {
     request(job, tool, d) {
       const id = String(++seq) + Math.random().toString(36).slice(2, 6);
       return new Promise((resolve) => {
-        const p = { job, tool, d, resolve, msgId: null, timer: null };
+        const p = { job, tool, d, resolve, msgId: null, timer: null, target: askChat ? askChat(job) : job.chat_id };
         pending.set(id, p);
         p.timer = setTimeout(() => finish(id, false, false, 'timeout', null, '⏱ Hết thời gian chờ, đã tự từ chối.'), timeoutMs);
         const row = [{ text: '✅ Cho phép', data: 'ap:' + id + ':y' }];
         if (d.canRemember) row.push({ text: '✅ Cho phép cả việc này', data: 'ap:' + id + ':r' });
         row.push({ text: '❌ Từ chối', data: 'ap:' + id + ':n' });
-        Promise.resolve().then(() => ask(job.chat_id, header(job, d), [row])).then((mid) => { p.msgId = mid; }).catch((e) => {
+        Promise.resolve().then(() => ask(p.target, header(job, d) + (String(p.target) !== String(job.chat_id) ? '\n(việc của người dùng ' + job.chat_id + ')' : ''), [row])).then((mid) => { p.msgId = mid; }).catch((e) => {
           log('không gửi được câu hỏi duyệt: ' + e.message);
           finish(id, false, false, 'error', null, '⚠️ Không gửi được câu hỏi, đã tự từ chối.');
         });

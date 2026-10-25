@@ -1,7 +1,7 @@
 'use strict';
 const http = require('http');
 const crypto = require('crypto');
-const { decide, originOf } = require('./policy');
+const { decide, decideGuard, originOf } = require('./policy');
 
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
@@ -21,7 +21,7 @@ function createGate({ db, approvals, workdir, log, extraDirs }) {
     if (!entry) return { behavior: 'deny', message: 'Việc không còn chạy, từ chối.' };
     const tool = String(body.tool || '');
     const input = body.input && typeof body.input === 'object' ? body.input : {};
-    const d = decide({ tool, input, policy: entry.policy, workdir, extraDirs, state: entry.state });
+    const d = (entry.guard ? decideGuard : decide)({ tool, input, policy: entry.policy, workdir, extraDirs, state: entry.state });
 
     if (d.action === 'deny') {
       audit(entry.job.id, tool, d, 'deny', 'policy');
@@ -31,7 +31,7 @@ function createGate({ db, approvals, workdir, log, extraDirs }) {
     if (d.action === 'allow') {
       if (d.taint) entry.state.tainted = true;
       noteVisit();
-      audit(entry.job.id, tool, d, 'allow', 'auto');
+      if (!entry.guard) audit(entry.job.id, tool, d, 'allow', 'auto');          // chế độ hàng rào: không ghi từng thao tác cho phép (quá nhiều)
       return { behavior: 'allow', updatedInput: input };
     }
     const r = await approvals.request(entry.job, tool, d);   // đã ghi nhật ký trong approvals
@@ -64,7 +64,7 @@ function createGate({ db, approvals, workdir, log, extraDirs }) {
     token,
     evaluate,
     // Gọi trước khi chạy engine / sau khi xong. `profile.policy` là chính sách của bộ công cụ.
-    begin(job, profile) { jobs.set(job.id, { job, policy: profile.policy || {}, state: { tainted: false, allowed: new Set(), origins: new Set() } }); },
+    begin(job, profile, opts) { jobs.set(job.id, { job, guard: !!(opts && opts.guard), policy: profile.policy || {}, state: { tainted: false, allowed: new Set(), origins: new Set() } }); },
     end(jobId) { jobs.delete(jobId); if (approvals) approvals.cancelJob(jobId); },
     state(jobId) { const e = jobs.get(jobId); return e ? e.state : null; },
     listen(port) {

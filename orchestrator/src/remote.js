@@ -158,7 +158,17 @@ function createRemote(o) {
     return { text: '🔒 Đã đóng điều khiển từ xa: ngắt phiên đang nối, đổi mật khẩu sang ngẫu nhiên, tắt dịch vụ RustDesk. Gõ /tuxa để mở lại.' };
   }
 
-  return { runShell, getFile, sysinfo, remoteStart, remoteStop };
+  // Nhật ký của bộ điều phối (journalctl), đã che khóa/token. n = số dòng (tối đa 80).
+  const MASK = [[/\b\d{8,}:[A-Za-z0-9_-]{30,}\b/g, '<token-telegram>'], [/\bsk-[A-Za-z0-9_-]{12,}\b/g, '<khóa>'], [/\bAIza[A-Za-z0-9_-]{20,}\b/g, '<khóa>'], [/\b(token|password|passwd|secret|api[_-]?key)(["']?\s*[=:]\s*)\S+/gi, '$1$2***'], [/Bearer\s+[A-Za-z0-9._~+\/-]{16,}/g, 'Bearer ***']];
+  const mask = (s) => MASK.reduce((t, [re, to]) => t.replace(re, to), String(s));
+  async function logs(n, unit) {
+    n = Math.max(5, Math.min(80, Number(n) || 30));
+    const r = await sudo(['journalctl', '-u', unit || 'agentos-orchestrator', '-n', String(n), '--no-pager', '-o', 'short']);
+    if (r.code !== 0 && !r.out) return { text: '⚠️ Không đọc được nhật ký: ' + (r.err || 'journalctl lỗi').slice(0, 200) + ' (bot cần quyền sudo).' };
+    return { text: '📜 ' + n + ' dòng nhật ký gần nhất:\n' + tail(mask(r.out).replace(/^-- .*$/gm, '').trim(), 3300) };
+  }
+
+  return { runShell, getFile, sysinfo, remoteStart, remoteStop, logs, mask };
 }
 
 module.exports = { createRemote };

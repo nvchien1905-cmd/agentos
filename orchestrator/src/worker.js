@@ -19,7 +19,9 @@ function fmtTime(ms) {
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
 // `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes }) {
+  lanes = lanes && lanes.length ? lanes : ['main'];
+  const isMain = lanes.length === 1 && lanes[0] === 'main';
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
   log = log || (() => {});
   now = now || Date.now;
@@ -88,7 +90,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
 
   async function attempt(job, eng) {
     db.setEngine(job.id, eng);
-    let resumeId = db.kvGet(sessionKey(job.chat_id, eng));
+    let resumeId = isMain ? db.kvGet(sessionKey(job.chat_id, eng)) : null;           // việc nền/sự kiện: phiên riêng, không dính phiên trò chuyện chính
     let res;
     for (let i = 0; i < 2; i++) {
       res = await runWithRetry(job, eng, resumeId);
@@ -100,8 +102,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       }
       break;
     }
-    if (res.ok && res.sessionId) db.kvSet(sessionKey(job.chat_id, eng), res.sessionId);
-    if (res.ok && context) {
+    if (res.ok && res.sessionId && isMain) db.kvSet(sessionKey(job.chat_id, eng), res.sessionId);
+    if (res.ok && context && isMain) {
       try { const r = await context.afterJob(job, eng, res); if (r && r.rotate) { db.kvDel(sessionKey(job.chat_id, eng)); log('xoay phiên ' + name(eng) + ' của cuộc trò chuyện ' + job.chat_id + ' (ngữ cảnh đã được tóm tắt)'); } }
       catch (e) { log('cập nhật ngữ cảnh lỗi: ' + e.message); }
     }
@@ -109,7 +111,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   }
 
   async function runOne() {
-    const job = db.claimNext(now());
+    const job = db.claimNext(now(), lanes);
     if (!job) return false;
     const wasWaiting = job.run_after != null;
     const permitted = engineFilter ? engineFilter(job) : null;

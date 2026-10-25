@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'bat', 'doc', 'doi', 'thay'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -127,6 +127,40 @@ function createQuick(o) {
           return '📖 Sổ tay của chủ máy (' + i.chapters + ' chương, ' + i.entries + ' mục, dùng chung mọi AI)\n' + (i.toc ? i.toc.replace(/ → \S+$/gm, '') : '(chưa có gì; dùng /nho để thêm)') +
             '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
             '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
+        }
+        case 'sukien': {
+          if (!triggers) return '⚠️ Máy này chưa có sự kiện tự kích hoạt.';
+          const a = arg.trim(); const w = noAccent(a).split(' ');
+          const usage = 'Cách dùng:\n/sukien them hoadon <tiền tối thiểu> [| việc cho AI] — có hóa đơn mới từ mức đó trở lên\n/sukien them tonthap [| việc cho AI] — có sản phẩm sắp hết hàng\n(không ghi việc cho AI thì chỉ nhắn thông báo, không tốn AI; ghi thì AI tự làm, dùng được {ma} {tong} {chinhanh} {khach} {danhsach})\n/sukien xoa <số> · /sukien tat <số> · /sukien bat <số>\n/sukien webhook [bat|tat|moi] — link bí mật để hệ thống khác báo sự kiện cho máy';
+          if (!a) { const c = triggers.load(); const hs = await triggers.hookStatus(); return '⚡ Sự kiện tự kích hoạt (quét 5 phút/lần):\n' + (c.rules.length ? c.rules.map((r) => triggers.describe(r)).join('\n') : '(chưa có luật nào)') + '\nWebhook: ' + (hs.enabled ? 'BẬT' : 'tắt') + '\n\n' + usage; }
+          if (w[0] === 'them') {
+            const type = w[1]; const parts = a.replace(/^\S+\s+\S+\s*/, '').split('|'); const nums = (parts[0].match(/[\d.,]+/) || [''])[0].replace(/[.,]/g, '');
+            const r = triggers.add(type, nums, parts.slice(1).join('|').trim());
+            return r.ok ? '✅ Đã thêm luật ' + triggers.describe(r.rule) + (r.rule.prompt ? '\n(việc của AI sẽ chạy nền, kết quả báo riêng)' : '') : '⚠️ ' + r.error;
+          }
+          if (w[0] === 'xoa') return triggers.remove(w[1]) ? '🗑️ Đã xóa luật #' + w[1] : 'Không có luật #' + w[1];
+          if (w[0] === 'tat' || w[0] === 'bat') return triggers.toggle(w[1], w[0] === 'bat') ? (w[0] === 'bat' ? '▶️ Đã bật' : '⏸ Đã tắt') + ' luật #' + w[1] : 'Không có luật #' + w[1];
+          if (w[0] === 'webhook') {
+            if (w[1] === 'bat' || w[1] === 'moi' || w[1] === 'tat') { const r = await triggers.hookSet(w[1]); if (!r.ok) return '⚠️ ' + r.error; }
+            const hs = await triggers.hookStatus();
+            if (!hs.enabled) return 'Webhook đang TẮT. Bật: /sukien webhook bat';
+            return '🔗 Webhook (giữ bí mật như mật khẩu; đổi link: /sukien webhook moi):\n' + hs.url + '\nGửi: curl -X POST --data "Có đơn hàng lớn từ Zalo" <link>\nQua ' + hs.via + (hs.via === 'Tailscale' ? ' (mã hóa).' : ': chỉ dùng trong mạng nhà; muốn từ xa hãy bật Tailscale.') + '\nViệc từ webhook luôn chạy chế độ BẢO VỆ (chỉ đọc, hỏi duyệt) vì nội dung từ ngoài có thể chứa mệnh lệnh cài vào.';
+          }
+          return usage;
+        }
+        case 'tuchan': {
+          if (!selftest) return '⚠️ Máy này chưa có tự chẩn đoán.';
+          const w = noAccent(arg);
+          if (w === 'ai') { const r = await selftest.full({ ai: true, engineNames: o.engineNames || [], startFn: o.pingStart }); return selftest.format(r, '🩺 Tự chẩn đoán đầy đủ + thử hỏi từng AI'); }
+          if (w === 'nhanh') return selftest.format(await selftest.light(), '🩺 Chẩn đoán nhanh');
+          return selftest.format(await selftest.full(), '🩺 Tự chẩn đoán') + '\n\n(Gõ /tuchan ai để thử hỏi từng AI một câu, tốn một ít hạn mức.)';
+        }
+        case 'log': return remote ? await remote.logs((arg.match(/\d+/) || [])[0]) : '⚠️ Máy này chưa có điều khiển từ xa.';
+        case 'hangrao': {
+          if (!guard) return '⚠️ Máy này chưa có hàng rào.';
+          const w = noAccent(arg).split(' ')[0];
+          if (w === 'tat' || w === 'bat') { guard.set(w === 'bat'); return w === 'bat' ? '🛡️ Đã BẬT hàng rào: AI toàn quyền vẫn không đọc được khóa API/biến môi trường, và phải hỏi anh trước khi gửi dữ liệu ra ngoài hoặc làm việc dính tiền.' : '⚠️ Đã TẮT hàng rào: AI toàn quyền không còn bị chặn/hỏi gì (có thể bị lừa qua nội dung web/email). Gõ /hangrao bat để bật lại.'; }
+          return '🛡️ Hàng rào chế độ toàn quyền đang ' + (guard.get() ? 'BẬT' : 'TẮT') + '.\nBật: cấm đọc khóa API/biến môi trường/cấu hình bí mật; hỏi anh (nút bấm) trước khi gửi email, tin nhắn, POST/upload, scp, git push hoặc việc dính ngân hàng/thanh toán. Đổi: /hangrao bat | /hangrao tat. (Chỉ áp cho Claude; Codex/Gemini không có cơ chế này.)';
         }
         case 'doc': return office ? await office.read(arg) : '⚠️ Máy này chưa có công cụ văn phòng.';
         case 'doi': { if (!office) return '⚠️ Máy này chưa có công cụ văn phòng.'; const m = arg.match(/^(\S+)\s*([\s\S]*)$/); return await office.convert(m && m[1], m && m[2]); }

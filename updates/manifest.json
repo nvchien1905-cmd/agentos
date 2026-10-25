@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.7",
-  "file": "agentos-update-2026.10.25.7.tar.gz",
-  "size": 194924,
-  "sha256": "fdac92a0d48af524ca4123d17875be53b26a32533a16d2096640ad52822e1be9",
+  "version": "2026.10.25.8",
+  "file": "agentos-update-2026.10.25.8.tar.gz",
+  "size": 213900,
+  "sha256": "7628fee23d02a1e8d7583ab7bb140c59ca45fc7835bf39ad812055478f3973dd",
   "date": "2026-10-25",
-  "notes": "Word/Excel/PowerPoint: LibreOffice Impress, phông tương thích, agentos-office, /doc /doi /thay, nút Microsoft 365"
+  "notes": "Tự chẩn đoán /tuchan + giám sát chủ động, việc nền /nen, /tieptuc, sự kiện /sukien + webhook, phân vai /vaitro, hàng rào /hangrao, sửa lỗ hổng toàn quyền cho nhân viên"
 }

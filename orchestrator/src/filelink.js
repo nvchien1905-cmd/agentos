@@ -147,4 +147,13 @@ function createLinks(o) {
   };
 }
 
-module.exports = { createLinks, fmtSize, MAX_UP };
+// Chọn địa chỉ để đưa cho điện thoại/hệ thống khác: ưu tiên Tailscale (mã hóa), không có thì mạng nhà
+function makeHostFn(ts) {
+  return async () => {
+    try { const i = ts && await ts.info(); if (i && i.state === 'Running' && i.ips && i.ips[0]) return { host: i.ips[0], via: 'Tailscale' }; } catch (e) { /* dùng mạng nhà */ }
+    for (const list of Object.values(os.networkInterfaces())) for (const a of list || []) if (a.family === 'IPv4' && !a.internal) return { host: a.address, via: 'mạng nhà' };
+    return null;
+  };
+}
+
+module.exports = { createLinks, fmtSize, MAX_UP, makeHostFn };

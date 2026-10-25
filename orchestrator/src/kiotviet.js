@@ -76,6 +76,20 @@ function createKiotViet(o) {
     },
 
     // Sản phẩm sắp hết: tổng tồn các chi nhánh <= mức tồn tối thiểu đã đặt trong KiotViet (chỉ tính sản phẩm có đặt mức tối thiểu > 0).
+    // Hóa đơn của hôm nay (giờ VN), mới nhất cuối: dùng cho sự kiện "hóa đơn mới"
+    async invoicesToday(nowMs) {
+      const from = vnDate(0, nowMs).iso, to = vnDate(1, nowMs).iso;
+      const all = [];
+      for (let cur = 0; cur < 5000; cur += 100) {
+        const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), fromPurchaseDate: from, toPurchaseDate: to, orderBy: 'purchaseDate', orderDirection: 'Asc' });
+        const d = await get('/invoices?' + qs.toString());
+        const items = d.data || [];
+        all.push(...items);
+        if (items.length < 100 || all.length >= (d.total || 0)) break;
+      }
+      return all.map((i) => ({ id: i.id, code: i.code, total: i.total, status: i.status, branchName: i.branchName, customerName: i.customerName, purchaseDate: i.purchaseDate }));
+    },
+
     async lowStock(limit, maxPages) {
       const out = [];
       for (let page = 0, cur = 0; page < (maxPages || 60); page++, cur += 100) {

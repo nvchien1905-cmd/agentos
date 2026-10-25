@@ -48,6 +48,8 @@ function openDb(file) {
   if (!cols.includes('engine_pref')) db.exec('ALTER TABLE jobs ADD COLUMN engine_pref TEXT');
   if (!cols.includes('run_after')) db.exec('ALTER TABLE jobs ADD COLUMN run_after INTEGER');
   if (!cols.includes('profile')) db.exec('ALTER TABLE jobs ADD COLUMN profile TEXT');
+  // Làn chạy: 'main' (hàng đợi chính, tuần tự) | 'bg' (việc nền chạy song song, /nen) | 'event' | 'hook' (sự kiện tự kích hoạt; hook luôn chạy chế độ bảo vệ)
+  if (!cols.includes('lane')) db.exec("ALTER TABLE jobs ADD COLUMN lane TEXT DEFAULT 'main'");
   // Tìm lại ngữ cảnh cũ theo nội dung: FTS5 (không phân biệt dấu). Thiếu FTS5 thì bỏ qua (search trả mảng rỗng).
   let hasFts = false;
   try {
@@ -60,9 +62,10 @@ function openDb(file) {
     hasFts = true;
   } catch (e) { hasFts = false; }
   const now = () => Date.now();
+  const nextByLanes = new Map();
 
   const q = {
-    add: db.prepare('INSERT INTO jobs (chat_id, prompt, engine_pref, profile, created_at) VALUES (?, ?, ?, ?, ?)'),
+    add: db.prepare('INSERT INTO jobs (chat_id, prompt, engine_pref, profile, created_at, lane) VALUES (?, ?, ?, ?, ?, ?)'),
     get: db.prepare('SELECT * FROM jobs WHERE id = ?'),
     next: db.prepare("SELECT * FROM jobs WHERE status = 'queued' OR (status = 'waiting' AND run_after <= ?) ORDER BY id LIMIT 1"),
     run: db.prepare("UPDATE jobs SET status = 'running', started_at = ? WHERE id = ? AND status IN ('queued','waiting')"),
@@ -74,7 +77,7 @@ function openDb(file) {
     lastId: db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM jobs WHERE chat_id = ?'),
     countQueued: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','waiting')"),
     countWaiting: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'waiting'"),
-    countAhead: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running','waiting') AND id < ?"),
+    countAhead: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running','waiting') AND id < ? AND COALESCE(lane,'main') = COALESCE((SELECT lane FROM jobs WHERE id = ?),'main')"),
     running: db.prepare("SELECT * FROM jobs WHERE status = 'running'"),
     interrupt: db.prepare("UPDATE jobs SET status = 'interrupted', finished_at = ? WHERE status = 'running'"),
     cancelQueued: db.prepare("UPDATE jobs SET status = 'cancelled', run_after = NULL, finished_at = ? WHERE chat_id = ? AND status IN ('queued','waiting')"),
@@ -90,11 +93,14 @@ function openDb(file) {
 
   return {
     raw: db,
-    addJob(chatId, prompt, enginePref, profile) { return Number(q.add.run(String(chatId), prompt, enginePref || null, profile || null, now()).lastInsertRowid); },
+    addJob(chatId, prompt, enginePref, profile, lane) { return Number(q.add.run(String(chatId), prompt, enginePref || null, profile || null, now(), lane || 'main').lastInsertRowid); },
     getJob(id) { return q.get.get(id); },
     // Lấy việc tới lượt (đang xếp hàng, hoặc đang chờ hạn mức mà đã tới giờ) và đánh dấu đang chạy.
-    claimNext(at) {
-      const j = q.next.get(at == null ? now() : at);
+    claimNext(at, lanes) {
+      lanes = lanes && lanes.length ? lanes : ['main'];
+      const key = lanes.length; let st = nextByLanes.get(key);
+      if (!st) { st = db.prepare("SELECT * FROM jobs WHERE (status = 'queued' OR (status = 'waiting' AND run_after <= ?)) AND COALESCE(lane,'main') IN (" + lanes.map(() => '?').join(',') + ') ORDER BY id LIMIT 1'); nextByLanes.set(key, st); }
+      const j = st.get(at == null ? now() : at, ...lanes);
       if (!j) return null;
       if (q.run.run(now(), j.id).changes !== 1) return null;
       return q.get.get(j.id); // run_after còn nguyên để biết việc này từng phải chờ
@@ -126,7 +132,7 @@ function openDb(file) {
     lastJobId(chatId) { return q.lastId.get(String(chatId)).n; },
     queuedCount() { return q.countQueued.get().n; },
     waitingCount() { return q.countWaiting.get().n; },
-    aheadOf(id) { return q.countAhead.get(id).n; },
+    aheadOf(id) { return q.countAhead.get(id, id).n; },
     // Khởi động lại sau sự cố: việc đang chạy dở KHÔNG tự chạy lại (có thể đã gây tác dụng phụ).
     markInterrupted() {
       const list = q.running.all();

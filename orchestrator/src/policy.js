@@ -152,6 +152,42 @@ function decide(ctx) {
   return finishAsk(out, cls, tainted, risky);
 }
 
+// ---- HÀNG RÀO cho chế độ TOÀN QUYỀN: AI vẫn tự làm mọi việc, riêng ba nhóm sau không tự làm được:
+//  1. CẤM CỨNG: đọc khóa/token/biến môi trường (chứa API key) và cấu hình bí mật của AgentOS.
+//  2. HỎI CHỦ MÁY (nút bấm trên Telegram): gửi thông tin/tin nhắn ra ngoài (email, Telegram/Zalo/Slack API, POST/upload, scp/rsync, git push...).
+//  3. HỎI CHỦ MÁY: việc dính tiền (ngân hàng, thanh toán, ví điện tử, tiền mã hóa, "chuyển khoản").
+// Đây là "hàng rào chặn thói quen xấu và chặn bị lừa qua nội dung web/email", KHÔNG phải bức tường tuyệt đối: AI đã có sudo nên người cố tình vẫn vòng được.
+const GUARD_DENY_CMD = [
+  [/\b(printenv|export\s+-p|declare\s+-x|compgen\s+-e)\b|(^|[;&|(]\s*)env\s*($|[|;&>)])|\/proc\/[^\s]*\/environ/, 'đọc biến môi trường (chứa khóa API)'],
+  [/\/etc\/agentos(\/|\b)|orchestrator\.env|\.agentos-update|signing-private|update-pubkey/, 'đọc cấu hình bí mật của AgentOS'],
+];
+const GUARD_SEND_CMD = [
+  [/\b(sendmail|mailx?|mutt|msmtp|swaks|ssmtp)\b/, 'gửi email'],
+  [/api\.telegram\.org|openapi\.zalo\.me|oauth\.zaloapp\.com|graph\.facebook\.com|hooks\.slack\.com|discord(app)?\.com\/api|api\.line\.me|api\.twilio\.com|api\.sendgrid\.com|smtp\./i, 'gửi tin nhắn/thư qua dịch vụ bên ngoài'],
+  [/\b(curl|wget|http|https|xh)\b[^|;&\n]*(\s-X\s*(POST|PUT|PATCH|DELETE)\b|\s--data\S*|\s-d\s|\s-F\s|\s--form\b|\s-T\s|--upload-file|--json\b)/i, 'gửi dữ liệu lên mạng (POST/upload)'],
+  [/\b(scp|rsync|sftp|rclone|nc|ncat|netcat|socat)\b/, 'chuyển dữ liệu qua mạng'],
+  [/\bgit\s+push\b|\bnpm\s+publish\b|\bgh\s+(pr|release|repo|gist)\b|\btwine\s+upload\b|\bdocker\s+push\b/, 'đẩy mã/đăng tải ra ngoài'],
+];
+const MONEY_RE = /(vietcombank|vcbdigibank|techcombank|bidv|vietinbank|mbbank|tpbank|vpbank|sacombank|agribank|hdbank|ocb\.com|momo\.vn|zalopay|vnpay|paypal|stripe\.com|payoneer|binance|coinbase|e-?banking|internet banking|chuyển khoản|chuyen khoan|chuyển tiền|chuyen tien|thanh toán|thanh toan|wire transfer)/i;
+
+function decideGuard(ctx) {
+  const tool = ctx.tool, input = ctx.input || {};
+  const cls = classify(tool, input);
+  const out = { action: 'allow', cls, summary: summarize(tool, input, cls), reason: '', warn: '', taint: false, canRemember: false };
+  const deny = (reason) => Object.assign(out, { action: 'deny', reason });
+  const ask = (warn) => Object.assign(out, { action: 'ask', warn });
+  for (const p of pathsOf(input)) if (SECRET_RE.test(p)) return deny('không được đụng vào file chứa khóa/token/dữ liệu hệ thống');
+  if (cls === 'exec') {
+    const cmd = String(input.command || '');
+    if (SECRET_RE.test(cmd)) return deny('lệnh đụng vào file chứa khóa/token/dữ liệu hệ thống');
+    for (const [re, why] of GUARD_DENY_CMD) if (re.test(cmd)) return deny('không được ' + why);
+    for (const [re, why] of GUARD_SEND_CMD) if (re.test(cmd)) return ask('Việc nhạy cảm: ' + why + '. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
+    if (MONEY_RE.test(cmd)) return ask('Việc dính tới tiền (ngân hàng/thanh toán/chuyển khoản). Chỉ cho phép nếu chính anh yêu cầu.');
+  }
+  if (input.url !== undefined && (cls === 'browse' || cls === 'interact' || cls === 'other') && MONEY_RE.test(String(input.url))) return ask('Trang ngân hàng/thanh toán: thao tác ở đây có thể liên quan tới tiền. Chỉ cho phép nếu chính anh yêu cầu.');
+  return out;
+}
+
 function finishAsk(out, cls, tainted) {
   // Cho "cho phép trong việc này" chỉ với thao tác trình duyệt; lệnh và ghi file luôn hỏi từng lần.
   out.canRemember = cls === 'interact';
@@ -159,4 +195,4 @@ function finishAsk(out, cls, tainted) {
   return out;
 }
 
-module.exports = { decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };
+module.exports = { decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };

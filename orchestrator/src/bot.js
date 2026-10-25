@@ -23,6 +23,10 @@ function helpText(profiles) {
     '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +
     '/nhatky - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ\n' +
+    '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
+    '/hangrao [bat|tat] - hàng rào cho AI toàn quyền (cấm đọc khóa, hỏi trước khi gửi ra ngoài/dính tiền)\n' +
+    '/nen <việc> - giao việc NỀN chạy song song (không chờ hàng đợi), xong báo riêng · /tieptuc [số việc] - làm tiếp việc bị ngắt/lỗi · /sukien - AI tự làm khi có hóa đơn mới, hàng sắp hết, hoặc webhook\n' +
+    '/vaitro - phân vai cho nhân viên/kế toán (chỉ chủ máy); họ nhắn bot được nhưng việc luôn ở chế độ bảo vệ\n' +
     '/dung - NÚT DỪNG KHẨN CẤP: hủy mọi việc và ngắt điều khiển từ xa ngay\n' +
     '/trangthai - hàng đợi và tình trạng hạn mức\n' +
     '/huy - hủy việc đang chạy và các việc đang chờ\n' +
@@ -42,8 +46,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -122,12 +126,13 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     if (cmd) {
       const name = cmd[1].toLowerCase();
       if (worker.engineNames().includes(name)) {
+        if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo, chưa nhắn việc cho AI được.';
         const prompt = cmd[3].trim();
         return prompt ? submit(chatId, prompt, name) : 'Cách dùng: /' + name + ' <việc cần làm>';
       }
       // Lệnh nhanh không qua AI (màn hình, mở/đóng ứng dụng, DeepSeek web, KiotViet): trả về Promise
       if (quick && quick.has(name)) {
-        if (!isAdmin(uid)) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên.';
+        if (!isAdmin(uid) && !(roles && roles.canQuick(uid, name))) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên' + (roles ? ' (vai của bạn: ' + roles.label(uid) + ')' : '') + '.';
         if (db.addAudit && AUDITED.has(name)) { try { db.addAudit({ tool: '/' + name, cls: 'remote', decision: 'allow', source: 'user', summary: name === 'go' ? '(' + String(cmd[3] || '').length + ' ký tự)' : String(cmd[3] || '').replace(/(token|pass\w*|mat\s?khau|secret|key)\S*\s*[=:]?\s*\S+/gi, '$1 ***') }); } catch (e) { /* nhật ký lỗi không chặn lệnh */ } }
         return quick.run(name, cmd[3], { chatId, uid });
       }
@@ -177,6 +182,33 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
             ? '⚡ ĐÃ BẬT chế độ TOÀN QUYỀN. AI tự làm một mạch, không hỏi xin phép, được dùng sudo trên máy này. Gõ /baove để quay về chế độ có hỏi.'
             : '🛡️ ĐÃ BẬT chế độ bảo vệ: AI hỏi bạn trước khi ghi file hoặc chạy lệnh, chạy trong hộp cô lập. Gõ /toanquyen để bật lại toàn quyền.';
         }
+        case 'nen': {                                       // việc nền: chạy SONG SONG với hàng đợi chính
+          if (roles && !roles.canAsk(uid)) return 'Vai của bạn chỉ xem được báo cáo.';
+          const prompt = String(cmd[3] || '').trim();
+          if (!prompt) return 'Cách dùng: /nen <việc>. Việc nền chạy song song với việc đang làm (không chờ hàng đợi), xong thì báo riêng. Không dùng chung phiên trò chuyện, nên nhờ rõ ràng đủ ý.';
+          const id = db.addJob(chatId, prompt, null, null, 'bg');
+          setImmediate(() => worker.wake());
+          return '🧵 Đã giao việc nền #' + id + ' (chạy song song, xong em báo). Gõ /huy để hủy.';
+        }
+        case 'tieptuc': {                                    // làm tiếp việc bị ngắt giữa chừng (mất điện, khởi động lại) hoặc bị lỗi
+          if (roles && !roles.canAsk(uid)) return 'Vai của bạn chỉ xem được báo cáo.';
+          const want = Number(String(cmd[3] || '').replace(/\D/g, '')) || 0;
+          const rows = db.recentJobs(chatId, 30);
+          const j = want ? rows.find((r) => r.id === want) : rows.find((r) => ['interrupted', 'error', 'cancelled'].includes(r.status));
+          if (!j) return want ? 'Không thấy việc #' + want + ' của anh (chỉ xem được 30 việc gần nhất).' : 'Không có việc nào bị ngắt/lỗi gần đây. Gõ /viec để xem.';
+          if (!['interrupted', 'error', 'cancelled'].includes(j.status)) return 'Việc #' + j.id + ' đang ở trạng thái "' + (ICON[j.status] || j.status) + '", không cần làm tiếp.';
+          const p = 'Tiếp tục việc #' + j.id + ' (trước đó bị ' + (j.status === 'interrupted' ? 'ngắt giữa chừng do máy khởi động lại' : j.status === 'error' ? 'lỗi' : 'hủy') + '). HÃY KIỂM TRA TRẠNG THÁI HIỆN TẠI (tệp đã tạo, việc đã làm) trước, chỉ làm phần CÒN DỞ, đừng lặp lại việc đã xong hay làm hai lần.\nYêu cầu gốc:\n' + j.prompt;
+          return submit(chatId, p, j.engine_pref || null, j.profile || null) || '▶️ Đang làm tiếp việc #' + j.id + '...';
+        }
+        case 'vaitro': {                                  // phân vai: chỉ chủ máy
+          if (!roles) return 'Máy này chưa có tính năng phân vai.';
+          if (!isAdmin(uid)) return 'Chỉ chủ máy được phân vai.';
+          const w = String(cmd[3] || '').trim().split(/\s+/).filter(Boolean);
+          const sub = (w[0] || '').toLowerCase();
+          if (sub === 'dat' || sub === 'them') { const r = roles.set(w[1], w[2]); return r.ok ? '✅ Đã đặt ' + w[1] + ' = ' + roles.ROLES[w[2].toLowerCase()].label + '. Người đó nhắn bot được ngay; việc của họ luôn chạy chế độ bảo vệ (không bao giờ toàn quyền).' : '⚠️ ' + r.error; }
+          if (sub === 'xoa') { const r = roles.remove(w[1]); return r.ok ? (r.kept ? 'ID này nằm trong cấu hình nên vẫn được phép (đã đưa về vai Nhân viên).' : '🗑️ Đã gỡ ' + w[1] + (r.had ? '.' : ' (chưa từng có).')) : '⚠️ ' + r.error; }
+          return '👥 Người dùng:\n' + roles.list().map((r) => '• ' + r.uid + ' — ' + r.label).join('\n') + '\n\nThêm/đổi: /vaitro dat <ID> <' + Object.keys(roles.ROLES).join('|') + '> (người đó gõ /id để biết ID)\nGỡ: /vaitro xoa <ID>\nXem = chỉ báo cáo · Nhân viên = báo cáo + đọc tệp + hỏi AI (chỉ đọc) · Kế toán = thêm sửa tệp Word/Excel.';
+        }
         case 'dung': {                                   // NÚT DỪNG KHẨN CẤP: hủy mọi việc, ngắt điều khiển từ xa
           const queued = db.cancelQueued(chatId), running = worker.cancelRunning(chatId);
           const base = '🛑 DỪNG: ' + (running ? 'đã hủy việc đang chạy' : 'không có việc đang chạy') + (queued ? ', hủy ' + queued + ' việc đang chờ' : '') + '.';
@@ -192,6 +224,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         default: return 'Lệnh không có. Gõ /help để xem danh sách.';
       }
     }
+    if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo: gõ /doanhso hoặc /ton <sản phẩm>.';
     return submit(chatId, text, null);
   }
   // Lượt bấm nút "Cho phép / Từ chối". Trả văn bản hiện lại cho người bấm (hoặc null nếu không phải việc của mình).

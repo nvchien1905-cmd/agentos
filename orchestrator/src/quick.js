@@ -5,7 +5,7 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'keo', 'cuon', 're', 'tuxa', 'guilen'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
@@ -128,29 +128,11 @@ function createQuick(o) {
             '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
             '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
         }
-        case 'keo': {
-          const n = (arg.match(/\d{1,5}/g) || []).map(Number);
-          if (n.length !== 4) return 'Cách dùng: /keo <x1> <y1> <x2> <y2> - nhấn giữ chuột ở điểm 1, kéo sang điểm 2 rồi thả (kéo thả tệp, kéo thanh trượt, chọn vùng).';
-          const r = await desk.call({ cmd: 'drag', x: n[0], y: n[1], x2: n[2], y2: n[3] });
-          return r.ok ? await withShot('🖱️ Đã kéo (' + n[0] + ', ' + n[1] + ') → (' + n[2] + ', ' + n[3] + ').') : '⚠️ ' + r.error;
+        case 'tuxa': {
+          if (!remote) return '⚠️ Máy này chưa có điều khiển từ xa.';
+          if (/^(dong|tat|ngat|stop)$/.test(noAccent(arg))) return await remote.remoteStop(() => desk.call({ cmd: 'close', app: 'rustdesk' }));
+          return await remote.remoteStart(() => desk.call({ cmd: 'open', app: 'rustdesk' }));
         }
-        case 'cuon': {
-          const w = noAccent(arg).split(/\s+/).filter(Boolean);
-          const dir = ({ len: 'up', up: 'up', xuong: 'down', down: 'down', trai: 'left', left: 'left', phai: 'right', right: 'right' })[w[0] || 'xuong'];
-          if (!dir) return 'Cách dùng: /cuon <len|xuong|trai|phai> [số nấc 1-50] [x y], ví dụ /cuon xuong 10 hoặc /cuon len 5 640 360.';
-          const nums = w.slice(1).map(Number).filter((x) => Number.isFinite(x));
-          const req = { cmd: 'scroll', dir, amount: nums[0] || 5 };
-          if (nums.length >= 3) { req.x = nums[1]; req.y = nums[2]; }
-          const r = await desk.call(req);
-          return r.ok ? await withShot('🖱️ Đã cuộn ' + w[0] + ' ' + req.amount + ' nấc.') : '⚠️ ' + r.error;
-        }
-        case 're': {
-          const n = (arg.match(/\d{1,5}/g) || []).map(Number);
-          if (n.length !== 2) return 'Cách dùng: /re <x> <y> - rê chuột tới điểm đó (không bấm), để mở menu rê chuột hoặc xem gợi ý.';
-          const r = await desk.call({ cmd: 'move', x: n[0], y: n[1] });
-          return r.ok ? await withShot('🖱️ Đã rê chuột tới (' + n[0] + ', ' + n[1] + ').') : '⚠️ ' + r.error;
-        }
-        case 'tuxa': return remote ? await remote.access() : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'guilen': return links ? await links.uploadLink(ctx && ctx.chatId) : '⚠️ Máy này chưa có tính năng gửi tệp lớn.';
         case 'lenh': return remote ? await remote.runShell(arg) : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'lay': return remote ? remote.getFile(arg, links) : '⚠️ Máy này chưa có điều khiển từ xa.';

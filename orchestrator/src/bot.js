@@ -9,8 +9,8 @@ function helpText(profiles) {
     '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
     '/manhinh - chụp màn hình máy gửi về đây · /cuaso - xem các cửa sổ đang mở\n' +
     '🕹 ĐIỀU KHIỂN TỪ XA: /maytinh - tình trạng máy (CPU, RAM, ổ đĩa, nhiệt độ, dịch vụ) · /lenh <lệnh> - chạy lệnh dòng lệnh (có sudo, cần chế độ toàn quyền) · /lay <tệp> - lấy tệp từ máy gửi về đây\n' +
-    '/go <chữ> · /phim <phím> · /bam <x> <y> [dup|phai] · /keo <x1> <y1> <x2> <y2> · /cuon <len|xuong|trai|phai> [nấc] · /re <x> <y> - gõ chữ, bấm phím, bấm/kéo/cuộn/rê chuột trên màn hình máy (xem trước bằng /manhinh; sau mỗi thao tác bot tự chụp lại)\n' +
-    '/guilen - tạo link để gửi tệp LỚN (tới 5 GB) từ điện thoại lên máy · /lay <tệp> - tệp quá 49 MB tự tạo link tải về · /tuxa - cách nhìn và điều khiển trực tiếp màn hình (Tailscale + RustDesk)\n' +
+    '/go <chữ> · /phim <phím> · /bam <x> <y> [dup|phai] - gõ chữ, bấm phím, bấm chuột trên màn hình máy (sau mỗi thao tác bot tự chụp lại)\n' +
+    '/guilen - tạo link để gửi tệp LỚN (tới 5 GB) từ điện thoại lên máy · /lay <tệp> - tệp quá 49 MB tự tạo link tải về · /tuxa - mở RustDesk, bot gửi ID + mật khẩu tạm vào đây để anh điều khiển trực tiếp từ xa (/tuxa dong để đóng)\n' +
     '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +

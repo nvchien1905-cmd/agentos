@@ -2,6 +2,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 
 // ĐIỀU KHIỂN TỪ XA bằng lệnh nhanh (không qua AI): chạy lệnh dòng lệnh, lấy tệp từ máy, xem tình trạng máy.
@@ -81,20 +82,59 @@ function createRemote(o) {
     return { text: L.join('\n') };
   }
 
-  // Cách NHÌN và ĐIỀU KHIỂN TRỰC TIẾP màn hình (mượt hơn chụp từng ảnh): Tailscale + RustDesk
-  async function access() {
-    const L = ['🔭 Điều khiển trực tiếp màn hình máy (không qua Telegram):'];
-    let ts = null; try { ts = o.tailscale ? await o.tailscale.info() : null; } catch (e) { /* bỏ qua */ }
-    if (ts && ts.state === 'Running') L.push('✅ Tailscale đã kết nối: ' + (ts.ips[0] || '?') + (ts.dns ? ' · ' + ts.dns : '') + '\n   Cài app Tailscale trên điện thoại/máy tính, đăng nhập cùng tài khoản, rồi SSH: ssh <người-dùng>@' + (ts.ips[0] || ts.dns));
-    else L.push('❌ Tailscale chưa kết nối. Gõ /tailscale ketnoi để nhận link đăng nhập (làm một lần).');
-    const id = await run('rustdesk', ['--get-id']);
-    if (id && /^\d{6,}$/.test(id)) L.push('✅ RustDesk ID của máy: ' + id + '\n   Cài RustDesk trên điện thoại/máy tính, nhập ID này; mật khẩu cố định đặt ở RustDesk → Cài đặt → Bảo mật trên màn hình máy (anh nên đặt mật khẩu dài).');
-    else L.push('ℹ️ RustDesk: gõ /mo rustdesk để mở trên màn hình máy, đọc ID ở đó (chưa cài thì chạy lại trình cài AgentOS). Dùng RustDesk qua Tailscale cho mượt và an toàn.');
-    L.push('Xem nhanh một lần thì dùng /manhinh; thao tác từng bước thì /bam /keo /cuon /go /phim (tự chụp lại).');
-    return { text: L.join('\n') };
+  // ĐIỀU KHIỂN TỪ XA TRỰC TIẾP bằng RustDesk: bật dịch vụ, đặt mật khẩu TẠM ngẫu nhiên, lấy ID rồi trả cho chủ máy (gửi vào Telegram).
+  // Mật khẩu tự đổi sang chuỗi ngẫu nhiên không ai biết khi hết hạn hoặc khi gõ /tuxa dong, nên tin nhắn cũ thành vô dụng.
+  const sudo = o.exec || ((args) => new Promise((res) => execFile('sudo', ['-n'].concat(args), { timeout: 20000, maxBuffer: 1 << 20 }, (e, so, se) => res({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, out: String(so || '').trim(), err: String(se || '').trim() }))));
+  const ttlMs = o.remoteTtlMs || 2 * 3600 * 1000;
+  const randomPw = () => { const al = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const b = crypto.randomBytes(14); let s = ''; for (let i = 0; i < 14; i++) s += al[b[i] % al.length]; return s; };
+  const state = o.state || { get: () => null, set: () => {} };
+  let timer = null;
+
+  async function setPassword(pw) { const r = await sudo(['rustdesk', '--password', pw]); return r.code === 0; }
+  async function getId() {
+    for (let i = 0; i < (o.idTries || 8); i++) {
+      const r = await sudo(['rustdesk', '--get-id']);
+      const m = String(r.out).match(/\b\d{6,12}\b/);
+      if (m) return m[0];
+      await new Promise((x) => setTimeout(x, o.idWaitMs === undefined ? 1500 : o.idWaitMs));
+    }
+    return null;
+  }
+  async function expire(why) {                         // đổi sang mật khẩu ngẫu nhiên không ai biết
+    if (timer) { clearTimeout(timer); timer = null; }
+    state.set(null);
+    await setPassword(randomPw());
+    if (o.log) o.log('RustDesk: đã đổi mật khẩu tạm sang ngẫu nhiên (' + why + ')');
+  }
+  if (state.get()) expire('khởi động lại khi còn phiên cũ').catch(() => {});
+
+  // /tuxa: trả { text } có ID + mật khẩu; deskOpen (tùy chọn) mở cửa sổ RustDesk trên màn hình máy
+  async function remoteStart(deskOpen) {
+    const test = await sudo(['-v']).catch(() => ({ code: 1 }));
+    await sudo(['systemctl', 'enable', '--now', 'rustdesk']);
+    await sudo(['rustdesk', '--option', 'approve-mode', 'password']);              // vào bằng mật khẩu, không cần ai bấm "Chấp nhận" trên máy
+    const pw = randomPw();
+    const okPw = await setPassword(pw);
+    if (deskOpen) { try { await deskOpen(); } catch (e) { /* không mở được cửa sổ cũng không sao: dịch vụ vẫn chạy nền */ } }
+    const id = await getId();
+    if (!id) return { text: '⚠️ Chưa lấy được ID RustDesk' + (test.code !== 0 ? ' (bot chưa có quyền sudo: gõ /toanquyen hoặc chạy lại trình cài)' : ' (RustDesk chưa cài hoặc dịch vụ chưa lên)') + '. Gõ /mo rustdesk rồi /manhinh để đọc ID trên màn hình máy.' };
+    if (!okPw) return { text: '🖥 ID RustDesk của máy: ' + id + '\n⚠️ Bot chưa đặt được mật khẩu tự động. Mở RustDesk trên máy (/mo rustdesk), vào Cài đặt → Bảo mật đặt mật khẩu rồi nhập ID này.' };
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => expire('hết hạn').catch(() => {}), ttlMs); if (timer.unref) timer.unref();
+    state.set(Date.now() + ttlMs);
+    let ts = ''; try { const i = o.tailscale ? await o.tailscale.info() : null; if (i && i.state === 'Running' && i.ips && i.ips[0]) ts = '\n(Tailscale của máy: ' + i.ips[0] + ' — nếu RustDesk không nối được thì bật app Tailscale trên thiết bị rồi nhập địa chỉ này thay ID.)'; } catch (e) { /* bỏ qua */ }
+    const hrs = Math.round(ttlMs / 360000) / 10;
+    return { text: '🖥 ĐIỀU KHIỂN TỪ XA SẴN SÀNG\n\nID: ' + id + '\nMật khẩu: ' + pw + '\n\nCách vào: tải RustDesk (rustdesk.com, có bản Windows/Mac/Android/iPhone), nhập ID rồi mật khẩu.\nMật khẩu tự đổi sau ' + hrs + ' giờ. Xong việc gõ /tuxa dong để đóng ngay.' + ts + '\n\n⚠️ Ai có ID + mật khẩu này là điều khiển được máy: đừng chuyển tiếp tin nhắn.' };
   }
 
-  return { runShell, getFile, sysinfo, access };
+  async function remoteStop(deskClose) {
+    await expire('đóng theo lệnh');
+    await sudo(['systemctl', 'stop', 'rustdesk']);                                // ngắt luôn phiên đang nối
+    if (deskClose) { try { await deskClose(); } catch (e) { /* bỏ qua */ } }
+    return { text: '🔒 Đã đóng điều khiển từ xa: ngắt phiên đang nối, đổi mật khẩu sang ngẫu nhiên, tắt dịch vụ RustDesk. Gõ /tuxa để mở lại.' };
+  }
+
+  return { runShell, getFile, sysinfo, remoteStart, remoteStop };
 }
 
 module.exports = { createRemote };

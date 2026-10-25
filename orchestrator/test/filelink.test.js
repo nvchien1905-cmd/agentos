@@ -47,23 +47,55 @@ test('link gửi lên: nhận tệp lớn dạng luồng, tên bị làm sạch 
   L.stop();
 });
 
-test('/lay: tệp > 49 MB tự đổi sang link tải; /guilen và /tuxa chạy được; /keo /cuon /re gọi deskd và tự chụp', async () => {
+test('/lay: tệp > 49 MB tự đổi sang link tải; /guilen chạy được', async () => {
   const d = tmp(); const big = path.join(d, 'lon.bin');
   const fd = fs.openSync(big, 'w'); fs.ftruncateSync(fd, 60 * 1024 * 1024); fs.closeSync(fd);          // tệp thưa 60 MB
   const L = mk();
-  const calls = []; const desk = { call: async (c) => { calls.push(c); return c.cmd === 'screenshot' ? { ok: true, file: '/tmp/x.png' } : { ok: true }; } };
-  const q = createQuick({ desk, remote: createRemote({ cwd: d, tailscale: { info: async () => ({ state: 'Running', ips: ['100.64.0.9'], dns: 'may.ts.net' }) } }), links: L, shotWaitMs: 0 });
+  const q = createQuick({ desk: { call: async () => ({ ok: true }) }, remote: createRemote({ cwd: d }), links: L, shotWaitMs: 0 });
   const r = await q.run('lay', big); assert.match(r.text, /quá lớn[\s\S]*http:\/\/127\.0\.0\.1:/); assert.equal(r.files, undefined);
   assert.match(await q.run('guilen', '', { chatId: '9' }), /http:\/\/127\.0\.0\.1:\d+\/u\//);
-  const t = await q.run('tuxa', ''); assert.match(t.text, /100\.64\.0\.9/);
-  const k = await q.run('keo', '10 20 300 400'); assert.ok(k.files && k.files[0].kind === 'photo');
-  await q.run('cuon', 'len 3 100 200'); await q.run('cuon', 'xuong'); await q.run('re', '5 6');
-  assert.deepEqual(calls.filter((c) => c.cmd !== 'screenshot'), [
-    { cmd: 'drag', x: 10, y: 20, x2: 300, y2: 400 },
-    { cmd: 'scroll', dir: 'up', amount: 3, x: 100, y: 200 },
-    { cmd: 'scroll', dir: 'down', amount: 5 },
-    { cmd: 'move', x: 5, y: 6 },
-  ]);
-  assert.match(await q.run('keo', '1 2'), /Cách dùng/); assert.match(await q.run('cuon', 'lung tung'), /Cách dùng/); assert.match(await q.run('re', 'a'), /Cách dùng/);
   L.stop();
+});
+
+function fakeSudo(opts) {
+  opts = opts || {};
+  const calls = [];
+  const exec = async (args) => {
+    calls.push(args.join(' '));
+    if (args[0] === '--password') return { code: 0, out: 'Done!', err: '' };
+    if (args[0] === 'rustdesk' && args[1] === '--password') return { code: opts.failPw ? 1 : 0, out: 'Done!', err: '' };
+    if (args[0] === 'rustdesk' && args[1] === '--get-id') return { code: 0, out: opts.noId ? '' : '123456789', err: '' };
+    return { code: 0, out: '', err: '' };
+  };
+  return { exec, calls };
+}
+
+test('/tuxa: bật RustDesk, đặt mật khẩu tạm ngẫu nhiên, trả ID + mật khẩu; /tuxa dong ngắt phiên và đổi mật khẩu', async () => {
+  const fs2 = fakeSudo(); const desk = []; let until = null;
+  const r = createRemote({ exec: fs2.exec, idWaitMs: 0, remoteTtlMs: 7200000, state: { get: () => until, set: (v) => { until = v; } } });
+  const q = createQuick({ desk: { call: async (c) => { desk.push(c); return { ok: true }; } }, remote: r, shotWaitMs: 0 });
+  const t = await q.run('tuxa', '');
+  const pw = t.text.match(/Mật khẩu: (\S+)/)[1];
+  assert.match(t.text, /ID: 123456789/); assert.ok(pw.length >= 12, 'mật khẩu đủ dài');
+  assert.ok(fs2.calls.includes('systemctl enable --now rustdesk')); assert.ok(fs2.calls.some((c) => c === 'rustdesk --password ' + pw));
+  assert.ok(fs2.calls.includes('rustdesk --option approve-mode password'));
+  assert.deepEqual(desk, [{ cmd: 'open', app: 'rustdesk' }]); assert.ok(until > Date.now(), 'nhớ hạn mật khẩu tạm');
+  const t2 = await q.run('tuxa', ''); assert.notEqual(t2.text.match(/Mật khẩu: (\S+)/)[1], pw, 'mỗi lần một mật khẩu mới');
+  const stop = await q.run('tuxa', 'đóng');
+  assert.match(stop.text, /Đã đóng/); assert.equal(until, null);
+  assert.ok(fs2.calls.includes('systemctl stop rustdesk'));
+  const last = fs2.calls.filter((c) => c.startsWith('rustdesk --password ')).pop();
+  assert.notEqual(last.split(' ')[2], pw, 'mật khẩu cũ không còn dùng được');
+  assert.deepEqual(desk[desk.length - 1], { cmd: 'close', app: 'rustdesk' });
+});
+
+test('/tuxa: không lấy được ID hoặc không đặt được mật khẩu thì nói rõ, không bịa; còn phiên cũ lúc khởi động thì tự đổi mật khẩu', async () => {
+  const noId = createRemote({ exec: fakeSudo({ noId: true }).exec, idWaitMs: 0, idTries: 2 });
+  assert.match((await noId.remoteStart()).text, /Chưa lấy được ID/);
+  const noPw = await createRemote({ exec: fakeSudo({ failPw: true }).exec, idWaitMs: 0 }).remoteStart();
+  assert.match(noPw.text, /ID RustDesk của máy: 123456789/); assert.doesNotMatch(noPw.text, /Mật khẩu: /);
+  const fs3 = fakeSudo(); let until = Date.now() + 1000;
+  createRemote({ exec: fs3.exec, state: { get: () => until, set: (v) => { until = v; } } });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(until, null); assert.ok(fs3.calls.some((c) => c.startsWith('rustdesk --password ')), 'khởi động lại còn phiên cũ -> đổi mật khẩu');
 });

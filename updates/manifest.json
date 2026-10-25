@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.4",
-  "file": "agentos-update-2026.10.25.4.tar.gz",
-  "size": 179076,
-  "sha256": "acf6544d0c1cb531f8dccef1dea630d44912adaba1cb9aaf3a4a69b6605fe26e",
+  "version": "2026.10.25.5",
+  "file": "agentos-update-2026.10.25.5.tar.gz",
+  "size": 179724,
+  "sha256": "691b8bec3580b154603edff990dc0ac63bfb768652add2ffda5a61590a82c577",
   "date": "2026-10-25",
-  "notes": "Kéo thả/cuộn/rê chuột, tự chụp màn hình sau thao tác, link tạm tệp lớn 5GB, /tuxa"
+  "notes": "/tuxa: mở RustDesk, gửi ID + mật khẩu tạm vào Telegram; bỏ /keo /cuon /re"
 }

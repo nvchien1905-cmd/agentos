@@ -33,6 +33,7 @@ const { createSchedule } = require('./schedule');
 const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
 const { createLive } = require('./live');
+const { createRemote } = require('./remote');
 const { createTgWatch } = require('./tgwatch');
 
 const log = (m) => console.log(new Date().toISOString() + ' ' + m);
@@ -260,7 +261,7 @@ async function main() {
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
       else if (reply) await tg.sendMessage(chat, reply);
     },
-    quick: createQuick({ desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
+    quick: createQuick({ remote: createRemote({ cwd: cfg.workdir, isFull }), desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale: createTailscale(), update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));

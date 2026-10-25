@@ -8,6 +8,8 @@ function helpText(profiles) {
     '/viec - xem 5 việc gần nhất\n' +
     '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
     '/manhinh - chụp màn hình máy gửi về đây · /cuaso - xem các cửa sổ đang mở\n' +
+    '🕹 ĐIỀU KHIỂN TỪ XA: /maytinh - tình trạng máy (CPU, RAM, ổ đĩa, nhiệt độ, dịch vụ) · /lenh <lệnh> - chạy lệnh dòng lệnh (có sudo, cần chế độ toàn quyền) · /lay <tệp> - lấy tệp từ máy gửi về đây\n' +
+    '/go <chữ> · /phim <phím> · /bam <x> <y> [dup|phai] - gõ chữ, bấm phím, bấm chuột trên màn hình máy (xem trước bằng /manhinh)\n' +
     '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +

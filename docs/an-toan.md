@@ -129,3 +129,10 @@ Dành cho máy cá nhân của chính chủ. Khi bật: AI (Claude `--dangerousl
 - Khi AI đang làm: hiện "đang gõ" và MỘT tin trạng thái được sửa liên tục ("⏳ Đang làm… N giây · N bước" + 4 bước gần nhất: lệnh đang chạy, tệp đang đọc/sửa, lời dẫn của AI). Chỉ hiện nếu việc kéo dài hơn ~2 giây; xong thì xóa và gửi câu trả lời sạch, chân trang "— N giây · N bước". Nguồn tiến trình: Claude `--output-format stream-json`, Codex `--json`. Lệnh trong tin trạng thái được che khóa/token/mật khẩu. Gemini không có luồng sự kiện nên chỉ có "đang gõ".
 - Bỏ tin "Đã nhận việc #N" và tiêu đề "Việc #N xong:" khi việc làm ngay; xếp hàng thì báo "⏳ Đã xếp hàng (còn N việc trước đó)". Lỗi/hủy/chờ hạn mức vẫn ghi số việc.
 - AI được dặn (STYLE_HINT trong index.js): vào thẳng kết quả, ngắn gọn, không bảng nhiều cột, nói rõ điều chưa kiểm chứng.
+
+## Điều khiển từ xa bằng lệnh nhanh (25/10/2026) — orchestrator/src/remote.js, quick.js
+Bot như "điều khiển từ xa" của máy, chỉ cho quản trị viên (người lạ và người được phép nhưng không phải admin đều bị từ chối), không qua AI nên nhanh và không tốn hạn mức:
+- `/maytinh` tình trạng máy (CPU, RAM, ổ đĩa, nhiệt độ, IP, dịch vụ AgentOS, dịch vụ lỗi) · `/lenh <lệnh>` chạy bash với quyền người dùng agentos (có sudo không mật khẩu), tối đa 60 giây, kết quả cắt 3500 ký tự — CHỈ khi chế độ toàn quyền đang bật · `/lay <tệp>` gửi tệp từ máy về Telegram (≤49 MB).
+- `/manhinh` · `/go <chữ>` · `/phim <phím>` · `/bam <x> <y> [dup|phai]` · `/mo` `/dong` `/khoamay` `/khoimay co` `/tatmay co`: nhìn và điều khiển màn hình, chuột, bàn phím (qua deskd).
+- Việc dài/đa bước vẫn nhắn thẳng bằng chữ cho AI (chế độ toàn quyền: sudo, cài phần mềm, sửa cấu hình…). Tin thoại KHÔNG bao giờ thành /lenh, /lay, /go, /phim, /bam.
+- Ai được điều khiển: chỉ ID Telegram trong danh sách quản trị viên (đặt lúc cài). KHÔNG mở cho người ngoài: ai nhắn được bot là có quyền gần như root trên máy.

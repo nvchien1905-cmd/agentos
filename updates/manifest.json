@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.2",
-  "file": "agentos-update-2026.10.25.2.tar.gz",
-  "size": 170144,
-  "sha256": "f3de9648403847c28141f20997e464ce7ae30a0ab6968e2b25dcb46e9c82d71a",
+  "version": "2026.10.25.3",
+  "file": "agentos-update-2026.10.25.3.tar.gz",
+  "size": 172996,
+  "sha256": "fe7370aa6522a71b8325d6d9af2f0f9822fd15d494c64b05a710fcbf5d953b87",
   "date": "2026-10-25",
-  "notes": "Chống bot bị điếc: phát hiện trùng token Telegram (409), giới hạn thời gian gọi Telegram, báo lỗi thay vì im lặng"
+  "notes": "Điều khiển từ xa: /maytinh /lenh /lay /go /phim /bam"
 }

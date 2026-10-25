@@ -8,7 +8,8 @@ case "$1" in
   deepseek) URL="${DEEPSEEK_URL:-https://chat.deepseek.com}"; NAME=deepseek ;;
   claudeweb) URL="${CLAUDE_URL:-https://claude.ai}"; NAME=claudeweb ;;
   chatgpt) URL="${CHATGPT_URL:-https://chatgpt.com}"; NAME=chatgpt ;;
-  *) echo "Dùng: agentos-app zalo|kiotviet|deepseek|claudeweb|chatgpt"; exit 1 ;;
+  office365) URL="${OFFICE_URL:-https://www.office.com}"; NAME=office365 ;;
+  *) echo "Dùng: agentos-app zalo|kiotviet|deepseek|claudeweb|chatgpt|office365"; exit 1 ;;
 esac
 BROWSER=/usr/bin/google-chrome-stable; [ -x "$BROWSER" ] || BROWSER=/usr/bin/chromium
 # Mỗi ứng dụng một hồ sơ riêng: đăng nhập giữ lại, không lẫn với trình duyệt thường

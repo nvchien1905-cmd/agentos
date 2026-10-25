@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Bảng tính (như Excel)
+Comment=LibreOffice Calc: mở, sửa, lưu tệp Excel .xlsx/.xls
+Exec=soffice --calc %U
+Icon=libreoffice-calc
+Terminal=false
+Categories=Office;
+MimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel;application/vnd.oasis.opendocument.spreadsheet;text/csv;

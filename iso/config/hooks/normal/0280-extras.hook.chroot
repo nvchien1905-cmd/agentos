@@ -39,7 +39,7 @@ systemctl enable agentos-update.path || true
 test -s /etc/agentos/update-pubkey.pem || { echo "[LOI] thieu khoa cong khai cap nhat"; exit 1; }
 
 # Kiểm tra các lệnh AI sẽ dùng
-for c in soffice pdftotext tesseract convert ffmpeg jq sqlite3 lp; do
+for c in soffice agentos-office pandoc pdftotext tesseract convert ffmpeg jq sqlite3 lp; do
 	command -v "$c" >/dev/null 2>&1 || { echo "[LOI] thieu lenh $c"; exit 1; }
 done
 tesseract --list-langs 2>&1 | grep -qx vie || { echo "[LOI] tesseract thieu ngon ngu vie"; exit 1; }

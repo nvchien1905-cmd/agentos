@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Soạn thảo văn bản (như Word)
+Comment=LibreOffice Writer: mở, sửa, lưu tệp Word .docx/.doc
+Exec=soffice --writer %U
+Icon=libreoffice-writer
+Terminal=false
+Categories=Office;
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/msword;application/vnd.oasis.opendocument.text;application/rtf;

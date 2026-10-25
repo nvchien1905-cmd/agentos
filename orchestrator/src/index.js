@@ -34,6 +34,7 @@ const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
 const { createLive } = require('./live');
 const { createRemote } = require('./remote');
+const { createOffice } = require('./office');
 const { createSnapshot } = require('./snapshot');
 const wol = require('./wol');
 const { createLinks, fmtSize } = require('./filelink');
@@ -78,7 +79,8 @@ async function main() {
     'với KiotViet đừng nhập/sửa dữ liệu bán hàng nếu chủ máy không yêu cầu rõ (xem doanh số/tồn đã có lệnh /doanhso, /ton).';
   // OneDrive: nơi chủ máy để dữ liệu cho AI dùng và nơi AI lưu kết quả + trí nhớ lâu dài (đồng bộ hai chiều, tự động).
   const OFFICE_HINT = 'Máy có sẵn công cụ văn phòng chạy không cần màn hình: LibreOffice (soffice --headless --convert-to pdf|xlsx|docx <tệp>), Python có pandas/openpyxl/python-docx/xlsxwriter/reportlab, ' +
-    'pdftotext/pdftoppm (đọc PDF), tesseract -l vie (đọc chữ trong ảnh), ImageMagick (convert), ffmpeg, jq, sqlite3. Cần đọc/tạo Excel, Word, PDF, ảnh hóa đơn thì dùng chúng.';
+    'pdftotext/pdftoppm (đọc PDF), tesseract -l vie (đọc chữ trong ảnh), ImageMagick (convert), ffmpeg, jq, sqlite3, pandoc. Cần đọc/tạo Excel, Word, PDF, ảnh hóa đơn thì dùng chúng. ' +
+    'WORD/EXCEL/POWERPOINT: máy KHÔNG có Microsoft Office thật mà có LibreOffice (Writer/Calc/Impress) mở và lưu được .docx .xlsx .pptx. Công cụ nhanh: `agentos-office read <tệp>` (in chữ của Word/Excel/PowerPoint/PDF), `agentos-office replace <tệp> "cũ" "mới"` (thay chữ giữ bố cục, ghi ra bản *-moi), `agentos-office convert <tệp> pdf|docx|xlsx|pptx`. Sửa sâu: python-docx, openpyxl (giữ công thức), python-pptx trong /opt/agentos/office-venv/bin/python; kiểm kết quả bằng cách đọc lại hoặc convert sang PDF rồi xem. Luôn lưu bản MỚI, không ghi đè tệp gốc của chủ máy.';
   const ONEDRIVE_HINT = OFFICE_HINT + ' Dữ liệu và trí nhớ của chủ máy nằm ở OneDrive, tự đồng bộ hai chiều với thư mục ' + cfg.oneDriveDir + '. ' +
     'Hãy đọc dữ liệu cần thiết từ đó. Lưu kết quả, báo cáo và điều đáng nhớ vào ' + cfg.oneDriveDir + '/AgentOS/ (tạo nếu chưa có). ' +
     'SỔ TAY của chủ máy (như một cuốn sách, thư mục ' + cfg.oneDriveDir + '/AgentOS/SO-TAY/): mục lục và chi tiết các chương liên quan đã được gửi kèm đầu câu lệnh khi cần; muốn xem chương khác thì mở tệp chuong-*.md ghi trong mục lục. Khi có điều MỚI đáng nhớ LÂU DÀI (khách, hàng hóa, quy trình, sở thích) hoặc điều CẬP NHẬT thay thông tin cũ, thêm MỘT dòng "- điều cần nhớ" vào cuối ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md (hộp thư vào, hệ thống tự xếp vào đúng chương và thay mục cũ); KHÔNG tự sửa tệp chương, KHÔNG ghi mật khẩu/khóa. ' +
@@ -273,7 +275,7 @@ async function main() {
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
       else if (reply) await tg.sendMessage(chat, reply);
     },
-    quick: createQuick({ snapshot: snap, wol, devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
+    quick: createQuick({ snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });

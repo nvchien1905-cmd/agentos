@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""agentos-office: đọc / sửa / đổi định dạng tệp Word, Excel, PowerPoint (và LibreOffice, PDF, văn bản) KHÔNG cần mở giao diện.
+Dùng cho bot Telegram (/doc, /doi) và cho AI.
+
+  agentos-office read <tệp> [--max 6000]        in nội dung chữ: .docx/.doc/.odt/.rtf (đoạn + bảng), .xlsx/.xls/.ods (từng trang tính),
+                                                .pptx/.ppt/.odp (từng slide + ghi chú), .pdf, .txt/.md/.csv. Định dạng cũ được LibreOffice đổi tạm sang định dạng mới
+  agentos-office replace <tệp> <cũ> <mới> [--out <tệp ra>]
+                                                thay chữ trong .docx/.pptx/.xlsx giữ nguyên bố cục (mặc định lưu bản sao *-moi.*, KHÔNG ghi đè tệp gốc)
+  agentos-office convert <tệp> <định dạng> [--outdir <thư mục>]
+                                                đổi định dạng bằng LibreOffice: pdf, docx, xlsx, pptx, odt, ods, odp, csv, txt, html
+  agentos-office info <tệp>                     loại tệp, kích thước, số trang tính/slide
+Tạo mới: dùng python-docx / openpyxl (có sẵn) hoặc python-pptx trong /opt/agentos/office-venv/bin/python (nếu cài được), rồi `convert` nếu cần PDF.
+"""
+import os
+import re
+import sys
+import shutil
+import subprocess
+import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
+
+W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+NEW = {'.doc': 'docx', '.odt': 'docx', '.rtf': 'docx', '.xls': 'xlsx', '.ods': 'xlsx', '.ppt': 'pptx', '.odp': 'pptx', '.pps': 'pptx'}
+
+
+def die(msg, code=1):
+    sys.stderr.write('LỖI: %s\n' % msg)
+    sys.exit(code)
+
+
+def soffice_convert(src, fmt, outdir):
+    exe = shutil.which('soffice') or shutil.which('libreoffice')
+    if not exe:
+        die('Máy chưa có LibreOffice (soffice).')
+    prof = tempfile.mkdtemp(prefix='lo-prof-')
+    try:
+        r = subprocess.run([exe, '--headless', '--norestore', '-env:UserInstallation=file://' + prof, '--convert-to', fmt, '--outdir', outdir, src],
+                           capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        die('LibreOffice chạy quá 180 giây.')
+    finally:
+        shutil.rmtree(prof, ignore_errors=True)
+    out = os.path.join(outdir, os.path.splitext(os.path.basename(src))[0] + '.' + fmt.split(':')[0])
+    if r.returncode != 0 or not os.path.exists(out):
+        die('Đổi định dạng thất bại: ' + (r.stderr or r.stdout).strip()[:300])
+    return out
+
+
+def text_of(el, tag):
+    return ''.join(t.text or '' for t in el.iter(tag))
+
+
+def read_docx(path):
+    with zipfile.ZipFile(path) as z:
+        root = ET.fromstring(z.read('word/document.xml'))
+    body = root.find(W + 'body')
+    out = []
+    for ch in list(body):
+        if ch.tag == W + 'p':
+            t = text_of(ch, W + 't').strip()
+            style = ch.find('.//' + W + 'pStyle')
+            if t:
+                head = style is not None and (style.get(W + 'val') or '').lower().startswith(('heading', 'title'))
+                out.append(('# ' if head else '') + t)
+        elif ch.tag == W + 'tbl':
+            for tr in ch.iter(W + 'tr'):
+                out.append(' | '.join(text_of(tc, W + 't').strip() for tc in tr.findall(W + 'tc')))
+            out.append('')
+    return '\n'.join(out)
+
+
+def read_pptx(path):
+    with zipfile.ZipFile(path) as z:
+        names = z.namelist()
+        slides = sorted((n for n in names if re.match(r'ppt/slides/slide\d+\.xml$', n)), key=lambda n: int(re.findall(r'\d+', n)[-1]))
+        out = []
+        for i, n in enumerate(slides, 1):
+            root = ET.fromstring(z.read(n))
+            paras = []
+            for p in root.iter(A + 'p'):
+                t = text_of(p, A + 't').strip()
+                if t:
+                    paras.append(t)
+            out.append('--- Slide %d ---\n%s' % (i, '\n'.join(paras)))
+            note = 'ppt/notesSlides/notesSlide%s.xml' % re.findall(r'\d+', n)[-1]
+            if note in names:
+                nt = [text_of(p, A + 't').strip() for p in ET.fromstring(z.read(note)).iter(A + 'p')]
+                nt = [t for t in nt if t and not t.isdigit()]
+                if nt:
+                    out.append('(ghi chú) ' + ' '.join(nt))
+    return '\n'.join(out)
+
+
+def read_xlsx(path, rows=60):
+    try:
+        import openpyxl
+    except ImportError:
+        die('Thiếu thư viện openpyxl.')
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    out = []
+    for ws in wb.worksheets:
+        out.append('--- Trang tính "%s" (%s dòng × %s cột) ---' % (ws.title, ws.max_row, ws.max_column))
+        n = 0
+        for row in ws.iter_rows(values_only=True):
+            if all(c is None for c in row):
+                continue
+            out.append(' | '.join('' if c is None else str(c) for c in row))
+            n += 1
+            if n >= rows:
+                out.append('… (còn nữa, chỉ in %d dòng đầu; cần đủ thì dùng openpyxl/pandas)' % rows)
+                break
+    return '\n'.join(out)
+
+
+def read_any(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in NEW:
+        tmp = tempfile.mkdtemp(prefix='ao-')
+        try:
+            return read_any(soffice_convert(path, NEW[ext], tmp))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    if ext == '.docx':
+        return read_docx(path)
+    if ext == '.pptx':
+        return read_pptx(path)
+    if ext in ('.xlsx', '.xlsm'):
+        return read_xlsx(path)
+    if ext == '.pdf':
+        exe = shutil.which('pdftotext')
+        if not exe:
+            die('Máy chưa có pdftotext.')
+        r = subprocess.run([exe, '-layout', path, '-'], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            die('pdftotext lỗi: ' + r.stderr[:200])
+        return r.stdout
+    if ext in ('.txt', '.md', '.csv', '.json', '.log', '.xml', '.html', '.htm', '.tsv', '.ini', '.conf'):
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            return f.read()
+    die('Chưa đọc được loại tệp "%s". Thử: agentos-office convert <tệp> pdf' % ext)
+
+
+def replace_in_xml(data, old, new, kind):
+    """Thay chữ bằng cách sửa THẲNG trên văn bản XML (không dựng lại cây XML nên giữ nguyên mọi khai báo, kiểu chữ, bố cục).
+    Chữ bị Word/PowerPoint chẻ làm nhiều khối <t> trong cùng một đoạn vẫn thay được: chữ mới nằm ở khối đầu (định dạng của khối đầu),
+    các khối sau của đoạn đó bị rỗng."""
+    from xml.sax.saxutils import escape, unescape
+    text = data.decode('utf-8')
+    para, tt = kind
+    para_re = re.compile(r'<%s(?:\s[^>]*)?>.*?</%s>' % (para, para), re.S)
+    t_re = re.compile(r'(<%s(?:\s[^>]*)?>)(.*?)(</%s>)' % (tt, tt), re.S)
+    count = [0]
+
+    def fix_para(m):
+        block = m.group(0)
+        parts = t_re.findall(block)
+        if not parts:
+            return block
+        full = ''.join(unescape(x[1]) for x in parts)
+        if old not in full:
+            return block
+        count[0] += full.count(old)
+        result = escape(full.replace(old, new))
+        first = [True]
+
+        def put(mt):
+            if first[0]:
+                first[0] = False
+                open_tag = mt.group(1)
+                if 'xml:space' not in open_tag:
+                    open_tag = open_tag[:-1] + ' xml:space="preserve">'
+                return open_tag + result + mt.group(3)
+            return mt.group(1) + mt.group(3)
+        return t_re.sub(put, block)
+
+    return para_re.sub(fix_para, text).encode('utf-8'), count[0]
+
+
+def do_replace(path, old, new, out):
+    ext = os.path.splitext(path)[1].lower()
+    rules = {
+        '.docx': [(re.compile(r'^word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$'), ('w:p', 'w:t'))],
+        '.pptx': [(re.compile(r'^ppt/(slides/slide|notesSlides/notesSlide)\d+\.xml$'), ('a:p', 'a:t'))],
+        '.xlsx': [(re.compile(r'^xl/sharedStrings\.xml$'), ('si', 't')), (re.compile(r'^xl/worksheets/sheet\d+\.xml$'), ('is', 't'))],   # chữ dùng chung + chữ nằm thẳng trong ô
+    }.get(ext)
+    if not rules:
+        die('Chỉ thay chữ trực tiếp được trong .docx .pptx .xlsx (tệp khác: đổi sang định dạng mới bằng convert trước).')
+    if not out:
+        base, e = os.path.splitext(path)
+        out = base + '-moi' + e
+    total = 0
+    with zipfile.ZipFile(path) as zin, zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            for rx, kind in rules:
+                if rx.match(item.filename):
+                    data, n = replace_in_xml(data, old, new, kind)
+                    total += n
+            zout.writestr(item, data)
+    return out, total
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] in ('-h', '--help', 'help'):
+        sys.stdout.write(__doc__)
+        return 0
+    cmd = argv[1]
+    args = argv[2:]
+    opt = {}
+    pos = []
+    i = 0
+    while i < len(args):
+        if args[i] in ('--max', '--out', '--outdir') and i + 1 < len(args):
+            opt[args[i]] = args[i + 1]
+            i += 2
+        else:
+            pos.append(args[i])
+            i += 1
+    if not pos:
+        die('Thiếu đường dẫn tệp.')
+    path = os.path.abspath(pos[0])
+    if not os.path.isfile(path):
+        die('Không thấy tệp: ' + path)
+    if cmd == 'read':
+        txt = read_any(path)
+        mx = int(opt.get('--max', 6000))
+        sys.stdout.write(txt if len(txt) <= mx else txt[:mx] + '\n… (cắt bớt, tổng %d ký tự; tăng --max để đọc thêm)' % len(txt))
+        sys.stdout.write('\n')
+    elif cmd == 'replace':
+        if len(pos) < 3:
+            die('Cách dùng: replace <tệp> <cũ> <mới> [--out <tệp>]')
+        out, n = do_replace(path, pos[1], pos[2], opt.get('--out'))
+        if n == 0:
+            os.remove(out)
+            die('Không thấy chữ "%s" trong tệp (thử cụm ngắn hơn).' % pos[1], 3)
+        print('Đã thay %d chỗ. Tệp mới: %s' % (n, out))
+    elif cmd == 'convert':
+        if len(pos) < 2:
+            die('Cách dùng: convert <tệp> <định dạng> [--outdir <thư mục>]')
+        outdir = os.path.abspath(opt.get('--outdir') or os.path.dirname(path))
+        os.makedirs(outdir, exist_ok=True)
+        print(soffice_convert(path, pos[1], outdir))
+    elif cmd == 'info':
+        ext = os.path.splitext(path)[1].lower()
+        extra = ''
+        try:
+            if ext == '.xlsx':
+                import openpyxl
+                wb = openpyxl.load_workbook(path, read_only=True)
+                extra = ', %d trang tính: %s' % (len(wb.sheetnames), ', '.join(wb.sheetnames))
+            elif ext == '.pptx':
+                with zipfile.ZipFile(path) as z:
+                    extra = ', %d slide' % len([n for n in z.namelist() if re.match(r'ppt/slides/slide\d+\.xml$', n)])
+            elif ext == '.docx':
+                extra = ', %d ký tự chữ' % len(read_docx(path))
+        except Exception as e:  # noqa: BLE001
+            extra = ' (không đọc được chi tiết: %s)' % e
+        print('%s — %s, %d byte%s' % (os.path.basename(path), ext or 'không có đuôi', os.path.getsize(path), extra))
+    else:
+        die('Lệnh lạ: ' + cmd)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

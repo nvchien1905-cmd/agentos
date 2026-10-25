@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Microsoft 365 (Word, Excel, PowerPoint trên web)
+Comment=Bản Word/Excel/PowerPoint CHÍNH HÃNG chạy trên trình duyệt (đăng nhập tài khoản Microsoft của bạn, cần mạng)
+Exec=/usr/local/bin/agentos-app office365
+Icon=agentos-office365
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=www.office.com

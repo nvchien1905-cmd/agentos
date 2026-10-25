@@ -8,6 +8,29 @@ export DEBIAN_FRONTEND=noninteractive
 PKGS="ibus ibus-unikey ibus-gtk3 ibus-gtk4 im-config dconf-cli xarchiver thunar-archive-plugin unzip p7zip-full unar fonts-noto-color-emoji"
 apt-get install -y --no-install-recommends $PKGS >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends $PKGS; }
 
+# Văn phòng (Word/Excel/PowerPoint): LibreOffice Writer/Calc/Impress đọc-sửa-lưu .docx .xlsx .pptx, phông tương thích (Carlito=Calibri, Caladea=Cambria, Liberation=Arial/Times New Roman),
+# pandoc, xlrd, và python-pptx (trong /opt/agentos/office-venv, vì Debian không có gói python3-pptx).
+# KHÔNG được làm hỏng bản cập nhật: thiếu mạng/đầy ổ đĩa thì bỏ qua, lần cập nhật sau thử lại (chạy lại không hại).
+OFFICE_PKGS="libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-gtk3 libreoffice-l10n-vi libreoffice-help-vi fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu pandoc python3-xlrd python3-venv"
+if ! dpkg -s libreoffice-impress fonts-crosextra-carlito pandoc >/dev/null 2>&1; then
+  apt-get install -y --no-install-recommends $OFFICE_PKGS >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends $OFFICE_PKGS >/dev/null 2>&1; } || echo "agentos-desktop-setup: chưa cài được gói văn phòng (thiếu mạng hoặc đầy ổ đĩa), sẽ thử lại ở lần cập nhật sau"
+fi
+chmod 755 /usr/local/bin/agentos-office /usr/local/bin/agentos-panel-office 2>/dev/null || true
+if [ ! -x /opt/agentos/office-venv/bin/python ] || ! /opt/agentos/office-venv/bin/python -c 'import pptx' >/dev/null 2>&1; then
+  { python3 -m venv --system-site-packages /opt/agentos/office-venv && /opt/agentos/office-venv/bin/pip install -q python-pptx; } >/dev/null 2>&1 || echo "agentos-desktop-setup: chưa cài được python-pptx (không bắt buộc: agentos-office vẫn đọc/sửa .pptx)"
+fi
+fc-cache -f >/dev/null 2>&1 || true
+# Tự chạy nút văn phòng ở phiên đăng nhập (tệp autostart tạo ở đây, không nằm trong gói cập nhật vì máy bản cũ có thể từ chối đường dẫn etc/xdg/autostart)
+mkdir -p /etc/xdg/autostart
+cat > /etc/xdg/autostart/agentos-panel-office.desktop <<'EOF3'
+[Desktop Entry]
+Type=Application
+Name=AgentOS - nút văn phòng
+Exec=/usr/local/bin/agentos-panel-office
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF3
+
 # Cấu hình hệ thống cho IBus (mọi người dùng): nạp sẵn bàn phím Anh + Unikey, phím chuyển
 mkdir -p /etc/dconf/profile /etc/dconf/db/local.d
 [ -f /etc/dconf/profile/user ] || printf 'user-db:user\nsystem-db:local\n' > /etc/dconf/profile/user

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Thêm nút Soạn thảo / Bảng tính / Trình chiếu / Microsoft 365 vào THANH TRÊN của Xfce, một lần cho mỗi người dùng (đánh dấu panel-office-v1).
+# Tách riêng khỏi agentos-panel-setup để máy đã dùng từ trước cũng nhận được nút mới sau khi cập nhật.
+MARK="$HOME/.config/agentos/panel-office-v1"
+[ -f "$MARK" ] && exit 0
+command -v xfconf-query >/dev/null 2>&1 || exit 0
+i=0; while [ $i -lt 30 ]; do xfconf-query -c xfce4-panel -p /panels >/dev/null 2>&1 && break; i=$((i+1)); sleep 1; done
+xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids >/dev/null 2>&1 || exit 0
+# chỉ thêm khi thanh đã được agentos-panel-setup dựng xong (tránh chen trước)
+[ -f "$HOME/.config/agentos/panel-v1" ] || { j=0; while [ $j -lt 20 ] && [ ! -f "$HOME/.config/agentos/panel-v1" ]; do j=$((j+1)); sleep 1; done; }
+
+ID=41; NEW=""
+for app in agentos-soanthao agentos-bangtinh agentos-trinhchieu agentos-office365; do
+  src=/usr/share/applications/$app.desktop
+  [ -f "$src" ] || continue
+  d="$HOME/.config/xfce4/panel/launcher-$ID"
+  mkdir -p "$d"; cp "$src" "$d/$app.desktop"
+  xfconf-query -c xfce4-panel -p /plugins/plugin-$ID -n -t string -s launcher
+  xfconf-query -c xfce4-panel -p /plugins/plugin-$ID/items -n -t string -s "$app.desktop" -a
+  NEW="$NEW $ID"
+  ID=$((ID+1))
+done
+[ -n "$NEW" ] || exit 0
+OLD=$(xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids | grep -E '^[0-9]+$')
+ARGS=""
+for p in $OLD; do ARGS="$ARGS -t int -s $p"; done
+for n in $NEW; do ARGS="$ARGS -t int -s $n"; done
+# shellcheck disable=SC2086
+xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids $ARGS
+mkdir -p "$HOME/.config/agentos"; : > "$MARK"
+xfce4-panel -r >/dev/null 2>&1 &
+exit 0

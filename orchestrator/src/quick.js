@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'bat'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'bat', 'doc', 'doi', 'thay'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -128,6 +128,9 @@ function createQuick(o) {
             '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
             '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
         }
+        case 'doc': return office ? await office.read(arg) : '⚠️ Máy này chưa có công cụ văn phòng.';
+        case 'doi': { if (!office) return '⚠️ Máy này chưa có công cụ văn phòng.'; const m = arg.match(/^(\S+)\s*([\s\S]*)$/); return await office.convert(m && m[1], m && m[2]); }
+        case 'thay': return office ? await office.replace(arg) : '⚠️ Máy này chưa có công cụ văn phòng.';
         case 'timchu': {
           if (!arg) return 'Cách dùng: /timchu <chữ>, ví dụ /timchu Gửi. Bot đọc chữ trên màn hình máy và báo toạ độ từng chỗ thấy.';
           const r = await desk.call({ cmd: 'findtext', text: arg });

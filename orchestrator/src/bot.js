@@ -11,7 +11,7 @@ function helpText(profiles) {
     '🕹 ĐIỀU KHIỂN TỪ XA: /maytinh - tình trạng máy (CPU, RAM, ổ đĩa, nhiệt độ, dịch vụ) · /lenh <lệnh> - chạy lệnh dòng lệnh (có sudo, cần chế độ toàn quyền) · /lay <tệp> - lấy tệp từ máy gửi về đây\n' +
     '/go <chữ> · /phim <phím> · /bam <x> <y> [dup|phai] - gõ chữ, bấm phím, bấm chuột trên màn hình máy (sau mỗi thao tác bot tự chụp lại)\n' +
     '/guilen - tạo link để gửi tệp LỚN (tới 5 GB) từ điện thoại lên máy · /lay <tệp> - tệp quá 49 MB tự tạo link tải về · /tuxa - mở RustDesk, bot gửi ID + mật khẩu tạm vào đây để anh điều khiển trực tiếp từ xa (/tuxa dong để đóng)\n' +
-    '/timchu <chữ> · /bamchu <chữ> - tìm/bấm đúng nút theo CHỮ trên màn hình (đọc chữ OCR, không cần đoán toạ độ) · /chuyen <tên cửa sổ> · /dan [chữ] - xem/chép bộ nhớ tạm của máy · /mokhoa · /saoluu [nhãn|ds] - điểm khôi phục cấu hình · /bat <tên|MAC> - bật máy khác trong nhà (Wake-on-LAN)\n' +
+    '/timchu <chữ> · /bamchu <chữ> - tìm/bấm đúng nút theo CHỮ trên màn hình (đọc chữ OCR, không cần đoán toạ độ) · /chuyen <tên cửa sổ> · /dan [chữ] - xem/chép bộ nhớ tạm của máy · /mokhoa · /doc [tệp] - đọc nội dung Word/Excel/PowerPoint/PDF (không ghi tệp thì đọc tệp anh vừa gửi) · /doi <pdf|docx|xlsx|pptx...> [tệp] - đổi định dạng · /thay <chữ cũ> | <chữ mới> - sửa chữ trong .docx/.pptx/.xlsx, gửi lại bản mới · /saoluu [nhãn|ds] - điểm khôi phục cấu hình · /bat <tên|MAC> - bật máy khác trong nhà (Wake-on-LAN)\n' +
     '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
@@ -42,7 +42,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat']);
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay']);
 function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };

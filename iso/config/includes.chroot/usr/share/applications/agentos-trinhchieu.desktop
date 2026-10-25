@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Trình chiếu (như PowerPoint)
+Comment=LibreOffice Impress: mở, sửa, lưu tệp PowerPoint .pptx/.ppt
+Exec=soffice --impress %U
+Icon=libreoffice-impress
+Terminal=false
+Categories=Office;
+MimeType=application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.ms-powerpoint;application/vnd.oasis.opendocument.presentation;

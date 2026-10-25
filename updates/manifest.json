@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.25.6",
-  "file": "agentos-update-2026.10.25.6.tar.gz",
-  "size": 187248,
-  "sha256": "f3f0bd69d701e8d826bb9809c29ca36585eb56bfb530642de3393b1b3e1d151e",
+  "version": "2026.10.25.7",
+  "file": "agentos-update-2026.10.25.7.tar.gz",
+  "size": 194924,
+  "sha256": "fdac92a0d48af524ca4123d17875be53b26a32533a16d2096640ad52822e1be9",
   "date": "2026-10-25",
-  "notes": "Tìm/bấm theo chữ (OCR), /dung, nhật ký, xác nhận lệnh nguy hiểm, điểm khôi phục, /dan /mokhoa /bat, RustDesk theo tài liệu"
+  "notes": "Word/Excel/PowerPoint: LibreOffice Impress, phông tương thích, agentos-office, /doc /doi /thay, nút Microsoft 365"
 }

@@ -89,7 +89,16 @@ firmware-misc-nonfree
 # Văn phòng cho AI: đọc/tạo Word, Excel, PDF; đọc chữ trong ảnh (OCR tiếng Việt); xử lý ảnh, âm thanh, dữ liệu
 libreoffice-writer
 libreoffice-calc
+libreoffice-impress
+libreoffice-draw
+libreoffice-gtk3
 libreoffice-l10n-vi
+libreoffice-help-vi
+fonts-crosextra-carlito
+fonts-crosextra-caladea
+fonts-dejavu
+pandoc
+python3-xlrd
 python3-pandas
 python3-openpyxl
 python3-xlsxwriter

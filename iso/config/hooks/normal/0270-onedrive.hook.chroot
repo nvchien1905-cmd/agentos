@@ -12,7 +12,7 @@ chmod 2775 /srv/onedrive
 mkdir -p /var/lib/agentos/.config/onedrive
 cat > /var/lib/agentos/.config/onedrive/config <<'EOC'
 sync_dir = "/srv/onedrive"
-monitor_interval = "120"
+monitor_interval = "300"
 classify_as_big_delete = "50"
 skip_dotfiles = "true"
 sync_dir_permissions = "775"

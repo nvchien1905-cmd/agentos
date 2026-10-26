@@ -63,6 +63,8 @@ function createOneDrive(o) {
     async startAuth() {
       stopChild();
       fs.mkdirSync(conf, { recursive: true });
+      // Kết nối MỚI: mặc định chỉ đồng bộ thư mục AgentOS (không kéo cả OneDrive về máy; xem wizard/lib/synclist.js)
+      try { const sl = path.join(conf, 'sync_list'); if (!fs.existsSync(token) && !fs.existsSync(sl)) fs.writeFileSync(sl, '# Do AgentOS tạo: chỉ đồng bộ thư mục này của OneDrive (đổi ở Cài đặt → Kết nối)\n/AgentOS\n'); } catch (e) { /* bỏ qua */ }
       child = spawn(bin, ['--confdir', conf, '--auth-files', urlFile + ':' + respFile], { stdio: 'ignore' });
       child.on('error', () => {}); child.on('exit', () => { child = null; });
       authTimer = setTimeout(stopChild, 15 * 60 * 1000); if (authTimer.unref) authTimer.unref();

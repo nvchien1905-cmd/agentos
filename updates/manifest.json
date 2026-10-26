@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.8",
-  "file": "agentos-update-2026.10.26.8.tar.gz",
-  "size": 223080,
-  "sha256": "feb3e81774aa348a8c5fa7737182e2fe0fc6fd5c25ace6c28a982e7d418a9b7d",
+  "version": "2026.10.26.10",
+  "file": "agentos-update-2026.10.26.10.tar.gz",
+  "size": 225388,
+  "sha256": "3b4c8d40a8b10900d73bdeeeff7ecb61d737878ac85f66a0056c85b1598db3c0",
   "date": "2026-10-26",
-  "notes": "Sửa bot không tự chạy sau khi bật máy lại (vòng thứ tự khởi động systemd giữa deskd và bộ điều phối)"
+  "notes": "OneDrive chỉ đồng bộ thư mục AgentOS (có thể thêm thư mục), dừng cả .path khi đồng bộ lại, chu kỳ đồng bộ 300 giây"
 }

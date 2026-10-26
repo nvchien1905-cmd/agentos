@@ -93,7 +93,7 @@ async function main() {
   const ONEDRIVE_HINT = OFFICE_HINT + ' Dữ liệu và trí nhớ của chủ máy nằm ở OneDrive, tự đồng bộ hai chiều với thư mục ' + cfg.oneDriveDir + '. ' +
     'Hãy đọc dữ liệu cần thiết từ đó. Lưu kết quả, báo cáo và điều đáng nhớ vào ' + cfg.oneDriveDir + '/AgentOS/ (tạo nếu chưa có). ' +
     'SỔ TAY của chủ máy (như một cuốn sách, thư mục ' + cfg.oneDriveDir + '/AgentOS/SO-TAY/): mục lục và chi tiết các chương liên quan đã được gửi kèm đầu câu lệnh khi cần; muốn xem chương khác thì mở tệp chuong-*.md ghi trong mục lục. Khi có điều MỚI đáng nhớ LÂU DÀI (khách, hàng hóa, quy trình, sở thích) hoặc điều CẬP NHẬT thay thông tin cũ, thêm MỘT dòng "- điều cần nhớ" vào cuối ' + cfg.oneDriveDir + '/AgentOS/GHI-NHO.md (hộp thư vào, hệ thống tự xếp vào đúng chương và thay mục cũ); KHÔNG tự sửa tệp chương, KHÔNG ghi mật khẩu/khóa. ' +
-    'Không xóa và không ghi đè tệp của chủ máy: chỉ tạo tệp mới (tên có ngày giờ) hoặc thêm vào cuối tệp trong thư mục AgentOS. Tệp lên OneDrive sau khoảng 2 phút. ' +
+    'Không xóa và không ghi đè tệp của chủ máy: chỉ tạo tệp mới (tên có ngày giờ) hoặc thêm vào cuối tệp trong thư mục AgentOS. Tệp lên OneDrive sau khoảng 5 phút (chu kỳ đồng bộ của phần mềm). ' +
     'Nếu thư mục không có gì thì có thể chưa kết nối OneDrive: báo chủ máy gõ /onedrive ketnoi.';
   // Phong cách trả lời trên Telegram (giống Claude Code): vào thẳng kết quả, gọn, Markdown đơn giản (bot tự đổi sang định dạng Telegram).
   const STYLE_HINT = 'CÁCH TRẢ LỜI (qua Telegram, đọc trên điện thoại): vào thẳng kết quả/kết luận ở câu đầu, không chào hỏi dài dòng, không lặp lại câu hỏi, không báo "đã nhận việc". ' +

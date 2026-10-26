@@ -25,6 +25,9 @@ if [ ! -x /opt/agentos/office-venv/bin/python ] || ! /opt/agentos/office-venv/bi
   { python3 -m venv --system-site-packages /opt/agentos/office-venv && /opt/agentos/office-venv/bin/pip install -q python-pptx; } >/dev/null 2>&1 || echo "agentos-desktop-setup: chưa cài được python-pptx (không bắt buộc: agentos-office vẫn đọc/sửa .pptx)"
 fi
 fc-cache -f >/dev/null 2>&1 || true
+# OneDrive: phần mềm đồng bộ chỉ nhận chu kỳ từ 300 giây ("Invalid value for key in config file - using default value: monitor_interval" với 120): sửa cấu hình của máy đã cài cho khớp thực tế
+OD_CONF=/var/lib/agentos/.config/onedrive/config
+[ -f "$OD_CONF" ] && sed -i 's/^monitor_interval = "120"$/monitor_interval = "300"/' "$OD_CONF" || true
 # Tự chạy nút văn phòng ở phiên đăng nhập (tệp autostart tạo ở đây, không nằm trong gói cập nhật vì máy bản cũ có thể từ chối đường dẫn etc/xdg/autostart)
 mkdir -p /etc/xdg/autostart
 cat > /etc/xdg/autostart/agentos-panel-office.desktop <<'EOF3'

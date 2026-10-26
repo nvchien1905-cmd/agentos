@@ -146,3 +146,39 @@ test('trang AI và khóa API: hiện AI nào đang đăng nhập bằng tài kho
     const r2 = await S.call('GET', 'ai'); const c2 = r2.body.engines.find((x) => x.id === 'codex'); assert.equal(c2.login.loggedIn, false); assert.equal(c2.using, 'none');
   } finally { await S.s.close(); }
 });
+
+test('OneDrive đồng bộ chọn lọc: kết nối mới mặc định chỉ /AgentOS; đổi danh sách thì ghi sync_list và đồng bộ lại (--resync); đầu vào xấu bị từ chối; "tất cả" cần xác nhận', async () => {
+  const synclist = require('../lib/synclist');
+  assert.deepEqual(synclist.clean(['Kế toán', '/Kho/', '//Dữ liệu//báo cáo', '/kho']), ['/AgentOS', '/Kế toán', '/Kho', '/Dữ liệu/báo cáo', '/kho'].filter((x, i, a) => a.indexOf(x) === i));
+  assert.deepEqual(synclist.clean('/agentos\n/Kho'), ['/agentos', '/Kho']);                // đã có AgentOS (không phân biệt hoa thường) thì không thêm
+  for (const bad of [['/../etc'], ['/a/../b'], ['/'], ['*'], ['/a?b'], ['/a\b'], ['/x{y}']]) assert.throws(() => synclist.clean(bad), /không hợp lệ|TOÀN BỘ/, JSON.stringify(bad));
+  const spawned = [];
+  const S = await boot({ spawn: (cmd, args) => {
+    spawned.push([cmd].concat(args));
+    const c = new EventEmitter(); c.kill = () => {}; c.stdout = new EventEmitter(); c.stderr = new EventEmitter();
+    if (cmd === 'runuser' && args.includes('onedrive') && !args.includes('--resync')) fs.writeFileSync(path.join(S2conf(), 'auth-url.txt'), 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=cid-9&scope=Files.ReadWrite%20offline_access&response_type=code&redirect_uri=https://login.microsoftonline.com/common/oauth2/nativeclient\n');
+    else setImmediate(() => c.emit('close', 0));
+    return c;
+  } });
+  function S2conf() { return S.conf; }
+  try {
+    assert.deepEqual((await S.call('GET', 'onedrive')).body.folders, []); assert.equal((await S.call('GET', 'onedrive')).body.syncAll, true);   // chưa có danh sách = toàn bộ (máy cũ)
+    await S.call('POST', 'onedrive/start');                                                  // kết nối MỚI
+    assert.equal(fs.readFileSync(path.join(S.conf, 'sync_list'), 'utf8').split('\n').filter((l) => l && !l.startsWith('#')).join(','), '/AgentOS');
+    assert.equal((await S.call('POST', 'onedrive/folders', { folders: ['/Kho'] })).status, 400, 'chưa kết nối (chưa có khóa) thì từ chối');
+    fs.writeFileSync(path.join(S.conf, 'refresh_token'), 'rt');                              // coi như đã kết nối
+    const od = (await S.call('GET', 'onedrive')).body; assert.equal(od.syncAll, false); assert.deepEqual(od.folders, ['/AgentOS']);
+    assert.equal((await S.call('POST', 'onedrive/folders', { folders: ['/../x'] })).status, 400);
+    assert.equal((await S.call('POST', 'onedrive/folders', { all: true })).status, 400, 'toàn bộ cần xác nhận');
+    spawned.length = 0;
+    const r = await S.call('POST', 'onedrive/folders', { folders: ['Kế toán', '/Hóa đơn'] }); assert.equal(r.status, 200); assert.deepEqual(r.body.folders, ['/AgentOS', '/Kế toán', '/Hóa đơn']);
+    for (let i = 0; i < 100 && spawned.length < 3; i++) await new Promise((x) => setTimeout(x, 20));
+    assert.deepEqual(spawned.map((s) => s[0] + ' ' + (s.includes('--resync') ? 'resync' : s[1])).slice(0, 3), ['systemctl stop', 'runuser resync', 'systemctl start']);
+    const resync = spawned.find((s) => s.includes('--resync')); assert.ok(resync.includes('--sync') && resync.includes('--resync-auth') && resync.includes('agentos'), 'chạy dưới người dùng agentos, không hỏi xác nhận');
+    for (const verb of ['stop', 'start']) assert.ok(spawned.some((s) => s[0] === 'systemctl' && s[1] === verb && s.includes('onedrive-agentos.path') && s.includes('onedrive-agentos.service')), 'phải ' + verb + ' cả .path và .service (.path tự bật lại dịch vụ)');
+    assert.equal(fs.readFileSync(path.join(S.conf, 'sync_list'), 'utf8').includes('/Kế toán'), true);
+    const all = await S.call('POST', 'onedrive/folders', { all: true, confirmAll: true }); assert.equal(all.status, 200); assert.equal(all.body.all, true);
+    for (let i = 0; i < 100 && (await S.call('GET', 'onedrive')).body.syncAll !== true; i++) await new Promise((x) => setTimeout(x, 20));
+    assert.equal(fs.existsSync(path.join(S.conf, 'sync_list')), false, 'chọn tất cả thì bỏ sync_list');
+  } finally { await S.s.close(); }
+});

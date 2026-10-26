@@ -195,10 +195,20 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     link: function () {
       Promise.all([api('GET', 'onedrive'), api('GET', 'tailscale')]).then(function (a) {
         var od = a[0], ts = a[1];
-        set('<h2>Kết nối</h2><div class="card"><h3>OneDrive (Microsoft)</h3><p>' + (od.connected ? '<span class="ok">✓ Đã kết nối</span>' + (od.account && (od.account.email || od.account.name) ? ' · tài khoản <b>' + esc(od.account.email || od.account.name) + '</b>' : '') + ' · đồng bộ ' + dot(od.service) + ' · thư mục <b>' + esc(od.dir) + '</b> (' + (od.entries == null ? '?' : od.entries) + ' mục)' : '<span class="mute">Chưa kết nối</span>') + '</p><p class="mute">AI đọc dữ liệu và lưu kết quả vào OneDrive của bạn. Đồng bộ hai chiều với tài khoản Microsoft thật.</p><div class="row" id="odb"></div><div id="odx"></div></div>' +
+        set('<h2>Kết nối</h2><div class="card"><h3>OneDrive (Microsoft)</h3><p>' + (od.connected ? '<span class="ok">✓ Đã kết nối</span>' + (od.account && (od.account.email || od.account.name) ? ' · tài khoản <b>' + esc(od.account.email || od.account.name) + '</b>' : '') + ' · đồng bộ ' + dot(od.service) + ' · thư mục <b>' + esc(od.dir) + '</b> (' + (od.entries == null ? '?' : od.entries) + ' mục)' : '<span class="mute">Chưa kết nối</span>') + '</p><p class="mute">AI đọc dữ liệu và lưu kết quả vào OneDrive của bạn. Đồng bộ hai chiều với tài khoản Microsoft thật.</p><div class="row" id="odb"></div><div id="odx"></div><div id="odf2"></div></div>' +
           '<div class="card"><h3>Tailscale (đường vào dự phòng)</h3><p>' + (ts.state === 'Running' ? '<span class="ok">✓ Đã kết nối</span> · ' + esc((ts.ips || [])[0] || '') + ' ' + esc(ts.dns || '') : ts.state === 'missing' ? '<span class="bad">Chưa cài</span>' : '<span class="mute">Chưa đăng nhập (' + esc(ts.state) + ')</span>') + '</p><div class="row" id="tsb"></div><div id="tsx"></div></div>');
         var ob = document.getElementById('odb');
         ob.innerHTML = od.connected ? '<button class="b" id="os">Đồng bộ ngay</button><button class="b d" id="od">Ngắt kết nối</button>' : '<button class="b p" id="oc">Kết nối OneDrive</button>';
+        if (od.connected) {
+          document.getElementById('odf2').innerHTML = '<h4 style="margin:14px 0 4px">Thư mục OneDrive đồng bộ về máy</h4><p class="mute" style="margin:0 0 6px">' + (od.syncAll ? '<b class="bad">Đang đồng bộ TOÀN BỘ OneDrive</b> (có thể rất nặng).' : 'Chỉ các thư mục dưới đây được đồng bộ (mỗi dòng một thư mục). AI luôn cần <b>/AgentOS</b>.') + '</p>' +
+            '<textarea id="odl" rows="4" style="width:100%;box-sizing:border-box">' + esc((od.folders || []).join('\n')) + '</textarea>' +
+            '<div class="row" style="margin-top:6px"><button class="b p" id="odlsave">Lưu và đồng bộ lại</button><label class="mute"><input type="checkbox" id="odall"> Đồng bộ TOÀN BỘ OneDrive</label></div>';
+          on('odlsave', function () {
+            var all = document.getElementById('odall').checked;
+            if (all && !ask('Đồng bộ TOÀN BỘ OneDrive có thể kéo hàng chục đến hàng trăm GB về máy và làm đầy ổ đĩa. Bạn chắc chắn?')) return;
+            api('POST', 'onedrive/folders', { folders: document.getElementById('odl').value.split('\n'), all: all, confirmAll: all }).then(function (j) { watchJob(j.job, 'Đồng bộ lại OneDrive', render); }).catch(fail);
+          });
+        }
         on('os', function () { api('POST', 'onedrive/sync').then(function () { toast('Đã yêu cầu đồng bộ'); }).catch(fail); });
         on('od', function () { if (ask('Ngắt kết nối OneDrive? (tệp đã tải về vẫn giữ nguyên)')) api('POST', 'onedrive/disconnect', { confirm: true }).then(render).catch(fail); });
         on('oc', function () { toast('Đang lấy đường dẫn đăng nhập...'); api('POST', 'onedrive/start').then(function (j) {

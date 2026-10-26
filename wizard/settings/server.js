@@ -16,6 +16,7 @@ const apikeys = require('../lib/apikeys');
 const envfile = require('../lib/envfile');
 const fullaccess = require('../lib/fullaccess');
 const odauth = require('../lib/odauth');
+const synclist = require('../lib/synclist');
 const mask = require('../lib/mask');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
@@ -482,10 +483,13 @@ function createSettings(o) {
       const connected = fs.existsSync(odToken());
       let files = null; try { files = fs.readdirSync(o.onedriveDir).filter((n) => !n.startsWith('.')).length; } catch (e) { /* chưa có */ }
       const acc = connected ? readAccount() : null;
-      return { connected, service: await isActive('onedrive-agentos'), dir: o.onedriveDir, entries: files, authPending: !!odChild, account: acc ? { name: acc.name ? mask.name(acc.name) : '', email: acc.email ? mask.email(acc.email) : '', driveType: acc.driveType } : null };
+      const sl = synclist.read(o.onedriveConf);
+      return { connected, service: await isActive('onedrive-agentos'), dir: o.onedriveDir, entries: files, authPending: !!odChild, syncAll: sl.all, folders: sl.folders, account: acc ? { name: acc.name ? mask.name(acc.name) : '', email: acc.email ? mask.email(acc.email) : '', driveType: acc.driveType } : null };
     },
     async 'POST /api/onedrive/start'() {
       odStop();
+      // Kết nối MỚI (chưa có khóa đăng nhập, chưa có danh sách): mặc định chỉ đồng bộ thư mục AgentOS, không kéo cả OneDrive về máy
+      if (!fs.existsSync(odToken()) && !fs.existsSync(synclist.file(o.onedriveConf))) { try { fs.mkdirSync(o.onedriveConf, { recursive: true }); synclist.write(o.onedriveConf, synclist.DEFAULT); chownAgentos(synclist.file(o.onedriveConf)); } catch (e) { /* bỏ qua */ } }
       fs.mkdirSync(o.onedriveConf, { recursive: true }); chownAgentos(o.onedriveConf);
       const [cmd, args] = asAgentos('onedrive', ['--confdir', o.onedriveConf, '--auth-files', odUrlFile() + ':' + odRespFile()]);
       odChild = spawn(cmd, args, { stdio: 'ignore' });
@@ -505,6 +509,19 @@ function createSettings(o) {
         await sleep(o.odPollMs || 500);
       }
       odStop(); throw new Error('Không lấy được đường dẫn đăng nhập (kiểm tra mạng).');
+    },
+    // Đổi các thư mục OneDrive được đồng bộ: ghi sync_list rồi đồng bộ lại từ đầu (phần mềm bắt buộc --resync khi danh sách đổi) bằng công việc nền có nhật ký
+    async 'POST /api/onedrive/folders'(b) {
+      if (!fs.existsSync(odToken())) throw new Error('Chưa kết nối OneDrive.');
+      if (busy()) throw new Error('Đang có một công việc khác chạy, đợi xong rồi thử lại.');
+      let folders = null;
+      if (b.all === true) { if (b.confirmAll !== true) throw new Error('Đồng bộ TOÀN BỘ OneDrive có thể kéo hàng chục đến hàng trăm GB về máy. Cần xác nhận.'); }
+      else folders = synclist.clean(b.folders);
+      const [cmd, args] = asAgentos('onedrive', ['--confdir', o.onedriveConf, '--sync', '--resync', '--resync-auth']);
+      // Phải dừng CẢ onedrive-agentos.path: nó tự bật lại dịch vụ ngay khi dịch vụ dừng (đo thật: "already running" làm việc đồng bộ lại hỏng). Bật lại cả hai ở bước cuối, kể cả khi bước giữa lỗi.
+      const steps = [['systemctl', ['stop', 'onedrive-agentos.path', 'onedrive-agentos.service']], [cmd, args], ['systemctl', ['start', 'onedrive-agentos.path', 'onedrive-agentos.service']]];
+      if (folders) { synclist.write(o.onedriveConf, folders); chownAgentos(synclist.file(o.onedriveConf)); } else synclist.removeAll(o.onedriveConf);
+      return { job: startJob('Đồng bộ lại OneDrive (' + (folders ? folders.join(', ') : 'toàn bộ') + ')', steps, { keepGoing: true }), folders: folders || [], all: !folders };
     },
     async 'GET /api/onedrive/auth-status'() { return odAuth ? { status: odAuth.status, error: odAuth.error } : { status: 'none', error: '' }; },
     async 'POST /api/onedrive/finish'(b) {

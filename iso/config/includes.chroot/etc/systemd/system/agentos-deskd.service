@@ -1,6 +1,8 @@
 [Unit]
 Description=AgentOS - trợ lý màn hình (chụp màn hình, mở/đóng ứng dụng, bấm chuột/gõ phím cho bot Telegram)
-After=multi-user.target
+# KHÔNG đặt After=multi-user.target: bộ điều phối (agentos-orchestrator) chạy SAU dịch vụ này và cùng WantedBy=multi-user.target nên tạo VÒNG THỨ TỰ,
+# systemd tự xóa việc khởi động bộ điều phối ở MỌI lần bật máy -> bot im sau mất điện/khởi động lại (đo trên máy cài thật, 26/10/2026). deskd tự tìm phiên đồ họa mỗi lần được gọi nên không cần thứ tự này.
+After=systemd-user-sessions.service
 
 [Service]
 # Chạy bằng root để nhìn/điều khiển phiên đồ họa của người ngồi máy. Chỉ nghe ở /run/agentos/desk.sock (nhóm agentos),

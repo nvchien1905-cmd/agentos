@@ -66,7 +66,7 @@ test('gemini: đăng nhập qua điện thoại - lấy đường dẫn Google (
   assert.match(v.url, /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?client_id=abc/);     // không phải geminicli.com/docs/...
   assert.equal(v.needsInput, true); assert.equal(v.hasToken, false); assert.equal(v.code, null);
   L.input('MA-SAI');                                                                              // mã sai: vẫn chờ, không báo xong
-  await new Promise((r) => setTimeout(r, 700));
+  await until(() => /Failed to authenticate/.test(L.get().tail || ''), 10000);                  // đợi tới khi tiến trình giả in lỗi (cố định 700 ms bị trượt khi máy bận)
   assert.equal(L.get().status, 'running'); assert.match(L.get().tail, /Failed to authenticate/);
   L.input('MA-DUNG');
   const done = await until(() => { const x = L.get(); return x.status === 'done' ? x : null; });

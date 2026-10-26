@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.7",
-  "file": "agentos-update-2026.10.26.7.tar.gz",
-  "size": 222941,
-  "sha256": "f0ff09363f9855d1e00714612c278fa03fbf9ab2f9dca244d89bff63829eff37",
+  "version": "2026.10.26.8",
+  "file": "agentos-update-2026.10.26.8.tar.gz",
+  "size": 223080,
+  "sha256": "feb3e81774aa348a8c5fa7737182e2fe0fc6fd5c25ace6c28a982e7d418a9b7d",
   "date": "2026-10-26",
-  "notes": "Hộp cô lập AI chạy được (bỏ RestrictSUIDSGID, ProtectKernelTunables), chế độ toàn quyền theo Cài đặt, apply.sh khởi động lại Cài đặt/hướng dẫn, sửa /tuchan /maytinh"
+  "notes": "Sửa bot không tự chạy sau khi bật máy lại (vòng thứ tự khởi động systemd giữa deskd và bộ điều phối)"
 }

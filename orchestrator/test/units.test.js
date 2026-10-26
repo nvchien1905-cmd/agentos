@@ -49,3 +49,31 @@ test('chế độ toàn quyền: Cài đặt đổi FULL_ACCESS trong env thì t
   assert.equal(reconcile(db, false).changed, false);
   assert.equal(reconcile(db, true).changed, true); assert.equal(db.kvGet('fullAccess'), '1');
 });
+
+test('dịch vụ AgentOS: KHÔNG có vòng thứ tự khởi động (vòng làm systemd xóa việc khởi động bộ điều phối -> bot im sau mỗi lần bật máy lại)', () => {
+  const dir = path.join(ROOT, 'iso/config/includes.chroot/etc/systemd/system');
+  const edges = new Map(); const add = (a, b) => { if (!edges.has(a)) edges.set(a, new Set()); edges.get(a).add(b); };   // a phải chạy TRƯỚC b
+  const names = fs.readdirSync(dir).filter((n) => /\.service$/.test(n));
+  for (const n of names) {
+    const txt = fs.readFileSync(path.join(dir, n), 'utf8').split('\n').filter((l) => !/^\s*#/.test(l));
+    for (const l of txt) {
+      let m;
+      if ((m = l.match(/^After=(.+)$/))) for (const v of m[1].split(/\s+/).filter(Boolean)) add(v, n);
+      if ((m = l.match(/^Before=(.+)$/))) for (const v of m[1].split(/\s+/).filter(Boolean)) add(n, v);
+      if ((m = l.match(/^WantedBy=(.+)$/))) for (const t of m[1].split(/\s+/).filter(Boolean)) add(n, t);       // target được dịch vụ này kéo vào thì nằm SAU nó
+    }
+  }
+  // thứ tự mặc định có sẵn của systemd: multi-user.target chạy sau basic.target, graphical.target sau multi-user.target
+  add('basic.target', 'multi-user.target'); add('multi-user.target', 'graphical.target');
+  const state = new Map(); let cycle = null;
+  const visit = (u, stack) => {
+    if (cycle) return;
+    if (state.get(u) === 1) { cycle = stack.slice(stack.indexOf(u)).concat(u); return; }
+    if (state.get(u) === 2) return;
+    state.set(u, 1);
+    for (const v of edges.get(u) || []) visit(v, stack.concat(u));
+    state.set(u, 2);
+  };
+  for (const u of [...edges.keys()]) visit(u, []);
+  assert.equal(cycle, null, 'vòng thứ tự: ' + (cycle && cycle.join(' -> ')));
+});

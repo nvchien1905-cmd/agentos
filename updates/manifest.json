@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.3",
-  "file": "agentos-update-2026.10.26.3.tar.gz",
-  "size": 221280,
-  "sha256": "bbb8a9aa2d57967f3a251c1e0453a3b73f9e06b058f6f122c5eb7e527b2103b6",
+  "version": "2026.10.26.4",
+  "file": "agentos-update-2026.10.26.4.tar.gz",
+  "size": 222019,
+  "sha256": "40a026fa35a5011993a525b4411d21681659a7603d237e30ccaa480e982c6362",
   "date": "2026-10-26",
-  "notes": "Trang AI và khóa API hiện tài khoản đang đăng nhập (email che bớt) và bot đang dùng khóa hay tài khoản"
+  "notes": "Sửa RustDesk /tuxa (cài dịch vụ, chờ sẵn sàng) và OCR nút chữ trắng trên nền tối — tìm ra khi thử trên máy cài thật"
 }

@@ -59,11 +59,11 @@ test('/lay: tệp > 49 MB tự đổi sang link tải; /guilen chạy được',
 
 function fakeSudo(opts) {
   opts = opts || {};
-  const calls = [];
+  const calls = []; let started = false, tries = 0;
   const exec = async (args) => {
     calls.push(args.join(' '));
-    if (args[0] === '--password') return { code: 0, out: 'Done!', err: '' };
-    if (args[0] === 'rustdesk' && args[1] === '--password') return { code: opts.failPw ? 1 : 0, out: 'Done!', err: '' };
+    if (args[0] === 'systemctl' && args[1] === 'start' && args[2] === 'rustdesk') started = true;
+    if (args[0] === 'rustdesk' && args[1] === '--password') { if (!started || opts.failPw || (opts.slowStart && ++tries < 3)) return { code: 0, out: 'No such file or directory (os error 2)', err: '' }; return { code: 0, out: 'Done!', err: '' }; }
     if (args[0] === 'rustdesk' && args[1] === '--get-id') return { code: 0, out: opts.noId ? '' : '123456789', err: '' };
     return { code: 0, out: '', err: '' };
   };
@@ -77,7 +77,7 @@ test('/tuxa: bật RustDesk, đặt mật khẩu tạm ngẫu nhiên, trả ID +
   const t = await q.run('tuxa', '');
   const pw = t.text.match(/Mật khẩu: (\S+)/)[1];
   assert.match(t.text, /ID: 123456789/); assert.ok(pw.length >= 12, 'mật khẩu đủ dài');
-  assert.ok(fs2.calls.includes('systemctl enable --now rustdesk')); assert.ok(fs2.calls.some((c) => c === 'rustdesk --password ' + pw));
+  assert.ok(fs2.calls.includes('systemctl start rustdesk')); assert.ok(!fs2.calls.some((c) => /systemctl enable/.test(c)), 'không bật tự chạy khi khởi động máy'); assert.ok(fs2.calls.some((c) => c === 'rustdesk --password ' + pw));
   assert.ok(fs2.calls.includes('rustdesk --option approve-mode password'));
   assert.deepEqual(desk, [{ cmd: 'open', app: 'rustdesk' }]); assert.ok(until > Date.now(), 'nhớ hạn mật khẩu tạm');
   const t2 = await q.run('tuxa', ''); assert.notEqual(t2.text.match(/Mật khẩu: (\S+)/)[1], pw, 'mỗi lần một mật khẩu mới');
@@ -98,4 +98,13 @@ test('/tuxa: không lấy được ID hoặc không đặt được mật khẩu
   createRemote({ exec: fs3.exec, state: { get: () => until, set: (v) => { until = v; } } });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(until, null); assert.ok(fs3.calls.some((c) => c.startsWith('rustdesk --password ')), 'khởi động lại còn phiên cũ -> đổi mật khẩu');
+});
+
+test('/tuxa: dịch vụ RustDesk lên chậm (--password báo lỗi mã 0 vài lần) thì thử lại tới khi "Done!"; chưa có dịch vụ thì không giả vờ có mật khẩu', async () => {
+  const slow = fakeSudo({ slowStart: true });
+  const t = await createRemote({ exec: slow.exec, idWaitMs: 0 }).remoteStart();
+  assert.match(t.text, /Mật khẩu: \S+/); assert.equal(slow.calls.filter((c) => c.startsWith('rustdesk --password ')).length, 3, 'thử lại tới lần thứ 3');
+  const never = fakeSudo({ failPw: true });
+  const n = await createRemote({ exec: never.exec, idWaitMs: 0, pwTries: 3 }).remoteStart();
+  assert.doesNotMatch(n.text, /Mật khẩu: /); assert.match(n.text, /chưa đặt được mật khẩu/);
 });

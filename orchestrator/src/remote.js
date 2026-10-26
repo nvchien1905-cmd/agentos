@@ -113,7 +113,7 @@ function createRemote(o) {
   const state = o.state || { get: () => null, set: () => {} };
   let timer = null;
 
-  async function setPassword(pw) { const r = await sudo(['rustdesk', '--password', pw]); return r.code === 0; }
+  async function setPassword(pw) { const r = await sudo(['rustdesk', '--password', pw]); return r.code === 0 && /done/i.test(String(r.out) + String(r.err)); }
   async function getId() {
     for (let i = 0; i < (o.idTries || 8); i++) {
       const r = await sudo(['rustdesk', '--get-id']);
@@ -134,11 +134,15 @@ function createRemote(o) {
   // /tuxa: trả { text } có ID + mật khẩu; deskOpen (tùy chọn) mở cửa sổ RustDesk trên màn hình máy
   async function remoteStart(deskOpen) {
     const test = await sudo(['-v']).catch(() => ({ code: 1 }));
-    await sudo(['systemctl', 'enable', '--now', 'rustdesk']);
+    // Dịch vụ rustdesk.service do agentos-desktop-setup cài sẵn nhưng KHÔNG bật tự chạy khi khởi động máy: chỉ chạy khi chủ máy gõ /tuxa (và tắt bằng /tuxa dong).
+    // Đã đo trên RustDesk 1.5.0 thật: chưa chạy dịch vụ thì `--password` báo "No such file or directory" (mà vẫn thoát mã 0), có dịch vụ mới in "Done!".
+    await sudo(['systemctl', 'start', 'rustdesk']);
+    await getId();                                                                    // đợi dịch vụ sẵn sàng
     await sudo(['rustdesk', '--option', 'approve-mode', 'password']);              // vào bằng mật khẩu, không cần ai bấm "Chấp nhận" trên máy
     await sudo(['rustdesk', '--option', 'verification-method', 'use-permanent-password']);   // chỉ nhận mật khẩu cố định ta vừa đặt (không nhận mật khẩu một lần cũ)
     const pw = randomPw();
-    const okPw = await setPassword(pw);
+    let okPw = false;
+    for (let i = 0; i < (o.pwTries || 6) && !okPw; i++) { okPw = await setPassword(pw); if (!okPw) await new Promise((x) => setTimeout(x, o.idWaitMs === undefined ? 1500 : o.idWaitMs)); }
     if (deskOpen) { try { await deskOpen(); } catch (e) { /* không mở được cửa sổ cũng không sao: dịch vụ vẫn chạy nền */ } }
     const id = await getId();
     if (!id) return { text: '⚠️ Chưa lấy được ID RustDesk' + (test.code !== 0 ? ' (bot chưa có quyền sudo: gõ /toanquyen hoặc chạy lại trình cài)' : ' (RustDesk chưa cài hoặc dịch vụ chưa lên)') + '. Gõ /mo rustdesk rồi /manhinh để đọc ID trên màn hình máy.' };

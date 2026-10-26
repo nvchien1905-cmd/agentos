@@ -224,9 +224,20 @@ function createDesk(o) {
       const sc = await run('scrot', ['-o', file], { env: xenv(s), timeoutMs: 15000 });
       if (sc.code !== 0) return fail('Không chụp được màn hình: ' + String(sc.err || sc.out).trim().slice(0, 150));
       const oc = await run('tesseract', [file, 'stdout', '-l', 'vie+eng', '--psm', '11', 'tsv'], { timeoutMs: 60000 });
+      if (oc.code !== 0) { try { fs.rmSync(file, { force: true }); } catch (e) { /* bỏ qua */ } return fail('Không đọc được chữ trên màn hình (tesseract): ' + String(oc.err).trim().slice(0, 150)); }
+      let matches = ocrFind(oc.out, text);
+      // Đo trên màn hình thật: chế độ rải rác (--psm 11) bỏ sót nút chữ trắng trên nền xanh ("Tiếp theo"), nhưng chế độ khối (--psm 6) đọc được.
+      // Không thấy thì thử lần lượt: khối trên ảnh gốc, rồi khối trên ảnh ĐẢO MÀU (chữ sáng trên nền tối rất phổ biến).
+      const ocr = async (img, psm) => { const r = await run('tesseract', [img, 'stdout', '-l', 'vie+eng', '--psm', psm, 'tsv'], { timeoutMs: 60000 }); return r.code === 0 ? ocrFind(r.out, text) : []; };
+      if (!matches.length) matches = await ocr(file, '6');
+      if (!matches.length) {
+        const neg = file.replace(/\.png$/, '-dao.png');
+        const cv = await run('convert', [file, '-negate', neg], { timeoutMs: 20000 });
+        if (cv.code === 0) matches = await ocr(neg, '6');
+        try { fs.rmSync(neg, { force: true }); } catch (e) { /* bỏ qua */ }
+      }
       try { fs.rmSync(file, { force: true }); } catch (e) { /* bỏ qua */ }
-      if (oc.code !== 0) return fail('Không đọc được chữ trên màn hình (tesseract): ' + String(oc.err).trim().slice(0, 150));
-      return { ok: true, matches: ocrFind(oc.out, text) };
+      return { ok: true, matches };
     },
 
     // Bấm vào chữ tìm thấy (lần thứ n, mặc định 1)

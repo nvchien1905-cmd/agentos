@@ -188,3 +188,23 @@ test('info / focus / clipget / unlock', async () => {
   const u = await locked.desk.handle({ cmd: 'unlock' });
   assert.ok(locked.calls.some((c) => c.cmd === 'loginctl' && c.args[0] === 'unlock-sessions')); assert.equal(u.ok, false, 'vẫn khóa sau lệnh thì báo thật, không nói dối');
 });
+
+test('OCR nút chữ trắng trên nền xanh: chế độ rải rác bỏ sót thì thử chế độ khối, rồi ảnh đảo màu; thấy ngay thì không đọc lại', async () => {
+  const HEAD = TSV.split('\n')[0];
+  const WORD = HEAD + '\n5\t1\t1\t1\t1\t1\t866\t604\t37\t19\t96\tTiếp\n5\t1\t1\t1\t1\t2\t909\t605\t40\t14\t96\ttheo';
+  // 1) bản gốc: psm 11 trống, psm 6 thấy
+  const a = make({ run: (cmd, args) => (cmd === 'tesseract' ? { code: 0, out: args.includes('6') ? WORD : HEAD, err: '' } : null) });
+  const f = await a.desk.handle({ cmd: 'findtext', text: 'tiep theo' });
+  assert.equal(f.matches.length, 1); assert.deepEqual([f.matches[0].cx, f.matches[0].cy], [908, 614]);
+  assert.deepEqual(a.calls.filter((c) => c.cmd === 'tesseract').map((c) => c.args[c.args.indexOf('--psm') + 1]), ['11', '6']);
+  assert.ok(!a.calls.some((c) => c.cmd === 'convert'), 'chưa cần đảo màu');
+  // 2) chỉ ảnh đảo màu mới đọc được
+  const b = make({ run: (cmd, args) => (cmd === 'tesseract' ? { code: 0, out: String(args[0]).endsWith('-dao.png') ? WORD : HEAD, err: '' } : null) });
+  assert.equal((await b.desk.handle({ cmd: 'findtext', text: 'tiep theo' })).matches.length, 1);
+  assert.ok(b.calls.some((c) => c.cmd === 'convert' && c.args.includes('-negate')));
+  assert.equal(b.calls.filter((c) => c.cmd === 'tesseract').length, 3);
+  // 3) thấy ngay ở lần đầu thì dừng
+  const c = make({ run: (cmd) => (cmd === 'tesseract' ? { code: 0, out: TSV, err: '' } : null) });
+  assert.equal((await c.desk.handle({ cmd: 'findtext', text: 'gui' })).matches.length, 2);
+  assert.equal(c.calls.filter((x) => x.cmd === 'tesseract').length, 1);
+});

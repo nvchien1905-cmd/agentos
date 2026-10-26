@@ -16,6 +16,11 @@ if ! dpkg -s libreoffice-impress fonts-crosextra-carlito pandoc >/dev/null 2>&1;
   apt-get install -y --no-install-recommends $OFFICE_PKGS >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends $OFFICE_PKGS >/dev/null 2>&1; } || echo "agentos-desktop-setup: chưa cài được gói văn phòng (thiếu mạng hoặc đầy ổ đĩa), sẽ thử lại ở lần cập nhật sau"
 fi
 chmod 755 /usr/local/bin/agentos-office /usr/local/bin/agentos-panel-office 2>/dev/null || true
+# RustDesk: gói .deb dựng trong chroot không đăng ký dịch vụ hệ thống (đo trên máy cài thật: "Unit rustdesk.service does not exist"), nên /tuxa không đặt được mật khẩu.
+# Cài file dịch vụ có sẵn trong gói; KHÔNG bật tự chạy: bot chỉ khởi động khi chủ máy gõ /tuxa và tắt bằng /tuxa dong.
+if [ -f /usr/share/rustdesk/files/systemd/rustdesk.service ] && [ ! -f /etc/systemd/system/rustdesk.service ]; then
+  cp /usr/share/rustdesk/files/systemd/rustdesk.service /etc/systemd/system/rustdesk.service && systemctl daemon-reload >/dev/null 2>&1 || true
+fi
 if [ ! -x /opt/agentos/office-venv/bin/python ] || ! /opt/agentos/office-venv/bin/python -c 'import pptx' >/dev/null 2>&1; then
   { python3 -m venv --system-site-packages /opt/agentos/office-venv && /opt/agentos/office-venv/bin/pip install -q python-pptx; } >/dev/null 2>&1 || echo "agentos-desktop-setup: chưa cài được python-pptx (không bắt buộc: agentos-office vẫn đọc/sửa .pptx)"
 fi

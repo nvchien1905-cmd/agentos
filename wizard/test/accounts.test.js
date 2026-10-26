@@ -130,3 +130,19 @@ test('OneDrive tự nhận mã: Microsoft báo lỗi / đổi mã thất bại t
   const S2 = await boot({ odPort: busy.address().port });
   try { const st = (await S2.call('POST', 'onedrive/start')).body; assert.equal(st.auto, false); assert.match(st.url, /nativeclient/); } finally { await S2.s.close(); busy.close(); }
 });
+
+test('trang AI và khóa API: hiện AI nào đang đăng nhập bằng tài khoản nào (email đã che) và bot đang dùng khóa hay tài khoản', async () => {
+  const S = await boot();
+  try {
+    const r = await S.call('GET', 'ai'); assert.equal(r.status, 200);
+    const e = Object.fromEntries(r.body.engines.map((x) => [x.id, x]));
+    assert.deepEqual(e.claude.login, { loggedIn: true, how: 'tài khoản Claude', who: 'c•••@g•••.com' }); assert.equal(e.claude.using, 'key', 'có khóa thì khóa được ưu tiên');
+    assert.deepEqual(e.codex.login, { loggedIn: true, how: 'tài khoản ChatGPT/OpenAI', who: 'c•••@o•••.com' }); assert.equal(e.codex.using, 'account');
+    assert.deepEqual(e.gemini.login, { loggedIn: true, how: 'tài khoản Google', who: 'g•••@g•••.com' });
+    assert.equal(e.deepseekapi.login.loggedIn, false); assert.equal(e.deepseekapi.using, 'key');
+    for (const secret of ['chien.nguyen@gmail.com', 'chu.cuahang@outlook.com', 'gia.dung@gmail.com', 'SECRET-ACCESS-TOKEN-VALUE', 'SECRET-REFRESH-VALUE', 'SECRET-GEMINI-REFRESH', S.KEYS.claude]) assert.ok(!r.text.includes(secret), 'lộ: ' + secret);
+    const page = await (await fetch('http://127.0.0.1:' + S.port + '/')).text(); assert.match(page, /Tài khoản đăng nhập: /); assert.match(page, /Bot đang dùng: /);
+    fs.rmSync(path.join(S.dir, 'home', '.codex', 'auth.json'));                       // đăng xuất Codex -> chưa đăng nhập
+    const r2 = await S.call('GET', 'ai'); const c2 = r2.body.engines.find((x) => x.id === 'codex'); assert.equal(c2.login.loggedIn, false); assert.equal(c2.using, 'none');
+  } finally { await S.s.close(); }
+});

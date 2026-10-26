@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.2",
-  "file": "agentos-update-2026.10.26.2.tar.gz",
-  "size": 220699,
-  "sha256": "3f8ffcdfc916b336e5f66fa1dc8094c014553b3f5a7ad24bae7ac3cebd5a986f",
-  "date": "2026-10-25",
-  "notes": "Sửa: Cài đặt AgentOS tự khởi động lại sau cập nhật (trước đây trang mới chạy với máy chủ cũ)"
+  "version": "2026.10.26.3",
+  "file": "agentos-update-2026.10.26.3.tar.gz",
+  "size": 221280,
+  "sha256": "bbb8a9aa2d57967f3a251c1e0453a3b73f9e06b058f6f122c5eb7e527b2103b6",
+  "date": "2026-10-26",
+  "notes": "Trang AI và khóa API hiện tài khoản đang đăng nhập (email che bớt) và bot đang dùng khóa hay tài khoản"
 }

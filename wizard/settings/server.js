@@ -140,6 +140,27 @@ function createSettings(o) {
   const needEnv = () => { const t = readEnv(); if (t == null) throw new Error('Máy chưa cấu hình xong. Hoàn tất trình hướng dẫn lần đầu (Telegram + AI) trước.'); return t; };
   const restart = (unit) => run('systemctl', ['restart', unit + '.service']);
 
+  // Nhận ra AI đã ĐĂNG NHẬP bằng tài khoản nào (đọc tệp đăng nhập của từng CLI trong thư mục của người dùng agentos; chỉ lấy email, KHÔNG đọc/hiện token).
+  // Trả { loggedIn, how, who } với who = email đã che. Có token dài hạn (CLAUDE_CODE_OAUTH_TOKEN trong cấu hình) cũng tính là đã đăng nhập.
+  function engineLogin(e, envText) {
+    const home = o.homeDir || engines.HOME;
+    const readJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (x) { return null; } };
+    const jwtEmail = (t) => { try { const p = JSON.parse(Buffer.from(String(t).split('.')[1], 'base64url').toString('utf8')); return p.email || ''; } catch (x) { return ''; } };
+    const em = (v) => (v ? mask.email(v) : '');
+    if (e === 'claude') {
+      const c = readJson(home + '/.claude.json'), cred = fs.existsSync(home + '/.claude/.credentials.json');
+      const long = envVal(envText || '', 'CLAUDE_CODE_OAUTH_TOKEN');
+      const acct = c && c.oauthAccount ? c.oauthAccount : null;
+      if (cred || acct) return { loggedIn: true, how: 'tài khoản Claude', who: em(acct && acct.emailAddress) };
+      if (long) return { loggedIn: true, how: 'token đăng nhập dài hạn ' + mask.secret(long), who: '' };
+    } else if (e === 'codex') {
+      const a = readJson(home + '/.codex/auth.json');
+      if (a && (a.tokens || a.OPENAI_API_KEY)) return a.tokens ? { loggedIn: true, how: 'tài khoản ChatGPT/OpenAI', who: em(jwtEmail(a.tokens.id_token)) } : { loggedIn: true, how: 'khóa API lưu trong Codex ' + mask.secret(a.OPENAI_API_KEY), who: '' };
+    } else if (e === 'gemini') {
+      if (fs.existsSync(engines.GEMINI_CREDS.replace(engines.HOME, home))) { const g = readJson(home + '/.gemini/google_accounts.json'); return { loggedIn: true, how: 'tài khoản Google', who: em(g && g.active) }; }
+    }
+    return { loggedIn: false, how: '', who: '' };
+  }
   const isActive = async (unit) => (await run('systemctl', ['is-active', unit])).out.trim() || 'unknown';
 
   // ---------- OneDrive (chạy bằng người dùng agentos) ----------
@@ -251,7 +272,8 @@ function createSettings(o) {
       const out = [];
       for (const e of apikeys.ENGINES) {
         const ver = await engines.installed(run, e).catch(() => null);
-        out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, installed: ver, enabled: order.includes(e) });
+        const lg = engineLogin(e, text);
+        out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, installed: ver, enabled: order.includes(e), login: lg, using: keys[e] ? 'key' : (lg.loggedIn ? 'account' : 'none') });
       }
       return { engines: out, order, configured: readEnv() != null };
     },
@@ -322,17 +344,7 @@ function createSettings(o) {
       // AI
       for (const e of apikeys.ENGINES) {
         const ver = await engines.installed(run, e).catch(() => null);
-        let login = null, who = '';
-        if (e === 'claude') {
-          const c = readJson(home + '/.claude.json'), cred = fs.existsSync(home + '/.claude/.credentials.json');
-          if (val('CLAUDE_CODE_OAUTH_TOKEN')) login = 'Token đăng nhập dài hạn ' + mask.secret(val('CLAUDE_CODE_OAUTH_TOKEN'));
-          else if (cred || (c && c.oauthAccount)) { login = 'Đã đăng nhập tài khoản Claude'; who = c && c.oauthAccount && c.oauthAccount.emailAddress ? mask.email(c.oauthAccount.emailAddress) : ''; }
-        } else if (e === 'codex') {
-          const a = readJson(home + '/.codex/auth.json');
-          if (a) { login = 'Đã đăng nhập tài khoản ChatGPT/OpenAI'; who = a.tokens && a.tokens.id_token ? (jwtEmail(a.tokens.id_token) ? mask.email(jwtEmail(a.tokens.id_token)) : '') : ''; }
-        } else if (e === 'gemini') {
-          if (fs.existsSync(engines.GEMINI_CREDS.replace(engines.HOME, home))) { const g = readJson(home + '/.gemini/google_accounts.json'); login = 'Đã đăng nhập tài khoản Google'; who = g && g.active ? mask.email(g.active) : ''; }
-        }
+        const lg = engineLogin(e, text); const login = lg.loggedIn ? 'Đã đăng nhập: ' + lg.how : null, who = lg.who;
         const rows = [['Phần mềm', ver || 'chưa cài'], ['Khóa API', keys[e] ? mask.secret(keys[e]) : 'chưa có'], ['Đăng nhập tài khoản', login ? login + (who ? ' (' + who + ')' : '') : 'chưa']];
         const have = !!(keys[e] || login);
         groups.push({ id: 'ai-' + e, icon: '🤖', title: apikeys.NAMES[e], status: have ? (ver ? 'ok' : 'warn') : 'none', rows: rows.concat([['Đang bật dùng', order.includes(e) ? 'có (theo thứ tự ưu tiên ' + (order.indexOf(e) + 1) + ')' : 'không']]), hint: have ? (ver ? '' : 'Có tài khoản/khóa nhưng chưa cài phần mềm: vào "AI và khóa API" để cài.') : 'Chưa có khóa hoặc đăng nhập: vào "AI và khóa API".' });

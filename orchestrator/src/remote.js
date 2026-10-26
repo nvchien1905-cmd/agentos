@@ -91,7 +91,11 @@ function createRemote(o) {
     const tot = os.totalmem(), free = os.freemem();
     L.push('RAM: dùng ' + Math.round((tot - free) / 1048576) + ' / ' + Math.round(tot / 1048576) + ' MB');
     const df = await run('df', ['-hP', '/', '/srv/onedrive', '/var/lib/agentos']);
-    if (df) L.push('Ổ đĩa:\n' + df.split('\n').slice(1).map((l) => { const c = l.split(/\s+/); return '  ' + c[5] + ': dùng ' + c[2] + '/' + c[1] + ' (' + c[4] + ')'; }).filter((v, i, a) => a.indexOf(v) === i).join('\n'));
+    if (df) {
+      const seen = new Set();                                              // cùng một ổ đĩa chỉ hiện một dòng (nhiều thư mục nằm chung một phân vùng)
+      const rows = df.split('\n').slice(1).map((l) => l.split(/\s+/)).filter((c) => { if (!c[0] || seen.has(c[0])) return false; seen.add(c[0]); return true; });
+      L.push('Ổ đĩa:\n' + rows.map((c) => '  ' + c[0].replace(/^\/dev\//, '') + ' (' + c[5] + '): dùng ' + c[2] + '/' + c[1] + ' (' + c[4] + ')').join('\n'));
+    }
     try {
       const temps = fs.readdirSync('/sys/class/thermal').filter((n) => /^thermal_zone/.test(n)).map((n) => Number(fs.readFileSync('/sys/class/thermal/' + n + '/temp', 'utf8')) / 1000).filter((x) => x > 0 && x < 150);
       if (temps.length) L.push('Nhiệt độ: ' + Math.max.apply(null, temps).toFixed(0) + '°C');

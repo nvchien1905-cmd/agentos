@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.4",
-  "file": "agentos-update-2026.10.26.4.tar.gz",
-  "size": 222019,
-  "sha256": "40a026fa35a5011993a525b4411d21681659a7603d237e30ccaa480e982c6362",
+  "version": "2026.10.26.7",
+  "file": "agentos-update-2026.10.26.7.tar.gz",
+  "size": 222941,
+  "sha256": "f0ff09363f9855d1e00714612c278fa03fbf9ab2f9dca244d89bff63829eff37",
   "date": "2026-10-26",
-  "notes": "Sửa RustDesk /tuxa (cài dịch vụ, chờ sẵn sàng) và OCR nút chữ trắng trên nền tối — tìm ra khi thử trên máy cài thật"
+  "notes": "Hộp cô lập AI chạy được (bỏ RestrictSUIDSGID, ProtectKernelTunables), chế độ toàn quyền theo Cài đặt, apply.sh khởi động lại Cài đặt/hướng dẫn, sửa /tuchan /maytinh"
 }

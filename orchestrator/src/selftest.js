@@ -109,7 +109,7 @@ function createSelfTest(o) {
     queue: () => safe('queue', 'Hàng đợi việc', async () => {
       if (!o.db) return R('queue', 'Hàng đợi việc', 'ok', '');
       const waiting = o.db.waitingCount ? o.db.waitingCount() : 0, queued = o.db.queuedCount();
-      return R('queue', 'Hàng đợi việc', waiting ? 'warn' : 'ok', queued + ' việc chờ' + (waiting ? ', ' + waiting + ' việc chờ AI hồi hạn mức' : '') + (o.currentJob ? ', đang chạy #' + o.currentJob() : ''));
+      return R('queue', 'Hàng đợi việc', waiting ? 'warn' : 'ok', queued + ' việc chờ' + (waiting ? ', ' + waiting + ' việc chờ AI hồi hạn mức' : '') + (o.currentJob && o.currentJob() ? ', đang chạy #' + o.currentJob() : ', không có việc đang chạy'));
     }),
   };
 

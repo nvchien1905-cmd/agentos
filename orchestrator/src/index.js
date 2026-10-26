@@ -73,6 +73,7 @@ async function main() {
   // Chủ đổi lúc đang chạy bằng /toanquyen và /baove (lưu trong cơ sở dữ liệu, ưu tiên hơn FULL_ACCESS trong .env).
   // Chỉ những ID trong ALLOWED_USER_IDS ra lệnh được; /baove đưa mọi thứ về chế độ có hỏi + hộp cô lập.
   const isFull = () => { const v = db.kvGet('fullAccess'); return v === null ? cfg.fullAccess : v === '1'; };
+  { const r = require('./mode').reconcile(db, cfg.fullAccess); if (r.changed) log('chế độ toàn quyền đổi theo cấu hình (Cài đặt/hướng dẫn): ' + (r.value === '1' ? 'BẬT' : 'TẮT')); }
   // Việc của người KHÔNG phải chủ máy (nhân viên, kế toán), từ webhook hoặc sự kiện tự kích hoạt (dữ liệu từ ngoài như tên khách) LUÔN chạy chế độ bảo vệ, kể cả khi máy đang ở chế độ toàn quyền.
   const jobFull = (job) => isFull() && cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event';
   // Hàng rào trong chế độ toàn quyền (mặc định BẬT): cấm đọc khóa/biến môi trường, hỏi chủ máy khi gửi dữ liệu ra ngoài hoặc dính tiền (policy.decideGuard)

@@ -40,9 +40,9 @@ ReadWritePaths=/var/lib/agentos
 # Thư mục OneDrive (AI đọc dữ liệu và lưu kết quả/ghi nhớ); dấu "-" = không lỗi nếu chưa có
 ReadWritePaths=-/srv/onedrive
 PrivateTmp=true
-ProtectKernelTunables=true
+# KHÔNG đặt ProtectKernelTunables=yes: đo trên máy cài thật, nó làm bubblewrap không gắn được /proc ("Can't mount proc on /proc: Operation not permitted").
 ProtectControlGroups=true
-RestrictSUIDSGID=true
+# KHÔNG đặt RestrictSUIDSGID=yes: đo trên máy cài thật, nó chặn bubblewrap ("bwrap: Can't open source /: Function not implemented") nên hộp cô lập AI không bao giờ bật được.
 LockPersonality=true
 
 [Install]

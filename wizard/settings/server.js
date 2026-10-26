@@ -17,6 +17,7 @@ const envfile = require('../lib/envfile');
 const fullaccess = require('../lib/fullaccess');
 const odauth = require('../lib/odauth');
 const synclist = require('../lib/synclist');
+const { createProjects } = require('../../orchestrator/src/projects');
 const mask = require('../lib/mask');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
@@ -89,6 +90,10 @@ function createSettings(o) {
   }, o || {});
   const run = o.run || defaultRun;
   const cloudBin = o.cloudBin || '/usr/local/sbin/agentos-cloud';
+  let projectsInst = null;
+  const projectsLib = () => projectsInst || (projectsInst = o.projects || createProjects({ baseDir: o.onedriveDir }));
+  // Trang Cài đặt chạy bằng root: dự án vừa tạo/sửa phải thuộc người dùng agentos để bộ điều phối ghi được
+  const fixProjectOwner = (p) => { try { chownTree(projectsLib().root()); } catch (e) { /* bỏ qua */ } };
   const spawn = o.spawn || cp.spawn;
   const pageFile = o.pageFile || path.join(__dirname, 'index.html');
   const allowedUids = o.allowedUids || (() => sudoUids());
@@ -543,6 +548,29 @@ function createSettings(o) {
     },
 
     // ----- Tailscale -----
+    // ---- Dự án (projects.js dùng chung với bộ điều phối; danh sách nằm ở tệp .du-an.json trong thư mục dự án)
+    async 'GET /api/projects'() {
+      const text = readEnv() || '';
+      const engines = envVal(text, 'ENGINE_ORDER').split(',').map((s) => s.trim()).filter(Boolean);
+      const list = projectsLib().list({ all: true }).map((p) => Object.assign({}, p, { usage: projectsLib().usage(p.id), instructions: projectsLib().rawInstructions(p.id) }));
+      return { list, engines, root: projectsLib().root() };
+    },
+    async 'POST /api/projects/create'(b) { const p = projectsLib().create(b.name, 'settings'); fixProjectOwner(p); return { project: p }; },
+    async 'POST /api/projects/update'(b) {
+      const P = projectsLib(), id = String(b.id || '');
+      if (!P.get(id)) throw new Error('Không có dự án này.');
+      if (b.name != null) P.rename(id, b.name);
+      if (b.engine !== undefined) P.setEngine(id, b.engine || null);
+      if (b.users !== undefined) P.setUsers(id, Array.isArray(b.users) ? b.users : String(b.users || '').split(/[\s,;]+/));
+      if (b.archived !== undefined) P.archive(id, !!b.archived);
+      fixProjectOwner(P.get(id)); return { project: P.get(id) };
+    },
+    async 'POST /api/projects/instructions'(b) { const P = projectsLib(); P.setInstructions(String(b.id || ''), b.text); fixProjectOwner(P.get(String(b.id))); return { ok: true }; },
+    async 'POST /api/projects/files'(b) { const P = projectsLib(), id = String(b.id || ''); if (!P.get(id)) throw new Error('Không có dự án này.'); return { docs: P.files(id, 'TAI-LIEU'), results: P.files(id, 'KET-QUA'), dir: P.dirOf(id) }; },
+    async 'POST /api/projects/delete'(b) {
+      if (b.confirm !== true) throw new Error('Cần xác nhận');
+      const r = projectsLib().remove(String(b.id || '')); try { chownTree(projectsLib().root()); } catch (e) { /* bỏ qua */ } return r;
+    },
     // ---- Kho tệp riêng (Nextcloud trong Docker, do tập lệnh agentos-cloud quản lý)
     async 'GET /api/cloud'() {
       const r = await run(cloudBin, ['status']);

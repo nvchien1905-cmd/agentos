@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -191,6 +191,34 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         });
         set(out);
       }).catch(function (e) { set('<h2>Tài khoản và thông tin đã lưu</h2><p class="bad">' + esc(e.message) + '</p>'); });
+    },
+    proj: function () {
+      api('GET', 'projects').then(function (r) {
+        var h = '<h2>Dự án</h2><div class="card"><p class="mute">Mỗi dự án có <b>thư mục tệp</b>, <b>chỉ dẫn</b>, <b>sổ tay</b> và <b>lịch sử</b> riêng. Dữ liệu do AgentOS giữ nên mọi AI (Claude, Codex, Gemini, DeepSeek) dùng chung: Claude hết hạn mức thì Codex làm tiếp đúng dự án đó. Trên Telegram: /duan, /duan &lt;tên&gt;, #tên-dự-án &lt;việc&gt;.</p>' +
+          '<div class="row"><input id="pn" placeholder="Tên dự án mới, ví dụ Kế toán 2026" style="flex:1;min-width:180px"><button class="b p" id="pc">Tạo dự án</button></div><p class="mute">Thư mục: ' + esc(r.root) + '</p></div>';
+        if (!r.list.length) h += '<div class="card"><p class="mute">Chưa có dự án nào.</p></div>';
+        r.list.forEach(function (p, i) {
+          var opts = '<option value="">Tự chọn</option>' + r.engines.map(function (e) { return '<option value="' + esc(e) + '"' + (p.engine === e ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join('');
+          h += '<div class="card"><h3>📁 ' + esc(p.name) + (p.archived ? ' <span class="mute">(đã cất)</span>' : '') + '</h3>' +
+            '<p class="mute">' + p.usage.docs + ' tài liệu · ' + p.usage.results + ' kết quả · mã <code>' + esc(p.id) + '</code> · ' + esc(p.dir) + '</p>' +
+            '<div class="row"><label class="mute">AI ưu tiên <select id="pe' + i + '">' + opts + '</select></label><label class="mute">Người được dùng (ID Telegram, cách nhau dấu phẩy) <input id="pu' + i + '" value="' + esc(p.users.join(', ')) + '"></label></div>' +
+            '<p class="mute" style="margin:8px 0 2px">Chỉ dẫn cho AI (mọi AI đều đọc; không ghi mật khẩu):</p><textarea id="pi' + i + '" rows="5" style="width:100%;box-sizing:border-box">' + esc(p.instructions) + '</textarea>' +
+            '<div class="row" style="margin-top:6px"><button class="b p" data-ps="' + i + '">Lưu</button><button class="b" data-pf="' + i + '">Xem tệp</button><button class="b" data-pa="' + i + '">' + (p.archived ? 'Hiện lại' : 'Cất đi') + '</button><button class="b" data-pd="' + i + '">Xóa</button></div><div id="pfl' + i + '"></div></div>';
+        });
+        set(h);
+        on('pc', function () { api('POST', 'projects/create', { name: document.getElementById('pn').value }).then(function () { toast('Đã tạo dự án'); render(); }).catch(fail); });
+        [].forEach.call(main.querySelectorAll('button[data-ps]'), function (b) { b.onclick = function () {
+          var i = b.getAttribute('data-ps'), p = r.list[i];
+          api('POST', 'projects/update', { id: p.id, engine: document.getElementById('pe' + i).value || null, users: document.getElementById('pu' + i).value })
+            .then(function () { return api('POST', 'projects/instructions', { id: p.id, text: document.getElementById('pi' + i).value }); }).then(function () { toast('Đã lưu'); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-pf]'), function (b) { b.onclick = function () {
+          var i = b.getAttribute('data-pf'), p = r.list[i];
+          api('POST', 'projects/files', { id: p.id }).then(function (f) {
+            var li = function (a) { return a.length ? a.map(function (x) { return '<li>' + (x.dir ? '📂 ' : '') + esc(x.name) + '</li>'; }).join('') : '<li class="mute">(trống)</li>'; };
+            document.getElementById('pfl' + i).innerHTML = '<p class="mute" style="margin:8px 0 2px">TAI-LIEU</p><ul>' + li(f.docs) + '</ul><p class="mute" style="margin:8px 0 2px">KET-QUA</p><ul>' + li(f.results) + '</ul><p class="mute">Mở cả thư mục bằng Kho tệp riêng hoặc OneDrive: ' + esc(f.dir) + '</p>'; }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-pa]'), function (b) { b.onclick = function () { var p = r.list[b.getAttribute('data-pa')]; api('POST', 'projects/update', { id: p.id, archived: !p.archived }).then(render).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-pd]'), function (b) { b.onclick = function () { var p = r.list[b.getAttribute('data-pd')]; if (ask('Xóa dự án "' + p.name + '"? Cả thư mục chuyển vào thùng rác, giữ 30 ngày rồi xóa hẳn.')) api('POST', 'projects/delete', { id: p.id, confirm: true }).then(function () { toast('Đã chuyển vào thùng rác'); render(); }).catch(fail); }; });
+      }).catch(function (e) { set('<h2>Dự án</h2><p class="bad">' + esc(e.message) + '</p>'); });
     },
     cloud: function () {
       api('GET', 'cloud').then(function (c) {

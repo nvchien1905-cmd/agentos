@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE INDEX IF NOT EXISTS audit_job ON audit(job_id, id);
 `;
 
+// 'chatId#dự-án' -> ['chatId', 'dự-án']; 'chatId' -> ['chatId', '']
+function splitScope(scope) { const s = String(scope); const i = s.indexOf('#'); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]; }
+
 function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
@@ -49,6 +52,8 @@ function openDb(file) {
   if (!cols.includes('run_after')) db.exec('ALTER TABLE jobs ADD COLUMN run_after INTEGER');
   if (!cols.includes('profile')) db.exec('ALTER TABLE jobs ADD COLUMN profile TEXT');
   // Làn chạy: 'main' (hàng đợi chính, tuần tự) | 'bg' (việc nền chạy song song, /nen) | 'event' | 'hook' (sự kiện tự kích hoạt; hook luôn chạy chế độ bảo vệ)
+  // Dự án: việc gắn với một dự án có ngữ cảnh, phiên và sổ tay riêng (xem projects.js); trống = trò chuyện chung
+  if (!cols.includes('project')) db.exec('ALTER TABLE jobs ADD COLUMN project TEXT');
   if (!cols.includes('lane')) db.exec("ALTER TABLE jobs ADD COLUMN lane TEXT DEFAULT 'main'");
   // Tìm lại ngữ cảnh cũ theo nội dung: FTS5 (không phân biệt dấu). Thiếu FTS5 thì bỏ qua (search trả mảng rỗng).
   let hasFts = false;
@@ -65,7 +70,7 @@ function openDb(file) {
   const nextByLanes = new Map();
 
   const q = {
-    add: db.prepare('INSERT INTO jobs (chat_id, prompt, engine_pref, profile, created_at, lane) VALUES (?, ?, ?, ?, ?, ?)'),
+    add: db.prepare('INSERT INTO jobs (chat_id, prompt, engine_pref, profile, created_at, lane, project) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     get: db.prepare('SELECT * FROM jobs WHERE id = ?'),
     next: db.prepare("SELECT * FROM jobs WHERE status = 'queued' OR (status = 'waiting' AND run_after <= ?) ORDER BY id LIMIT 1"),
     run: db.prepare("UPDATE jobs SET status = 'running', started_at = ? WHERE id = ? AND status IN ('queued','waiting')"),
@@ -73,8 +78,8 @@ function openDb(file) {
     wait: db.prepare("UPDATE jobs SET status = 'waiting', run_after = ? WHERE id = ?"),
     finish: db.prepare('UPDATE jobs SET status = ?, result = ?, error = ?, session_id = ?, cost_usd = ?, run_after = NULL, finished_at = ? WHERE id = ?'),
     recent: db.prepare('SELECT * FROM jobs WHERE chat_id = ? ORDER BY id DESC LIMIT ?'),
-    history: db.prepare("SELECT id, prompt, result FROM jobs WHERE chat_id = ? AND status = 'done' AND id > ? AND id < ? ORDER BY id DESC LIMIT ?"),
-    lastId: db.prepare('SELECT COALESCE(MAX(id), 0) AS n FROM jobs WHERE chat_id = ?'),
+    history: db.prepare("SELECT id, prompt, result FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ? AND status = 'done' AND id > ? AND id < ? ORDER BY id DESC LIMIT ?"),
+    lastId: db.prepare("SELECT COALESCE(MAX(id), 0) AS n FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ?"),
     countQueued: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','waiting')"),
     countWaiting: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'waiting'"),
     countAhead: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running','waiting') AND id < ? AND COALESCE(lane,'main') = COALESCE((SELECT lane FROM jobs WHERE id = ?),'main')"),
@@ -84,7 +89,7 @@ function openDb(file) {
     addAudit: db.prepare('INSERT INTO audit (ts, job_id, tool, cls, decision, source, summary) VALUES (?, ?, ?, ?, ?, ?, ?)'),
     recentAudit: db.prepare('SELECT * FROM audit ORDER BY id DESC LIMIT ?'),
     jobAudit: db.prepare('SELECT * FROM audit WHERE job_id = ? ORDER BY id'),
-    after: db.prepare("SELECT id, prompt, result FROM jobs WHERE chat_id = ? AND status = 'done' AND id > ? AND id < ? ORDER BY id LIMIT ?"),
+    after: db.prepare("SELECT id, prompt, result FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ? AND status = 'done' AND id > ? AND id < ? ORDER BY id LIMIT ?"),
     kvGet: db.prepare('SELECT v FROM kv WHERE k = ?'),
     kvSet: db.prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v'),
     kvDel: db.prepare('DELETE FROM kv WHERE k = ?'),
@@ -93,7 +98,9 @@ function openDb(file) {
 
   return {
     raw: db,
-    addJob(chatId, prompt, enginePref, profile, lane) { return Number(q.add.run(String(chatId), prompt, enginePref || null, profile || null, now(), lane || 'main').lastInsertRowid); },
+    addJob(chatId, prompt, enginePref, profile, lane, project) { return Number(q.add.run(String(chatId), prompt, enginePref || null, profile || null, now(), lane || 'main', project || null).lastInsertRowid); },
+    // "Phạm vi" của một việc = cuộc trò chuyện (chat) hoặc cuộc trò chuyện TRONG một dự án: 'chatId' hoặc 'chatId#mã-dự-án'. Mọi khóa phiên/ngữ cảnh/tóm tắt dùng phạm vi này.
+    scopeOf(job) { return String(job.chat_id) + (job.project ? '#' + job.project : ''); },
     getJob(id) { return q.get.get(id); },
     // Lấy việc tới lượt (đang xếp hàng, hoặc đang chờ hạn mức mà đã tới giờ) và đánh dấu đang chạy.
     claimNext(at, lanes) {
@@ -112,24 +119,25 @@ function openDb(file) {
     },
     recentJobs(chatId, n) { return q.recent.all(String(chatId), n || 5); },
     // Các việc 'done' gần nhất của chat với id trong (afterId, beforeId), cũ -> mới.
-    history(chatId, afterId, beforeId, n) { return q.history.all(String(chatId), afterId || 0, beforeId, n || 3).reverse(); },
+    history(scope, afterId, beforeId, n) { const [c, p] = splitScope(scope); return q.history.all(c, p, afterId || 0, beforeId, n || 3).reverse(); },
     // Các việc 'done' với id trong (afterId, beforeId), cũ -> mới, tối đa n (dùng để tóm tắt cuộn).
-    doneAfter(chatId, afterId, beforeId, n) { return q.after.all(String(chatId), afterId || 0, beforeId == null ? 9007199254740991 : beforeId, n || 40); },
+    doneAfter(scope, afterId, beforeId, n) { const [c, p] = splitScope(scope); return q.after.all(c, p, afterId || 0, beforeId == null ? 9007199254740991 : beforeId, n || 40); },
     // Tìm các việc cũ liên quan tới đoạn văn (FTS5, bỏ dấu). Chỉ trong chat này, id > minId, không nằm trong excludeIds.
-    search(chatId, text, limit, minId, excludeIds) {
+    search(scope, text, limit, minId, excludeIds) {
+      const [chatId, proj] = splitScope(scope);
       if (!hasFts) return [];
       const words = [...new Set(String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').split(/[^a-z0-9]+/).filter((w) => w.length >= 3))].slice(0, 8);
       if (!words.length) return [];
       const match = words.map((w) => '"' + w + '"').join(' OR ');
       try {
-        const rows = db.prepare("SELECT j.id AS id, j.prompt AS prompt, j.result AS result FROM jobs_fts f JOIN jobs j ON j.id = f.rowid WHERE jobs_fts MATCH ? AND j.chat_id = ? AND j.status = 'done' AND j.id > ? ORDER BY bm25(jobs_fts) LIMIT ?")
-          .all(match, String(chatId), minId || 0, (limit || 3) + (excludeIds ? excludeIds.length : 0) + 2);
+        const rows = db.prepare("SELECT j.id AS id, j.prompt AS prompt, j.result AS result FROM jobs_fts f JOIN jobs j ON j.id = f.rowid WHERE jobs_fts MATCH ? AND j.chat_id = ? AND COALESCE(j.project,'') = ? AND j.status = 'done' AND j.id > ? ORDER BY bm25(jobs_fts) LIMIT ?")
+          .all(match, chatId, proj, minId || 0, (limit || 3) + (excludeIds ? excludeIds.length : 0) + 2);
         const ex = new Set(excludeIds || []);
         return rows.filter((r) => !ex.has(r.id)).slice(0, limit || 3);
       } catch (e) { return []; }
     },
     ftsAvailable() { return hasFts; },
-    lastJobId(chatId) { return q.lastId.get(String(chatId)).n; },
+    lastJobId(scope) { const [c, p] = splitScope(scope); return q.lastId.get(c, p).n; },
     queuedCount() { return q.countQueued.get().n; },
     waitingCount() { return q.countWaiting.get().n; },
     aheadOf(id) { return q.countAhead.get(id, id).n; },

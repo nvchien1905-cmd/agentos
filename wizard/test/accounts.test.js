@@ -203,3 +203,25 @@ test('Kho tệp riêng: trạng thái, cài (công việc nền), xem/đổi m�
     assert.equal(job.status, 'done'); assert.ok(job.lines.some((l) => l === '$ ' + bin + ' install'), 'chạy đúng lệnh cài');
   } finally { await S.s.close(); }
 });
+
+test('Dự án (Cài đặt): tạo, đổi AI ưu tiên/người dùng, lưu chỉ dẫn, xem tệp, cất, xóa cần xác nhận; dữ liệu cùng tệp .du-an.json với bộ điều phối', async () => {
+  const dir = tmp(); const S = await boot({ onedriveDir: dir });
+  try {
+    assert.deepEqual((await S.call('GET', 'projects')).body.list, []);
+    assert.equal((await S.call('POST', 'projects/create', { name: 'x' })).status, 400);
+    const c = (await S.call('POST', 'projects/create', { name: 'Kế toán 2026' })).body.project; assert.equal(c.id, 'ke-toan-2026');
+    assert.equal((await S.call('POST', 'projects/create', { name: 'kế toán 2026' })).status, 400, 'trùng tên');
+    assert.equal((await S.call('POST', 'projects/update', { id: c.id, engine: 'codex', users: '111222333, 555666777' })).status, 200);
+    assert.equal((await S.call('POST', 'projects/instructions', { id: c.id, text: 'Luôn trả lời bằng bảng.' })).status, 200);
+    fs.writeFileSync(path.join(c.dir, 'TAI-LIEU', 'a.txt'), 'x');
+    const g = (await S.call('GET', 'projects')).body; const p = g.list[0];
+    assert.equal(p.engine, 'codex'); assert.deepEqual(p.users, ['111222333', '555666777']); assert.match(p.instructions, /Luôn trả lời bằng bảng/); assert.equal(p.usage.docs, 1); assert.ok(g.engines.includes('claude'));
+    assert.deepEqual((await S.call('POST', 'projects/files', { id: c.id })).body.docs.map((x) => x.name), ['a.txt']);
+    // cùng định dạng với bộ điều phối đọc
+    const { createProjects } = require('../../orchestrator/src/projects'); const P = createProjects({ baseDir: dir });
+    assert.equal(P.get('ke-toan-2026').engine, 'codex'); assert.equal(P.instructions('ke-toan-2026'), 'Luôn trả lời bằng bảng.');
+    await S.call('POST', 'projects/update', { id: c.id, archived: true }); assert.equal(P.list().length, 0); assert.equal(P.list({ all: true }).length, 1);
+    assert.equal((await S.call('POST', 'projects/delete', { id: c.id })).status, 400);
+    assert.equal((await S.call('POST', 'projects/delete', { id: c.id, confirm: true })).status, 200); assert.equal((await S.call('GET', 'projects')).body.list.length, 0);
+  } finally { await S.s.close(); }
+});

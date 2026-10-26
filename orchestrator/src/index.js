@@ -26,6 +26,7 @@ const { createVoice } = require('./voice');
 const apikeys = require('./apikeys');
 const { createUpdateWatcher } = require('./update');
 const { createMemory } = require('./memory');
+const { createProjects } = require('./projects');
 const { createSummarizer } = require('./summarizer');
 const router = require('./router');
 const { createMedia, imagePaths } = require('./media');
@@ -145,7 +146,11 @@ async function main() {
     ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
   });
-  const gate = createGate({ db, approvals, workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir] });
+  // DỰ ÁN: mỗi dự án có thư mục, chỉ dẫn, sổ tay, phiên riêng (projects.js). Dữ liệu do AgentOS giữ nên mọi AI dùng chung được.
+  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log });
+  const cwdOf = (job) => { if (!job.project) return cfg.workdir; const p = projects.get(job.project); if (!p) return cfg.workdir; try { projects.ensureDirs(p); } catch (e) { return cfg.workdir; } return p.dir; };
+  const projectEngine = (job) => { const p = projects.get(job.project); return p && p.engine ? p.engine : null; };
+  const gate = createGate({ db, approvals, workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 
@@ -193,7 +198,7 @@ async function main() {
         let gf = null;
         if (guardOn()) { try { gate.begin(job, { policy: {} }, { guard: true }); gf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được hàng rào cho việc #' + job.id + ': ' + e.message); } }
         const h = startClaude({
-          bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cfg.workdir, prompt, resumeId,
+          bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cwdOf(job), prompt, resumeId,
           skipPermissions: true, mcpConfig, settings: gf ? gf.settings : undefined, appendSystemPrompt: FULL_HINT, timeoutMs: cfg.jobTimeoutMs, env: Object.assign({}, kenv, gf ? gf.env : {}), onProgress,   // không wrap: không sandbox
         });
         const cleanup = () => { fs.rmSync(mcpConfig, { force: true }); if (gf) { gate.end(job.id); fs.rmSync(gf.settings, { force: true }); } };
@@ -204,7 +209,7 @@ async function main() {
       let files;
       try { files = gateFiles(job, p); } catch (e) { gate.end(job.id); throw e; }
       const h = startClaude({
-        bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cfg.workdir,
+        bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cwdOf(job),
         prompt, resumeId, allowedTools: tools.allowFor(p).join(','),
         mcpConfig: files.mcpConfig, settings: files.settings, env: Object.assign({}, kenv, files.env),
         permissionPromptTool: 'mcp__agentos_gate__approve',   // dự phòng: công cụ nào hook bỏ sót vẫn bị cổng từ chối
@@ -220,13 +225,13 @@ async function main() {
     codex: ({ job, prompt, resumeId, onProgress }) => {
       if (jobFull(job)) {
         return startCodex({
-          bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir, prompt: '[' + FULL_HINT + ']\n\n' + prompt, resumeId,
+          bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job), prompt: '[' + FULL_HINT + ']\n\n' + prompt, resumeId,
           sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), images: imagePaths(prompt), timeoutMs: cfg.jobTimeoutMs, env: keyEnv('codex'), onProgress,   // không sandbox
         });
       }
       const p = tools.profile(job.profile);
       return startCodex({
-        bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir,
+        bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job),
         prompt: '[' + [p.hint, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId, onProgress,
         sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), images: imagePaths(prompt), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('codex'),
       });
@@ -236,12 +241,12 @@ async function main() {
     gemini: ({ job, prompt, resumeId }) => {
       try { apikeys.setGeminiAuthType(process.env.HOME || require('os').homedir(), cfg.apiKeys.gemini ? 'gemini-api-key' : 'oauth-personal'); } catch (e) { log('không đặt được kiểu đăng nhập Gemini: ' + e.message); }
       if (jobFull(job)) {
-        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir, prompt: '[' + FULL_HINT + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, env: keyEnv('gemini') });
+        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job), prompt: '[' + FULL_HINT + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, env: keyEnv('gemini') });
       }
       const p = tools.profile(job.profile);
       const note = 'Bạn đang ở chế độ CHỈ ĐỌC (không ghi tệp, không chạy lệnh): nếu cần lưu kết quả, hãy đưa nội dung vào câu trả lời để chủ máy lưu.';
       return startGemini({
-        bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cfg.workdir,
+        bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job),
         prompt: '[' + [p.hint, STYLE_HINT, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + atImages(prompt), resumeId,
         mode: 'plan', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('gemini'),
       });
@@ -263,7 +268,7 @@ async function main() {
   };
   // Bộ nhớ dùng chung (ghi nhớ lâu dài + tóm tắt cuộn + việc gần nhất + tìm lại FTS5) và nén bằng mô hình rẻ (Gemini/DeepSeek qua khóa API, không có khóa thì cắt gọn)
   const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, log });
-  const memory = createMemory({ db, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
+  const memory = createMemory({ db, projects, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
   log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
   setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
   const bookTimer = setInterval(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 10 * 60 * 1000);
@@ -271,7 +276,7 @@ async function main() {
   const voice = createVoice({ tg, log, bin: process.env.STT_BIN || undefined });
   const media = createMedia({ tg, dir: inboxDir, log, voice });
   const worker = createWorker({
-    db, log, notify, engines, ui: live, answer, context: memory, router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
+    db, log, notify, engines, ui: live, answer, context: memory, projectEngine, router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     outbox: createOutbox(outDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
     retryDelaysMs: cfg.retryDelaysMs,
@@ -280,7 +285,7 @@ async function main() {
   });
   // Việc nền (/nen), sự kiện tự kích hoạt và webhook chạy SONG SONG với hàng đợi chính: 2 worker riêng cho các làn đó
   const bgWorkers = [1, 2].map(() => createWorker({
-    db, log, notify, engines, answer, context: memory, router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
+    db, log, notify, engines, answer, context: memory, projectEngine, router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)), retryDelaysMs: cfg.retryDelaysMs, lanes: ['bg', 'event', 'hook'],
     preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
   }));
@@ -335,13 +340,13 @@ async function main() {
   const roles = createRoles({ db, allowed: cfg.allowedUserIds, adminIds: cfg.adminUserIds, log });
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    voice, media, memory, quietAck: true, roles,
+    voice, media, memory, projects, quietAck: true, roles,
     send: async (chat, reply) => {                          // trả lời cho album (không đi qua vòng nhận tin)
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
       else if (reply) await tg.sendMessage(chat, reply);
     },
     quick: createQuick({ guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
-    remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
+    remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));

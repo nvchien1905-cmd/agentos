@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.11",
-  "file": "agentos-update-2026.10.26.11.tar.gz",
-  "size": 229001,
-  "sha256": "f99458f4c3b98cbc4f23d5aad6806dea41f6485cfc2a579ffca9226e92be3660",
+  "version": "2026.10.26.12",
+  "file": "agentos-update-2026.10.26.12.tar.gz",
+  "size": 239841,
+  "sha256": "0344f3e17c3ce558518ef514389ed32ae7cb9c6f6c54c4bd700b3aacd44ebbf5",
   "date": "2026-10-26",
-  "notes": "Kho tệp riêng (Nextcloud trên máy này, thay OneDrive/Drive) trong Cài đặt"
+  "notes": "Dự án: mỗi dự án có thư mục, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án"
 }

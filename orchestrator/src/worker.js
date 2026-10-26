@@ -19,7 +19,7 @@ function fmtTime(ms) {
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
 // `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine }) {
   lanes = lanes && lanes.length ? lanes : ['main'];
   const isMain = lanes.length === 1 && lanes[0] === 'main';
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
@@ -55,8 +55,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   function buildPrompt(job, hasSession, eng) {
     if (context) return context.pack(job, hasSession, eng);
     if (hasSession) return job.prompt;
-    const after = Number(db.kvGet('ctxfrom:' + job.chat_id)) || 0;
-    const hist = db.history(job.chat_id, after, job.id, 3);
+    const after = Number(db.kvGet('ctxfrom:' + db.scopeOf(job))) || 0;
+    const hist = db.history(db.scopeOf(job), after, job.id, 3);
     if (!hist.length) return job.prompt;
     const lines = hist.map((h) => 'Việc #' + h.id + ': ' + h.prompt.slice(0, 500) + '\nKết quả: ' + String(h.result || '').slice(0, 600));
     return '[Ngữ cảnh các việc trước trong cuộc trò chuyện này, chỉ để tham khảo]\n' + lines.join('\n\n') +
@@ -90,21 +90,23 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
 
   async function attempt(job, eng) {
     db.setEngine(job.id, eng);
-    let resumeId = isMain ? db.kvGet(sessionKey(job.chat_id, eng)) : null;           // việc nền/sự kiện: phiên riêng, không dính phiên trò chuyện chính
+    // Phiên của AI được nhớ THEO DỰ ÁN (phạm vi = cuộc trò chuyện + dự án): đổi dự án thì phiên khác, không lẫn ngữ cảnh
+    const scope = db.scopeOf(job);
+    let resumeId = isMain ? db.kvGet(sessionKey(scope, eng)) : null;           // việc nền/sự kiện: phiên riêng, không dính phiên trò chuyện chính
     let res;
     for (let i = 0; i < 2; i++) {
       res = await runWithRetry(job, eng, resumeId);
       // Phiên cũ không còn -> làm lại không kèm phiên (một lần).
       if (!res.ok && resumeId && !res.limit && !res.cancelled && !res.timedOut && RESUME_FAIL_RE.test(res.error || '')) {
-        db.kvDel(sessionKey(job.chat_id, eng));
+        db.kvDel(sessionKey(scope, eng));
         resumeId = null;
         continue;
       }
       break;
     }
-    if (res.ok && res.sessionId && isMain) db.kvSet(sessionKey(job.chat_id, eng), res.sessionId);
+    if (res.ok && res.sessionId && isMain) db.kvSet(sessionKey(scope, eng), res.sessionId);
     if (res.ok && context && isMain) {
-      try { const r = await context.afterJob(job, eng, res); if (r && r.rotate) { db.kvDel(sessionKey(job.chat_id, eng)); log('xoay phiên ' + name(eng) + ' của cuộc trò chuyện ' + job.chat_id + ' (ngữ cảnh đã được tóm tắt)'); } }
+      try { const r = await context.afterJob(job, eng, res); if (r && r.rotate) { db.kvDel(sessionKey(scope, eng)); log('xoay phiên ' + name(eng) + ' của cuộc trò chuyện ' + job.chat_id + ' (ngữ cảnh đã được tóm tắt)'); } }
       catch (e) { log('cập nhật ngữ cảnh lỗi: ' + e.message); }
     }
     return res;
@@ -117,6 +119,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     const permitted = engineFilter ? engineFilter(job) : null;
     let cands = (job.engine_pref ? [job.engine_pref] : order).filter((e) => engines[e] && (!permitted || permitted.includes(e)));
     if (router && cands.length) cands = router.order(job, cands);
+    // AI ưu tiên của dự án (nếu chủ máy đặt) đứng đầu; các AI còn lại vẫn là dự phòng nên hết hạn mức thì tự chuyển, dữ liệu dự án dùng chung
+    if (projectEngine && job.project && !job.engine_pref) { const pe = projectEngine(job); if (pe && cands.includes(pe)) cands = [pe].concat(cands.filter((e) => e !== pe)); }
     if (!cands.length) {
       // Ví dụ: /web chỉ chạy trên Claude (Codex không qua cổng duyệt) mà người dùng ép /codex, hoặc Claude không được bật.
       const why = 'Việc #' + job.id + ' không chạy được: bộ công cụ' + (job.profile ? ' /' + job.profile : '') + ' chỉ chạy trên ' +

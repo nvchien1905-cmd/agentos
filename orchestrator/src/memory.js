@@ -22,12 +22,23 @@ function createMemory(o) {
   const summarizer = o.summarizer || null;
   const cfg = Object.assign({ enabled: true, recentTurns: 4, rotateAfter: 25, summarizeAfter: 6, summaryMax: 2200, searchHits: 3, relevantChapters: 2 }, o.cfg || {});
   const book = createBook({ dir: o.dir, fallbackDir: o.fallbackDir, summarizer, now, log, cfg: o.bookCfg });
+  // DỰ ÁN: mỗi dự án có sổ tay riêng (thư mục SO-TAY trong dự án), cùng bộ máy với sổ tay chung. Sổ tay, chỉ dẫn và tóm tắt đều do AgentOS giữ và ghép vào câu lệnh
+  // cho BẤT KỲ AI nào đang chạy -> Claude hết hạn mức thì Codex làm tiếp đúng dự án đó với cùng dữ liệu.
+  const projects = o.projects || null;
+  const bookCache = new Map();
+  function bookFor(id) {
+    if (!id || !projects) return book;
+    let b = bookCache.get(id);
+    if (!b) { b = createBook({ rootDir: projects.bookDir(id), summarizer, now, log, cfg: o.bookCfg }); bookCache.set(id, b); }
+    return b;
+  }
+  const projOfScope = (scope) => { const s = String(scope), i = s.indexOf('#'); return i < 0 ? null : s.slice(i + 1); };
   const busy = new Set();
   try { const n = book.migrateLegacy(); if (n) log('đã chuyển ' + n + ' dòng ghi nhớ cũ sang sổ tay'); } catch (e) { log('chuyển ghi nhớ cũ lỗi: ' + e.message); }
 
   // ---------- sổ tay: các thao tác cho lệnh /nho /quen /trinho ----------
-  async function addFact(text) { return book.addNote(text); }
-  function forgetFact(query) { return book.forget(query); }
+  async function addFact(text, project) { return bookFor(project).addNote(text); }
+  function forgetFact(query, project) { return bookFor(project).forget(query); }
 
   // ---------- tóm tắt cuộn ----------
   const kSum = (c) => 'sum:' + c, kUpto = (c) => 'sumupto:' + c;
@@ -35,9 +46,32 @@ function createMemory(o) {
   const summaryOf = (c) => db.kvGet(kSum(c)) || '';
   const uptoOf = (c) => Math.max(Number(db.kvGet(kUpto(c))) || 0, ctxFrom(c));
 
+  // Phần ngữ cảnh RIÊNG của dự án: chỉ dẫn + sổ tay dự án (gửi khi AI chưa có phiên hoặc khi nội dung vừa đổi)
+  function projectParts(job, hasSession, eng) {
+    const parts = [], p = projects && projects.get(job.project);
+    if (!p) return parts;
+    const scope = db.scopeOf(job), pb = bookFor(p.id), instr = projects.instructions(p.id);
+    const ih = pb.hashOf(p.name + '|' + p.dir + '|' + instr), ik = 'projsent:' + scope + ':' + eng;
+    if (!hasSession || db.kvGet(ik) !== ih) {
+      parts.push('[DỰ ÁN "' + p.name + '"' + (hasSession ? ' (CẬP NHẬT)' : '') + ' — bạn đang làm việc TRONG dự án này. Thư mục dự án: ' + p.dir + ' (tài liệu đầu vào ở TAI-LIEU/, lưu kết quả vào KET-QUA/). ' +
+        'Tệp, sổ tay và ngữ cảnh dưới đây thuộc dự án này; không đọc hay sửa dự án khác.' + (instr ? '\nCHỈ DẪN CỦA DỰ ÁN (luôn tuân theo):\n' + instr : '') + ']');
+    }
+    db.kvSet(ik, ih);
+    const toc = pb.toc(), tocH = pb.tocHash(), sentKey = 'memsent:' + scope + ':' + eng + ':p';
+    if (toc && (!hasSession || db.kvGet(sentKey) !== tocH)) parts.push('[Sổ tay RIÊNG của dự án "' + p.name + '" — MỤC LỤC' + (hasSession ? ' (CẬP NHẬT)' : '') + '. Mỗi dòng: chương (số mục): tóm tắt → tệp chi tiết]\n' + toc);
+    db.kvSet(sentKey, tocH);
+    for (const ch of pb.relevant(job.prompt, cfg.relevantChapters)) {
+      const h = pb.hashOf(ch.entries.map((e) => e.id).join(',') + ch.summary), k = 'bookch:' + scope + ':' + eng + ':p:' + ch.slug;
+      if (!hasSession || db.kvGet(k) !== h) parts.push('[Sổ tay dự án — chi tiết chương liên quan]\n' + pb.chapterText(ch));
+      db.kvSet(k, h);
+    }
+    return parts;
+  }
+
   // Khối ngữ cảnh ghép vào đầu câu lệnh (chuỗi rỗng nếu không có gì để thêm).
   function contextBlock(job, hasSession, eng) {
-    const chat = job.chat_id, parts = [];
+    const chat = db.scopeOf(job), parts = [];
+    if (job.project) parts.push(...projectParts(job, hasSession, eng));
     // 1) Sổ tay: mục lục để "lướt" (gửi khi AI chưa có phiên, hoặc khi mục lục vừa đổi)
     const toc = book.toc();
     const tocH = book.tocHash(), sentKey = 'memsent:' + chat + ':' + eng;
@@ -80,11 +114,12 @@ function createMemory(o) {
   // Gọi sau mỗi việc xong. Trả { rotate:true } nếu nên bỏ phiên hiện tại của AI này (mở phiên mới, ngữ cảnh lấy từ tóm tắt + sổ tay).
   async function afterJob(job, eng, res) {
     if (!cfg.enabled || !res || !res.ok) return { rotate: false };
-    const tk = 'turns:' + job.chat_id + ':' + eng;
+    const scope = db.scopeOf(job);
+    const tk = 'turns:' + scope + ':' + eng;
     const turns = (Number(db.kvGet(tk)) || 0) + 1;
     let rotate = false;
     if (turns >= cfg.rotateAfter) { rotate = true; db.kvSet(tk, 0); } else db.kvSet(tk, turns);
-    summarizeSoon(job.chat_id, rotate);
+    summarizeSoon(scope, rotate);
     return { rotate };
   }
   function summarizeSoon(chat, force) {
@@ -102,7 +137,7 @@ function createMemory(o) {
     let text = null, via = 'cắt gọn', notes = [];
     if (summarizer && summarizer.available()) {
       const jobsText = eligible.map((j) => 'Việc #' + j.id + '\nChủ máy: ' + cut(j.prompt, 700) + '\nKết quả: ' + cut(j.result, 900)).join('\n---\n');
-      const user = 'TÓM TẮT CŨ:\n' + (prev || '(chưa có)') + '\n\n' + book.modelContext(jobsText) + '\n\nCÁC VIỆC MỚI CẦN NÉN:\n' + jobsText;
+      const user = 'TÓM TẮT CŨ:\n' + (prev || '(chưa có)') + '\n\n' + bookFor(projOfScope(chat)).modelContext(jobsText) + '\n\nCÁC VIỆC MỚI CẦN NÉN:\n' + jobsText;
       const r = await summarizer.run(SUMMARY_SYSTEM, user);
       if (r) {
         try {
@@ -116,9 +151,10 @@ function createMemory(o) {
     if (text.length > cfg.summaryMax * 1.5) text = text.slice(0, cfg.summaryMax * 1.5);
     db.kvSet(kSum(chat), text);
     db.kvSet(kUpto(chat), eligible[eligible.length - 1].id);
-    const ap = book.applyNotes(notes);
+    const bk = bookFor(projOfScope(chat));
+    const ap = bk.applyNotes(notes);
     let compacted = 0;
-    try { await book.ingestInbox(); compacted = await book.compactAll(); } catch (e) { log('dọn sổ tay lỗi: ' + e.message); }
+    try { await bk.ingestInbox(); compacted = await bk.compactAll(); } catch (e) { log('dọn sổ tay lỗi: ' + e.message); }
     log('tóm tắt cuộc trò chuyện ' + chat + ': nén ' + eligible.length + ' việc (' + via + ')' + (ap.added ? ', ghi ' + ap.added + ' mục vào sổ tay' + (ap.replaced ? ' (thay ' + ap.replaced + ' mục cũ)' : '') : '') + (compacted ? ', gộp gọn ' + compacted + ' chương' : ''));
     return { done: true, via, compressed: eligible.length, notesAdded: ap.added, replaced: ap.replaced, upTo: eligible[eligible.length - 1].id };
   }
@@ -128,6 +164,10 @@ function createMemory(o) {
     const r = await book.ingestInbox();
     const o2 = await book.organizeGeneral();
     const c = await book.compactAll();
+    if (projects) {
+      for (const p of projects.list({ all: true })) { try { const pb = bookFor(p.id); await pb.ingestInbox(); await pb.compactAll(); } catch (e) { log('dọn sổ tay dự án ' + p.id + ' lỗi: ' + e.message); } }
+      try { projects.purge(); } catch (e) { /* bỏ qua */ }
+    }
     return { moved: r.moved, organized: o2, compacted: c };
   }
 
@@ -138,7 +178,7 @@ function createMemory(o) {
       summary: summaryOf(chat), summaryUpTo: uptoOf(chat), cfg, summarizer: summarizer ? summarizer.provider() : null };
   }
 
-  return { pack, afterJob, addFact, forgetFact, resetChat, info, maybeSummarize, summarizeSoon, housekeeping, book, cfg };
+  return { pack, afterJob, addFact, forgetFact, resetChat, info, maybeSummarize, summarizeSoon, housekeeping, book, bookFor, cfg };
 }
 
 module.exports = { createMemory, SECRET_RE };

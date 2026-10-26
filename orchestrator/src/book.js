@@ -33,7 +33,8 @@ function createBook(o) {
   const now = o.now || Date.now;
   const baseDir = o.dir || '';
   const cfg = Object.assign({ tocMax: 2600, chapterMax: 2600, compactAt: 4200, relevant: 2 }, o.cfg || {});
-  const root = () => (baseDir && fs.existsSync(baseDir) ? path.join(baseDir, 'AgentOS', 'SO-TAY') : (o.fallbackDir || path.join(process.cwd(), 'so-tay')));
+  // rootDir: đặt thẳng thư mục sổ tay (dùng cho sổ tay riêng của từng dự án); không đặt thì theo baseDir/AgentOS/SO-TAY như cũ
+  const root = () => o.rootDir ? o.rootDir : (baseDir && fs.existsSync(baseDir) ? path.join(baseDir, 'AgentOS', 'SO-TAY') : (o.fallbackDir || path.join(process.cwd(), 'so-tay')));
   const fileOf = (slug) => path.join(root(), 'chuong-' + slug + '.md');
   const inboxFile = () => path.join(path.dirname(root()), 'GHI-NHO.md');          // hộp thư vào (tương thích lệnh cũ): dòng "- ..." ở đây được xếp vào chương
 

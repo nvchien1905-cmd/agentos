@@ -12,7 +12,7 @@ const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -107,18 +107,27 @@ function createQuick(o) {
         case 'nho': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           if (!arg) return 'Cách dùng: /nho <điều cần nhớ lâu dài>, ví dụ /nho Cửa hàng nghỉ chủ nhật. Bot xếp vào đúng CHƯƠNG của sổ tay (cùng chủ đề gom lại; thông tin mới thay mục cũ). Mọi AI dùng chung. /trinho xem, /quen <từ khóa> xóa.';
-          const r = await mem.addFact(arg);
+          const pj = projects && ctx ? projects.active(ctx.chatId) : null;          // đang ở dự án: ghi vào SỔ TAY CỦA DỰ ÁN
+          const r = await mem.addFact(arg, pj && pj.id);
           if (!r.ok) return '⚠️ ' + r.error;
           return r.duplicate ? 'Điều này đã có trong sổ tay (chương "' + r.chapter + '").' : '🧠 Đã ghi vào chương "' + r.chapter + '"' + (r.replaced ? ' (thay ' + r.replaced + ' mục cũ đã lỗi thời)' : '') + '. Mọi AI sẽ biết điều này (/trinho để xem, /quen để xóa).';
         }
         case 'quen': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           if (!arg) return 'Cách dùng: /quen <từ khóa>: gỡ các mục trong sổ tay có chứa từ khóa đó (mục bị gỡ lưu ở thư mục .lichsu, có thể xem lại).';
-          const r = mem.forgetFact(arg);
+          const pj = projects && ctx ? projects.active(ctx.chatId) : null;
+          const r = mem.forgetFact(arg, pj && pj.id);
           return r.removed ? '🗑️ Đã gỡ ' + r.removed + ' mục khỏi sổ tay:\n' + r.lines.map((l) => l.slice(0, 150)).join('\n') : 'Không có mục nào chứa "' + arg + '".';
         }
         case 'trinho': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
+          const pj = projects && ctx ? projects.active(ctx.chatId) : null;
+          if (pj) {                                                          // đang ở dự án: xem sổ tay của dự án
+            const pb = mem.bookFor(pj.id);
+            if (arg) { const hit = pb.relevant(arg, 2, 1, 1); return hit.length ? hit.map((c) => pb.chapterText(c, 1800)).join('\n\n') : 'Không có chương nào khớp "' + arg + '" trong sổ tay dự án.'; }
+            const toc = pb.toc();
+            return '📖 Sổ tay của dự án "' + pj.name + '" (' + pb.list().length + ' chương)\n' + (toc ? toc.replace(/ → \S+$/gm, '') : '(chưa có gì; /nho <điều cần nhớ> sẽ ghi vào sổ tay của dự án này)') + '\n\nThoát dự án: /duan thoat để xem sổ tay chung.';
+          }
           const i = mem.info(ctx && ctx.chatId);
           if (arg) {                                                         // /trinho <chủ đề>: xem CHI TIẾT chương liên quan
             const hit = mem.book.relevant(arg, 2, 1, 1);

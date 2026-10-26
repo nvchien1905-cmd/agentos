@@ -1,11 +1,13 @@
 'use strict';
 const { fmtTime } = require('./worker');
+const { createProjectCommands } = require('./projectCmd');
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
     '/claude, /codex, /gemini hoặc /deepseekapi <việc> - ép dùng một AI (khóa API hoặc tài khoản) (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
     profiles.map((p) => '/' + p.name + ' <việc> - ' + (p.description || 'dùng bộ công cụ ' + p.name) + '\n').join('') +
     '/viec - xem 5 việc gần nhất\n' +
+    '📁 /duan - DỰ ÁN: mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án (Claude hết hạn mức thì Codex làm tiếp). /duan moi <tên> · /duan <tên> · /duan thoat · #<tên-dự-án> <việc>\n' +
     '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
     '/manhinh - chụp màn hình máy gửi về đây · /cuaso - xem các cửa sổ đang mở\n' +
     '🕹 ĐIỀU KHIỂN TỪ XA: /maytinh - tình trạng máy (CPU, RAM, ổ đĩa, nhiệt độ, dịch vụ) · /lenh <lệnh> - chạy lệnh dòng lệnh (có sudo, cần chế độ toàn quyền) · /lay <tệp> - lấy tệp từ máy gửi về đây\n' +
@@ -47,16 +49,19 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
 const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
   isAdmin = isAdmin || (() => true);
   const profileByName = new Map(profiles.map((p) => [p.name, p]));
   const help = helpText(profiles);
+  const pcmd = projects ? createProjectCommands({ db, projects, isAdmin, memory, engines: () => worker.engineNames() }) : null;
 
-  function submit(chatId, prompt, pref, profile) {
-    const id = db.addJob(chatId, prompt, pref, profile);
+  // project: undefined = dự án đang chọn của cuộc trò chuyện; null = chế độ chung; chuỗi = mã dự án (cú pháp #tên)
+  function submit(chatId, prompt, pref, profile, project) {
+    const cur = pcmd ? pcmd.current(chatId) : null;
+    const id = db.addJob(chatId, prompt, pref, profile, 'main', project === undefined ? (cur ? cur.id : null) : project);
     const ahead = db.aheadOf(id);
     setImmediate(() => worker.wake());
     if (quietAck) return ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó). Gõ /huy để hủy.' : null;        // việc làm ngay: bot hiện "đang gõ" + tin trạng thái thay cho tin báo nhận
@@ -79,7 +84,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     // Ảnh, video, album, tài liệu: tải về, trích khung hình + lời nói (video), gắn đường dẫn vào câu lệnh rồi xử lý như tin chữ (chú thích = yêu cầu).
     if (media && media.listAttachments(msg).length) {
       const finish = async (msgs, last) => {
-        const p = await media.prepare(msgs);
+        const p0 = await media.prepare(msgs);
+        const p = pcmd ? pcmd.adoptFiles(chatId, uid, p0) : p0;
         const cap = msgs.map((m) => String(m.caption || m.text || '').trim()).filter(Boolean)[0] || '';
         if (!p.block) return p.errors.length ? '⚠️ ' + p.errors.join('\n') : 'Không đọc được tệp đính kèm.';
         const ask = cap || 'Anh gửi tệp đính kèm. Hãy xem và mô tả ngắn gọn những gì thấy, rồi hỏi lại nếu chưa rõ anh cần làm gì.';
@@ -122,6 +128,16 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     const pending = quick && quick.match && quick.match(text);
     if (pending) return isAdmin(uid) ? quick.run(pending.name, pending.arg) : 'Lệnh /' + pending.name + ' chỉ dành cho quản trị viên.';
 
+    // "#tên-dự-án câu hỏi": hỏi một lần trong dự án đó (không đổi dự án đang chọn)
+    if (projects) {
+      const t = projects.parseTag(text);
+      if (t) {
+        if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo, chưa nhắn việc cho AI được.';
+        if (!projects.canUse(uid, t.project, isAdmin)) return 'Bạn chưa được gán dự án "' + t.project.name + '". Nhờ chủ máy gõ /duan giao ' + uid + '.';
+        return submit(chatId, t.text, null, null, t.project.id);
+      }
+    }
+
     const cmd = text.match(/^\/(\w+)(@\w+)?\s*([\s\S]*)$/);
     if (cmd) {
       const name = cmd[1].toLowerCase();
@@ -145,11 +161,15 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
         case 'start': case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
-        case 'moi':
-          db.kvDelPrefix('session:' + chatId + ':');
-          db.kvSet('ctxfrom:' + chatId, db.lastJobId(chatId));
-          if (memory) memory.resetChat(chatId);                  // xóa tóm tắt cuộn; ghi nhớ lâu dài (GHI-NHO.md) vẫn giữ, xóa bằng /quen
-          return 'Đã bắt đầu cuộc trò chuyện mới.';
+        case 'duan': case 'project': return pcmd ? pcmd.run(chatId, uid, cmd[3]) : 'Máy này chưa hỗ trợ dự án.';
+        case 'moi': {
+          const cur = pcmd ? pcmd.current(chatId, uid) : null;
+          const scope = chatId + (cur ? '#' + cur.id : '');            // /moi trong dự án chỉ làm mới cuộc trò chuyện CỦA dự án đó
+          db.kvDelPrefix('session:' + scope + ':');
+          db.kvSet('ctxfrom:' + scope, db.lastJobId(scope));
+          if (memory) memory.resetChat(scope);                  // xóa tóm tắt cuộn; ghi nhớ lâu dài (GHI-NHO.md) vẫn giữ, xóa bằng /quen
+          return cur ? 'Đã bắt đầu cuộc trò chuyện mới trong dự án "' + cur.name + '" (chỉ dẫn và sổ tay dự án vẫn giữ).' : 'Đã bắt đầu cuộc trò chuyện mới.';
+        }
         case 'trangthai': {
           const cur = worker.currentJobId();
           const eng = worker.engineStatus().map((e) => e.label + ': ' + (e.until ? 'hết hạn mức, hồi khoảng ' + fmtTime(e.until) : 'sẵn sàng')).join('\n');
@@ -186,7 +206,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           if (roles && !roles.canAsk(uid)) return 'Vai của bạn chỉ xem được báo cáo.';
           const prompt = String(cmd[3] || '').trim();
           if (!prompt) return 'Cách dùng: /nen <việc>. Việc nền chạy song song với việc đang làm (không chờ hàng đợi), xong thì báo riêng. Không dùng chung phiên trò chuyện, nên nhờ rõ ràng đủ ý.';
-          const id = db.addJob(chatId, prompt, null, null, 'bg');
+          const curP = pcmd ? pcmd.current(chatId, uid) : null;
+          const id = db.addJob(chatId, prompt, null, null, 'bg', curP ? curP.id : null);
           setImmediate(() => worker.wake());
           return '🧵 Đã giao việc nền #' + id + ' (chạy song song, xong em báo). Gõ /huy để hủy.';
         }

@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.10",
-  "file": "agentos-update-2026.10.26.10.tar.gz",
-  "size": 225388,
-  "sha256": "3b4c8d40a8b10900d73bdeeeff7ecb61d737878ac85f66a0056c85b1598db3c0",
+  "version": "2026.10.26.11",
+  "file": "agentos-update-2026.10.26.11.tar.gz",
+  "size": 229001,
+  "sha256": "f99458f4c3b98cbc4f23d5aad6806dea41f6485cfc2a579ffca9226e92be3660",
   "date": "2026-10-26",
-  "notes": "OneDrive chỉ đồng bộ thư mục AgentOS (có thể thêm thư mục), dừng cả .path khi đồng bộ lại, chu kỳ đồng bộ 300 giây"
+  "notes": "Kho tệp riêng (Nextcloud trên máy này, thay OneDrive/Drive) trong Cài đặt"
 }

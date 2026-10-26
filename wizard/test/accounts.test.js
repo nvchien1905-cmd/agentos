@@ -182,3 +182,24 @@ test('OneDrive đồng bộ chọn lọc: kết nối mới mặc định chỉ 
     assert.equal(fs.existsSync(path.join(S.conf, 'sync_list')), false, 'chọn tất cả thì bỏ sync_list');
   } finally { await S.s.close(); }
 });
+
+test('Kho tệp riêng: trạng thái, cài (công việc nền), xem/đổi mật khẩu cần đúng thao tác, gỡ cần xác nhận; chưa cài thì không lộ mật khẩu', async () => {
+  const dir = tmp(); const bin = path.join(dir, 'agentos-cloud'); const log = path.join(dir, 'calls.txt');
+  fs.writeFileSync(bin, '#!/bin/sh\necho "$1" >> ' + log + '\ncase "$1" in status) cat ' + path.join(dir, 'status.txt') + ' ;; password) grep -q installed=yes ' + path.join(dir, 'status.txt') + ' && printf "user=chu\\npassword=MAT-KHAU-THU\\n" || exit 1 ;; reset-password) printf "user=chu\\npassword=MOI-123\\n" ;; *) echo ok ;; esac\n', { mode: 0o755 });
+  const S = await boot({ cloudBin: bin, run: async (cmd, args) => { if (cmd === bin) return new Promise((res) => require('child_process').execFile(cmd, args, (e, out, err) => res({ code: e ? (e.code || 1) : 0, out, err }))); return { code: 0, out: 'active\n', err: '' }; } });
+  try {
+    fs.writeFileSync(path.join(dir, 'status.txt'), 'installed=no\n');
+    assert.deepEqual((await S.call('GET', 'cloud')).body.installed, false);
+    assert.equal((await S.call('POST', 'cloud/password')).status, 400, 'chưa cài thì không có mật khẩu');
+    fs.writeFileSync(path.join(dir, 'status.txt'), 'installed=yes\nrunning=yes\nuser=chu\nversion=34.0.5\nurl=http://192.168.1.5:8280\nurl=http://100.64.0.2:8280\nshare=/srv/onedrive\n');
+    const st = (await S.call('GET', 'cloud')).body;
+    assert.equal(st.installed, true); assert.equal(st.running, true); assert.equal(st.user, 'chu'); assert.deepEqual(st.urls, ['http://192.168.1.5:8280', 'http://100.64.0.2:8280']);
+    assert.ok(!JSON.stringify(st).includes('MAT-KHAU'), 'trạng thái không chứa mật khẩu');
+    assert.equal((await S.call('POST', 'cloud/password')).body.password, 'MAT-KHAU-THU');
+    assert.equal((await S.call('POST', 'cloud/reset-password', {})).status, 400); assert.equal((await S.call('POST', 'cloud/reset-password', { confirm: true })).body.password, 'MOI-123');
+    assert.equal((await S.call('POST', 'cloud/remove', {})).status, 400);
+    const j = (await S.call('POST', 'cloud/install')).body.job; assert.ok(j);
+    const end = Date.now() + 5000; let job; while (Date.now() < end) { job = (await S.call('GET', 'jobs/' + j + '?from=0')).body; if (job.status !== 'running') break; await new Promise((r) => setTimeout(r, 30)); }
+    assert.equal(job.status, 'done'); assert.ok(job.lines.some((l) => l === '$ ' + bin + ' install'), 'chạy đúng lệnh cài');
+  } finally { await S.s.close(); }
+});

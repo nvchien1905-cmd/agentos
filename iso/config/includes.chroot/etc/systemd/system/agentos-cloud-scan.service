@@ -1,0 +1,7 @@
+[Unit]
+Description=AgentOS - quet thay doi thu muc chung cho kho tep rieng (Nextcloud)
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentos-cloud scan

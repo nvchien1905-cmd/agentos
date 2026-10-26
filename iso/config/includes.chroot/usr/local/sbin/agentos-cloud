@@ -1,0 +1,106 @@
+#!/bin/bash
+# Kho tệp riêng của AgentOS (thay OneDrive/Google Drive): Nextcloud chạy trong một container Docker ngay trên máy này.
+# Thư mục AI đọc/ghi (/srv/onedrive) được gắn vào Nextcloud làm "Kho AgentOS": tệp AI ghi ra hiện trên web/điện thoại, tệp tải lên từ web/điện thoại AI đọc được ngay.
+# Dùng:  agentos-cloud install | status | password | reset-password | scan | remove [--purge]
+# Chạy bằng root. Mật khẩu quản trị tạo ngẫu nhiên, lưu ở /etc/agentos/cloud.json (0600).
+set -u
+NAME=agentos-cloud
+PORT=8280
+DATA=/srv/nextcloud          # dữ liệu hệ thống của Nextcloud (cơ sở dữ liệu, ứng dụng)
+SHARE=${CLOUD_SHARE_DIR:-/srv/onedrive}   # thư mục chung với AI
+CONF=/etc/agentos/cloud.json
+IMAGE=nextcloud:stable
+USER_NAME=chu
+
+die() { echo "LỖI: $*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || die "cần chạy bằng root"
+occ() { docker exec -u www-data "$NAME" php occ "$@"; }
+rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "${1:-20}"; }
+conf_get() { [ -f "$CONF" ] && sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$CONF" | head -1; }
+conf_write() { umask 077; mkdir -p /etc/agentos; printf '{\n  "user": "%s",\n  "password": "%s",\n  "port": "%s"\n}\n' "$USER_NAME" "$1" "$PORT" > "$CONF"; chmod 600 "$CONF"; }
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = true ]; }
+
+# Địa chỉ truy cập: trong nhà (IP máy) và từ xa (Tailscale nếu đã kết nối)
+addrs() {
+  hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep -v '^172\.17\.' | grep -v '^100\.'
+  command -v tailscale >/dev/null && tailscale ip -4 2>/dev/null | head -1
+}
+trusted_domains() {
+  local i=0 d
+  for d in localhost 127.0.0.1 "$(hostname)" "$(hostname).local" $(addrs) $(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1); do
+    [ -n "$d" ] || continue
+    occ config:system:set trusted_domains "$i" --value="$d" >/dev/null 2>&1 && i=$((i+1))
+  done
+}
+
+cmd_install() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "== Cài Docker"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null 2>&1 || { apt-get update -qq >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io || die "không cài được Docker"; }
+  fi
+  systemctl enable --now docker >/dev/null 2>&1 || die "Docker không chạy"
+  command -v setfacl >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq acl >/dev/null 2>&1
+
+  local pass; pass=$(conf_get password)
+  if [ -z "$pass" ] || [ ! -f "$DATA/config/config.php" ]; then pass=$(rand 20); conf_write "$pass"; fi
+  mkdir -p "$DATA" "$SHARE/AgentOS"
+  # Nextcloud (www-data, uid 33) và AI (agentos) cùng được đọc/ghi thư mục chung, kể cả tệp mới tạo về sau
+  id agentos >/dev/null 2>&1 && { chown agentos:agentos "$SHARE" 2>/dev/null; setfacl -R -m u:33:rwx,u:agentos:rwx "$SHARE"; setfacl -R -d -m u:33:rwx,u:agentos:rwx "$SHARE"; } || { setfacl -R -m u:33:rwx "$SHARE"; setfacl -R -d -m u:33:rwx "$SHARE"; }
+  chown -R 33:33 "$DATA"
+
+  echo "== Tải và chạy Nextcloud (lần đầu vài phút)"
+  docker pull -q "$IMAGE" >/dev/null || die "không tải được Nextcloud (kiểm tra mạng)"
+  if ! docker inspect "$NAME" >/dev/null 2>&1; then
+    docker run -d --name "$NAME" --restart unless-stopped -p "$PORT:80" \
+      -e SQLITE_DATABASE=nextcloud -e NEXTCLOUD_ADMIN_USER="$USER_NAME" -e NEXTCLOUD_ADMIN_PASSWORD="$pass" \
+      -e NEXTCLOUD_TRUSTED_DOMAINS="localhost 127.0.0.1" \
+      -v "$DATA:/var/www/html" -v "$SHARE:$SHARE" "$IMAGE" >/dev/null || die "không chạy được container"
+  else
+    running || docker start "$NAME" >/dev/null
+  fi
+  local i; for i in $(seq 1 90); do curl -s "http://127.0.0.1:$PORT/status.php" | grep -q '"installed":true' && break; sleep 4; done
+  curl -s "http://127.0.0.1:$PORT/status.php" | grep -q '"installed":true' || die "Nextcloud chưa khởi động xong, thử lại sau ít phút"
+
+  echo "== Gắn thư mục chung với AI"
+  occ app:enable files_external >/dev/null 2>&1
+  if ! occ files_external:list 2>/dev/null | grep -q "Kho AgentOS"; then
+    local id; id=$(occ files_external:create "Kho AgentOS" local null::null -c datadir="$SHARE" 2>/dev/null | sed -n 's/.*id \([0-9]*\).*/\1/p')
+    [ -n "$id" ] && occ files_external:option "$id" filesystem_check_changes 1 >/dev/null 2>&1
+  fi
+  trusted_domains
+  # cho phép tải tệp lớn
+  occ config:system:set overwrite.cli.url --value="http://localhost:$PORT" >/dev/null 2>&1
+
+  echo "== Bật quét thay đổi định kỳ (tệp AI ghi ra hiện trên web trong ~2 phút)"
+  systemctl daemon-reload; systemctl enable --now agentos-cloud-scan.timer >/dev/null 2>&1
+  occ files:scan --all -q >/dev/null 2>&1
+  echo "✓ Xong"; cmd_status
+}
+
+cmd_scan() { running || exit 0; occ files:scan --all -q >/dev/null 2>&1; }
+
+cmd_status() {
+  if ! docker inspect "$NAME" >/dev/null 2>&1; then echo "installed=no"; return 0; fi
+  echo "installed=yes"; running && echo "running=yes" || echo "running=no"
+  echo "user=$(conf_get user)"
+  local v; v=$(curl -s "http://127.0.0.1:$PORT/status.php" | sed -n 's/.*"versionstring":"\([^"]*\)".*/\1/p'); echo "version=$v"
+  local a; for a in $(addrs); do echo "url=http://$a:$PORT"; done
+  echo "share=$SHARE"
+}
+cmd_password() { [ -f "$CONF" ] || die "chưa cài kho tệp"; echo "user=$(conf_get user)"; echo "password=$(conf_get password)"; }
+cmd_reset() {
+  running || die "kho tệp chưa chạy"
+  local p; p=$(rand 20)
+  docker exec -u www-data -e OC_PASS="$p" "$NAME" php occ user:resetpassword --password-from-env "$USER_NAME" >/dev/null || die "không đổi được mật khẩu"
+  conf_write "$p"; echo "✓ Đã đổi mật khẩu"; cmd_password
+}
+cmd_remove() {
+  systemctl disable --now agentos-cloud-scan.timer >/dev/null 2>&1
+  docker rm -f "$NAME" >/dev/null 2>&1
+  if [ "${1:-}" = "--purge" ]; then rm -rf "$DATA" "$CONF"; echo "✓ Đã gỡ và xóa dữ liệu hệ thống của Nextcloud (tệp trong $SHARE được giữ nguyên)"; else echo "✓ Đã gỡ container (giữ $DATA và mật khẩu để cài lại)"; fi
+}
+
+case "${1:-}" in
+  install) cmd_install ;; status) cmd_status ;; password) cmd_password ;; reset-password) cmd_reset ;; scan) cmd_scan ;; remove) shift; cmd_remove "$@" ;;
+  *) echo "Cách dùng: agentos-cloud install|status|password|reset-password|scan|remove [--purge]"; exit 2 ;;
+esac

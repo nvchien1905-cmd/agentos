@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - quet kho tep rieng moi 2 phut
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

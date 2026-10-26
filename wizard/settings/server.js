@@ -88,6 +88,7 @@ function createSettings(o) {
     onedriveConf: '/var/lib/agentos/.config/onedrive', onedriveDir: '/srv/onedrive', fullAccessPaths: undefined,
   }, o || {});
   const run = o.run || defaultRun;
+  const cloudBin = o.cloudBin || '/usr/local/sbin/agentos-cloud';
   const spawn = o.spawn || cp.spawn;
   const pageFile = o.pageFile || path.join(__dirname, 'index.html');
   const allowedUids = o.allowedUids || (() => sudoUids());
@@ -542,6 +543,32 @@ function createSettings(o) {
     },
 
     // ----- Tailscale -----
+    // ---- Kho tệp riêng (Nextcloud trong Docker, do tập lệnh agentos-cloud quản lý)
+    async 'GET /api/cloud'() {
+      const r = await run(cloudBin, ['status']);
+      const kv = {}; const urls = [];
+      for (const l of String(r.out || '').split(/\r?\n/)) { const m = l.match(/^(\w+)=(.*)$/); if (!m) continue; if (m[1] === 'url') urls.push(m[2].trim()); else kv[m[1]] = m[2].trim(); }
+      return { installed: kv.installed === 'yes', running: kv.running === 'yes', user: kv.user || '', version: kv.version || '', urls, share: kv.share || o.onedriveDir };
+    },
+    async 'POST /api/cloud/install'() {
+      if (busy()) throw new Error('Đang có một công việc khác chạy, đợi xong rồi thử lại.');
+      return { job: startJob('Cài kho tệp riêng (Nextcloud)', [[cloudBin, ['install']]]) };
+    },
+    async 'POST /api/cloud/password'() {
+      const r = await run(cloudBin, ['password']); if (r.code !== 0) throw new Error('Chưa cài kho tệp riêng.');
+      const m = String(r.out).match(/^password=(.*)$/m), u = String(r.out).match(/^user=(.*)$/m);
+      return { user: u ? u[1].trim() : '', password: m ? m[1].trim() : '' };
+    },
+    async 'POST /api/cloud/reset-password'(b) {
+      if (b.confirm !== true) throw new Error('Cần xác nhận');
+      const r = await run(cloudBin, ['reset-password']); if (r.code !== 0) throw new Error('Không đổi được mật khẩu: ' + String(r.err || r.out).slice(-200));
+      const m = String(r.out).match(/^password=(.*)$/m); return { password: m ? m[1].trim() : '' };
+    },
+    async 'POST /api/cloud/remove'(b) {
+      if (b.confirm !== true) throw new Error('Cần xác nhận');
+      if (busy()) throw new Error('Đang có một công việc khác chạy, đợi xong rồi thử lại.');
+      return { job: startJob('Gỡ kho tệp riêng', [[cloudBin, ['remove']]]) };
+    },
     async 'GET /api/tailscale'() { const i = await ts.info(); return i; },
     async 'POST /api/tailscale/connect'() { const r = await ts.connect(); if (!r.ok) throw new Error(r.error); return r; },
     async 'POST /api/tailscale/disconnect'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = await ts.disconnect(); if (r.code !== 0) throw new Error((r.err || r.out).trim().slice(0, 150)); return { ok: true }; },

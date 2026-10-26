@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -191,6 +191,23 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         });
         set(out);
       }).catch(function (e) { set('<h2>Tài khoản và thông tin đã lưu</h2><p class="bad">' + esc(e.message) + '</p>'); });
+    },
+    cloud: function () {
+      api('GET', 'cloud').then(function (c) {
+        var h = '<h2>Kho tệp riêng (thay OneDrive/Google Drive)</h2><div class="card"><p class="mute">Một "ổ đám mây" chạy ngay trên máy này (Nextcloud). Tệp AI lưu ra hiện trên web và điện thoại, tệp bạn tải lên AI đọc được ngay. Dữ liệu nằm ở <b>' + esc(c.share) + '</b> trên máy của bạn, không qua Microsoft hay Google.</p>';
+        if (!c.installed) h += '<p><span class="mute">Chưa cài.</span></p><div class="row"><button class="b p" id="ci">Cài kho tệp riêng</button></div><p class="mute">Cần mạng, mất vài phút và khoảng 1,5 GB ổ đĩa lần đầu.</p>';
+        else {
+          h += '<p>' + (c.running ? '<span class="ok">✓ Đang chạy</span>' : '<span class="bad">Đang dừng</span>') + (c.version ? ' · bản ' + esc(c.version) : '') + ' · tài khoản <b>' + esc(c.user) + '</b></p>';
+          h += '<p>Mở bằng trình duyệt hoặc ứng dụng Nextcloud trên điện thoại/máy tính: ' + (c.urls.length ? c.urls.map(function (u) { return '<a href="' + esc(u) + '" target="_blank">' + esc(u) + '</a>'; }).join(' · ') : '<span class="mute">chưa biết địa chỉ</span>') + '</p>';
+          h += '<p class="mute">Ra ngoài nhà: kết nối Tailscale (mục Kết nối) rồi dùng địa chỉ Tailscale của máy này, không cần mở cổng ra Internet.</p>';
+          h += '<div class="row"><button class="b" id="cp">Hiện mật khẩu</button><button class="b" id="cr">Đổi mật khẩu</button><button class="b" id="cx">Gỡ</button></div><div id="cpw"></div>';
+        }
+        set(h + '</div>');
+        on('ci', function () { api('POST', 'cloud/install').then(function (j) { watchJob(j.job, 'Cài kho tệp riêng', render); }).catch(fail); });
+        on('cp', function () { api('POST', 'cloud/password').then(function (r) { document.getElementById('cpw').innerHTML = '<p>Tài khoản: <b>' + esc(r.user) + '</b> · Mật khẩu: <code>' + esc(r.password) + '</code></p>'; }).catch(fail); });
+        on('cr', function () { if (ask('Đổi mật khẩu kho tệp? Các thiết bị đang đăng nhập phải nhập lại.')) api('POST', 'cloud/reset-password', { confirm: true }).then(function (r) { document.getElementById('cpw').innerHTML = '<p>Mật khẩu mới: <code>' + esc(r.password) + '</code></p>'; }).catch(fail); });
+        on('cx', function () { if (ask('Gỡ kho tệp riêng? Tệp trong thư mục chung vẫn giữ nguyên.')) api('POST', 'cloud/remove', { confirm: true }).then(function (j) { watchJob(j.job, 'Gỡ kho tệp', render); }).catch(fail); });
+      }).catch(function (e) { set('<h2>Kho tệp riêng</h2><p class="bad">' + esc(e.message) + '</p>'); });
     },
     link: function () {
       Promise.all([api('GET', 'onedrive'), api('GET', 'tailscale')]).then(function (a) {

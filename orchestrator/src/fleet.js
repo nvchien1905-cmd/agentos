@@ -62,6 +62,8 @@ function createFleet(o) {
   }
   async function jobResult(name, id) { const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".'); return call(m, 'GET', '/fleet/job?id=' + encodeURIComponent(id), undefined, 8000); }
   async function updateMachine(name) { const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".'); return call(m, 'POST', '/fleet/update', {}, 20000); }
+  // Chép KHÓA CÔNG KHAI SSH của máy đầu não sang máy con (máy con phải được chủ máy đó bật riêng "cho phép nhận khóa SSH")
+  async function installKey(name, pubkey) { const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".'); return call(m, 'POST', '/fleet/sshkey', { key: String(pubkey) }, 15000); }
 
   // ---------- máy con: dịch vụ nhận yêu cầu ----------
   // deps: { submit(prompt, project) -> jobId, getJob(id) -> {status,result,error}|null, update() -> Promise<string>, stats() -> {...}, version }
@@ -84,6 +86,10 @@ function createFleet(o) {
         }
         if (method === 'GET' && u.pathname === '/fleet/job') { const j = deps.getJob(Number(u.searchParams.get('id'))); return j ? { status: 200, body: j } : { status: 404, body: { error: 'không có việc này' } }; }
         if (method === 'POST' && u.pathname === '/fleet/update') return { status: 200, body: { text: deps.update ? await deps.update() : 'máy này không hỗ trợ cập nhật từ xa' } };
+        if (method === 'POST' && u.pathname === '/fleet/sshkey') {
+          if (!deps.sshKey) return { status: 400, body: { error: 'máy này không hỗ trợ nhận khóa SSH' } };
+          return { status: 200, body: await deps.sshKey(String(body.key || '')) };
+        }
         return { status: 404, body: { error: 'không có' } };
       } catch (e) { return { status: 500, body: { error: e.message } }; }
     }
@@ -103,7 +109,7 @@ function createFleet(o) {
     return { handle, listen, close: () => new Promise((r) => (server ? server.close(() => r()) : r())) };
   }
 
-  return { load, save, enableAgent, disableAgent, addMachine, removeMachine, findMachine, call, statusAll, sendTask, jobResult, updateMachine, createAgent, sign };
+  return { load, save, enableAgent, disableAgent, addMachine, removeMachine, findMachine, call, statusAll, sendTask, jobResult, updateMachine, installKey, createAgent, sign };
 }
 
 module.exports = { createFleet, sign, NAME_RE };

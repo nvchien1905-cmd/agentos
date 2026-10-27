@@ -35,6 +35,7 @@ const { createHoiDap } = require('./hoidap');
 const { createAlerts } = require('./alerts');
 const { createDoctor } = require('./doctor');
 const { createFleet } = require('./fleet');
+const { createKetNoi } = require('./ketnoi');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
 const { createSummarizer } = require('./summarizer');
@@ -312,6 +313,12 @@ async function main() {
   const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
   // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
+  const ketnoi = createKetNoi({
+    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'),
+    ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
+    edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
+    send: (chatId, text) => tg.sendMessage(chatId, text),
+  });
   const fleetAgent = fleet.createAgent({
     version: () => { try { return fs.readFileSync('/opt/agentos/VERSION', 'utf8').trim(); } catch (e) { return ''; } },
     submit: (prompt, project) => { const id = db.addJob([...cfg.adminUserIds][0], prompt, null, null, 'hook', project && projects.get(project) ? project : null); setImmediate(() => crew.wake()); return id; },   // làn hook: luôn chế độ bảo vệ
@@ -372,7 +379,7 @@ async function main() {
   chungtu.start();
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    fleet, iot,
+    fleet, iot, ketnoi,
     diagnose: async () => {
       const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');
       const report = selftest.format(res, '🩺 Tự chẩn đoán đầy đủ'), nbad = res.filter((r) => r.status === 'fail').length;

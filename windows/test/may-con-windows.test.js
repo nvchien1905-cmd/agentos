@@ -35,3 +35,21 @@ test('máy con Windows: đầu não (cùng giao thức fleet.js) xem tình trạ
     assert.match((await H.updateMachine('Win')).text, /thủ công/);
   } finally { await agent.close(); }
 });
+
+test('máy con Windows: nhận khóa SSH công khai chỉ khi chủ máy bật; chỉ 1 dòng khóa công khai, không trùng, không ghi chỗ khác', () => {
+  const { installSshKey } = require('../may-con-windows');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'winssh-')), conf = path.join(dir, 'w.json'), ssh = path.join(dir, '.ssh');
+  process.env.AGENTOS_WIN_CONF = conf;
+  const K = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SzG5k2xF0Tnb8EVkhrHk4Z7TFhqRlpPE agentos-dau-nao';
+  fs.writeFileSync(conf, JSON.stringify({ ai: 'none', sshDir: ssh }));
+  assert.throws(() => installSshKey(K), /chưa bật/, 'mặc định TẮT');
+  assert.ok(!fs.existsSync(ssh));
+  fs.writeFileSync(conf, JSON.stringify({ ai: 'none', sshDir: ssh, allowSshKey: true }));
+  for (const bad of ['', 'rm -rf /', K + '\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC' + 'x'.repeat(30), '-----BEGIN OPENSSH PRIVATE KEY-----', 'command="x" ' + K]) assert.throws(() => installSshKey(bad), /không đúng dạng/);
+  const r = installSshKey(K); assert.equal(r.added, true); assert.equal(r.ok, true); assert.ok(r.user);
+  assert.equal(fs.readFileSync(path.join(ssh, 'authorized_keys'), 'utf8'), K + '\n');
+  assert.equal(installSshKey(K).added, false, 'gửi lại không chép trùng');
+  fs.appendFileSync(path.join(ssh, 'authorized_keys'), 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCkhac nguoikhac\n');
+  installSshKey(K); assert.equal(fs.readFileSync(path.join(ssh, 'authorized_keys'), 'utf8').split('\n').filter((l) => l.startsWith('ssh-ed25519')).length, 1, 'giữ khóa cũ của người khác, không thêm trùng');
+  delete process.env.AGENTOS_WIN_CONF;
+});

@@ -9,6 +9,7 @@ function helpText(profiles) {
     '/viec - xem 5 việc gần nhất\n' +
     '📷 /camera <tên> [câu hỏi] - chụp ảnh camera cửa hàng (có câu hỏi thì AI nhìn ảnh trả lời) · 🔌 /dien <tên> bat|tat|xem - bật/tắt ổ cắm, đèn thông minh\n' +
     '🖥️ /may - ĐỘI MÁY: xem/giao việc/cập nhật các máy AgentOS khác của cửa hàng (qua Tailscale) · /may <tên> <việc> · /may them <tên> <địa chỉ> <khóa>\n' +
+    '🔑 /ketnoi <tên máy> - chép khóa SSH của máy này sang máy trong Đội máy (có nút duyệt) để chạy lệnh/chép tệp trên máy đó không cần mật khẩu\n' +
     '🩺 /bacsi - nhờ AI phân tích các lỗi máy đang gặp và đề xuất cách sửa (máy cũng tự sửa lỗi quen thuộc như dịch vụ chết, ổ đầy, rồi báo)\n' +
     '🏛️ /hoidong <việc> - HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu và kết luận (cho việc quan trọng, tốn gấp ~3 lần hạn mức)\n' +
     '📁 /duan - DỰ ÁN: mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án (Claude hết hạn mức thì Codex làm tiếp). /duan moi <tên> · /duan <tên> · /duan thoat · #<tên-dự-án> <việc>\n' +
@@ -55,8 +56,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'camera', 'dien']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'camera', 'dien']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -211,7 +212,12 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
             return '📤 Đã giao cho "' + name + '" (việc #' + r.jobId + '). Xong em báo. Việc chạy chế độ bảo vệ trên máy đó; nếu cần duyệt, nút duyệt hiện ở Telegram của máy đó.';
           }, (e) => '⚠️ Không giao được cho "' + name + '": ' + e.message);
         }
-        case 'bacsi': {                                      // nhờ AI chẩn đoán máy (chỉ đọc): tự chẩn đoán đầy đủ rồi giao AI giải thích nguyên nhân + đề xuất cách sửa
+        case 'ketnoi': {                                      // chép khóa công khai SSH sang máy trong Đội máy (có nút duyệt trên Telegram)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /ketnoi.';
+          if (!ketnoi) return 'Máy này chưa có đội máy.';
+          return ketnoi.request(chatId, String(cmd[3] || '').trim());
+        }
+        case 'bacsi': {                                    // nhờ AI chẩn đoán máy (chỉ đọc): tự chẩn đoán đầy đủ rồi giao AI giải thích nguyên nhân + đề xuất cách sửa
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /bacsi.';
           if (!diagnose) return 'Máy này chưa có bác sĩ máy.';
           return diagnose().then((d) => {
@@ -326,8 +332,10 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
   }
   // Lượt bấm nút "Cho phép / Từ chối". Trả văn bản hiện lại cho người bấm (hoặc null nếu không phải việc của mình).
   async function handleCallback(cq) {
-    if (!cq || !cq.from || !approvals) return null;
+    if (!cq || !cq.from) return null;
     if (!allowed.has(String(cq.from.id))) return null;           // người lạ bấm nút: bỏ qua
+    if (ketnoi && ketnoi.isCallback(cq.data)) return ketnoi.answer(cq.data, cq.from.id, isAdmin);
+    if (!approvals) return null;
     if (!/^ap:/.test(String(cq.data || ''))) return null;
     const r = await approvals.answer(cq.data, cq.from.id);
     return r.text;

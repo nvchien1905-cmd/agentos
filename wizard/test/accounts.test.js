@@ -264,3 +264,39 @@ test('Cài đặt: Nhật ký (chỉ đọc) — danh sách, chi tiết, CSV', {
     assert.match((await S.call('GET', 'audit/csv?days=7')).body.csv, /^﻿Việc,/);
   } finally { await S.s.close(); }
 });
+
+test('Cài đặt: Đội máy — bật cho phép điều khiển (sinh khóa), xem địa chỉ/khóa, thêm máy con, xem tình trạng thật, xóa cần xác nhận', async () => {
+  const { createFleet } = require('../../orchestrator/src/fleet'); const net = require('net');
+  const dir = tmp(); const port = await new Promise((res) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
+  const cf = createFleet({ file: path.join(dir, 'child.json') }); cf.save(Object.assign(cf.load(), { agent: { enabled: true, key: 'ab'.repeat(24), host: '127.0.0.1', port, name: 'Con' } }));
+  const agent = cf.createAgent({ version: () => '9.9', submit: () => 1, getJob: () => null, stats: () => ({ queued: 0, diskFreeMb: 1024 }) }); await agent.listen();
+  const S = await boot({ fleetFile: path.join(dir, 'head.json'), tsRun: async () => ({ code: 0, out: '', err: '' }) });
+  try {
+    let g = (await S.call('GET', 'fleet')).body; assert.equal(g.agent.enabled, false); assert.deepEqual(g.machines, []);
+    assert.equal((await S.call('POST', 'fleet/agent', { enabled: true, name: 'Đầu não', port: 9100 })).status, 200);
+    g = (await S.call('GET', 'fleet')).body; assert.equal(g.agent.enabled, true); assert.equal(g.agent.name, 'Đầu não'); assert.equal(g.agent.port, 9100); assert.equal(g.agent.hasKey, true); assert.ok(!JSON.stringify(g).includes('key"'), 'danh sách không lộ khóa');
+    const k = (await S.call('POST', 'fleet/key')).body; assert.match(k.key, /^[0-9a-f]{48}$/); assert.match(k.url, /:9100$/);
+    assert.equal((await S.call('POST', 'fleet/add', { name: 'Con', url: 'http://127.0.0.1:' + port, key: 'ab'.repeat(24) })).status, 200);
+    assert.equal((await S.call('POST', 'fleet/add', { name: 'Con', url: 'http://127.0.0.1:' + port, key: 'ab'.repeat(24) })).status, 400, 'trùng tên');
+    g = (await S.call('GET', 'fleet')).body; assert.equal(g.machines[0].online, true); assert.equal(g.machines[0].version, '9.9'); assert.ok(!JSON.stringify(g.machines).includes('abab'), 'không trả khóa máy con');
+    assert.equal((await S.call('POST', 'fleet/remove', { name: 'Con' })).status, 400); assert.equal((await S.call('POST', 'fleet/remove', { name: 'Con', confirm: true })).status, 200);
+    assert.equal((await S.call('POST', 'fleet/agent', { enabled: false })).status, 200); assert.equal((await S.call('GET', 'fleet')).body.agent.enabled, false);
+  } finally { await S.s.close(); await agent.close(); }
+});
+
+test('Cài đặt: Thiết bị — thêm camera/ổ cắm (chỉ địa chỉ nội bộ), chụp thử trả ảnh, bật/tắt thử, xóa cần xác nhận; không lộ mật khẩu', async () => {
+  const http = require('http'); const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from('x')]); let on = false;
+  const srv = http.createServer((req, res) => { if (req.url === '/snap') { res.writeHead(200); res.end(JPG); } else { on = /turn=on/.test(req.url) ? true : /turn=off/.test(req.url) ? false : on; res.end(JSON.stringify({ ison: on })); } });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r)); const base = 'http://127.0.0.1:' + srv.address().port; const dir = tmp();
+  const S = await boot({ devicesFile: path.join(dir, 'dev.json'), devicesOut: dir });
+  try {
+    assert.deepEqual((await S.call('GET', 'devices')).body, { cameras: [], plugs: [] });
+    assert.equal((await S.call('POST', 'devices/camera', { name: 'Ngoài', url: 'rtsp://8.8.8.8/x' })).status, 400);
+    assert.equal((await S.call('POST', 'devices/camera', { name: 'Quầy', url: base.replace('http://', 'http://tk:matkhau@') + '/snap' })).status, 200);
+    assert.equal((await S.call('POST', 'devices/plug', { name: 'Đèn', type: 'shelly', url: base })).status, 200);
+    const g = (await S.call('GET', 'devices')).body; assert.equal(g.cameras[0].name, 'Quầy'); assert.ok(!JSON.stringify(g).includes('matkhau'));
+    const snap = (await S.call('POST', 'devices/snapshot', { name: 'Quầy' })).body; assert.match(snap.image, /^data:image\/jpeg;base64,/);
+    assert.deepEqual((await S.call('POST', 'devices/plug-test', { name: 'Đèn', action: 'on' })).body, { on: true }); assert.deepEqual((await S.call('POST', 'devices/plug-test', { name: 'Đèn', action: 'off' })).body, { on: false });
+    assert.equal((await S.call('POST', 'devices/remove', { kind: 'camera', name: 'Quầy' })).status, 400); assert.equal((await S.call('POST', 'devices/remove', { kind: 'camera', name: 'Quầy', confirm: true })).status, 200); assert.equal((await S.call('GET', 'devices')).body.cameras.length, 0);
+  } finally { await S.s.close(); await new Promise((r) => srv.close(r)); }
+});

@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - bac si may: chay khi bo dieu phoi xin sua loi
+
+[Path]
+PathExists=/var/lib/agentos/heal-request
+Unit=agentos-heal.service
+
+[Install]
+WantedBy=multi-user.target

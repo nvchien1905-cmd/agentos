@@ -1,0 +1,7 @@
+[Unit]
+Description=AgentOS - bac si may (sua loi an toan theo danh sach co dinh)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentos-heal run
+Nice=10

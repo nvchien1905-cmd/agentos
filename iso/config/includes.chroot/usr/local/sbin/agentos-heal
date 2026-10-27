@@ -1,0 +1,62 @@
+#!/bin/bash
+# BÁC SĨ MÁY — phần chạy bằng root, chỉ làm các việc sửa lỗi AN TOÀN trong một DANH SÁCH CỐ ĐỊNH (bộ điều phối chạy bằng người dùng thường nên chỉ được XIN
+# qua tệp /var/lib/agentos/heal-request; dịch vụ agentos-heal.path thấy tệp thì gọi tập lệnh này). Không nhận lệnh tùy ý.
+# Yêu cầu: mỗi dòng một việc:  restart <dịch-vụ> | cloud | free-space
+# Kết quả: /var/lib/agentos/heal-result.json. Tối đa 8 việc mỗi giờ (chống vòng lặp).
+set -u
+REQ=/var/lib/agentos/heal-request
+RES=/var/lib/agentos/heal-result.json
+LOG=/var/lib/agentos/heal-history.log
+UNITS="agentos-deskd agentos-settings agentos-orchestrator agentos-wizard tailscaled cups NetworkManager onedrive-agentos rustdesk docker"
+MAXH=8
+
+[ "$(id -u)" = 0 ] || { echo "cần root" >&2; exit 1; }
+cmd=${1:-run}
+if [ "$cmd" = "allowed" ]; then echo "$UNITS"; exit 0; fi
+
+json_escape() { printf '%s' "$1" | tr -d '"\\' | tr '\n' ' ' | cut -c1-240; }
+
+run_action() { # trả mã 0 = đã làm
+  local a=$1 arg=${2:-}
+  case "$a" in
+    restart)
+      local ok=0 u; for u in $UNITS; do [ "$u" = "$arg" ] && ok=1; done
+      [ $ok = 1 ] || { echo "dịch vụ không nằm trong danh sách cho phép: $arg"; return 2; }
+      systemctl reset-failed "$arg" 2>/dev/null
+      systemctl restart "$arg" 2>&1 | tail -2; sleep 2
+      systemctl is-active --quiet "$arg" && { echo "$arg đã chạy lại"; return 0; } || { echo "$arg vẫn không chạy"; return 1; } ;;
+    cloud)
+      command -v docker >/dev/null || { echo "chưa cài Docker"; return 2; }
+      docker start agentos-cloud 2>&1 | tail -1; sleep 3
+      [ "$(docker inspect -f '{{.State.Running}}' agentos-cloud 2>/dev/null)" = true ] && { echo "kho tệp riêng đã chạy lại"; return 0; } || { echo "kho tệp riêng vẫn không chạy"; return 1; } ;;
+    free-space)
+      local before after; before=$(df -Pm / | awk 'NR==2{print $4}')
+      apt-get clean >/dev/null 2>&1
+      journalctl --vacuum-size=200M >/dev/null 2>&1
+      find /var/lib/agentos/work/inbox /var/lib/agentos/work/out -type f -mtime +14 -delete 2>/dev/null
+      find /var/lib/agentos/snapshots -name 'snap-*.tar.gz' -mtime +30 -delete 2>/dev/null
+      find /tmp -xdev -type f -atime +3 -user agentos -delete 2>/dev/null
+      after=$(df -Pm / | awk 'NR==2{print $4}')
+      echo "dọn xong: trống $before MB → $after MB"; return 0 ;;
+    *) echo "việc không biết: $a"; return 2 ;;
+  esac
+}
+
+[ -f "$REQ" ] || exit 0
+lines=$(head -c 2000 "$REQ"); rm -f "$REQ"
+now=$(date +%s); touch "$LOG"
+recent=$(awk -v t=$((now-3600)) '$1>=t' "$LOG" | wc -l)
+results=""; okall=true; n=0
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  set -- $line; a=${1:-}; arg=${2:-}
+  n=$((n+1)); [ $n -le 5 ] || break
+  if [ "$recent" -ge $MAXH ]; then out="đã đủ $MAXH việc trong 1 giờ, dừng để tránh vòng lặp"; rc=3
+  else out=$(run_action "$a" "$arg" 2>&1); rc=$?; recent=$((recent+1)); echo "$now $a $arg rc=$rc" >> "$LOG"; fi
+  [ $rc -eq 0 ] || okall=false
+  results="$results{\"action\":\"$(json_escape "$a $arg")\",\"rc\":$rc,\"out\":\"$(json_escape "$out")\"},"
+done <<< "$lines"
+printf '{"ts":%s,"ok":%s,"results":[%s]}\n' "$now" "$okall" "${results%,}" > "$RES.tmp" && mv "$RES.tmp" "$RES"; chmod 644 "$RES"
+# giữ nhật ký gọn
+tail -n 200 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+exit 0

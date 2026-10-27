@@ -74,6 +74,7 @@ cmd_install() {
   echo "== Bật quét thay đổi định kỳ (tệp AI ghi ra hiện trên web trong ~2 phút)"
   systemctl daemon-reload; systemctl enable --now agentos-cloud-scan.timer >/dev/null 2>&1
   occ files:scan --all -q >/dev/null 2>&1
+  mkdir -p /var/lib/agentos; touch /var/lib/agentos/cloud-installed; chmod 644 /var/lib/agentos/cloud-installed     # đánh dấu cho tự chẩn đoán/bác sĩ máy
   echo "✓ Xong"; cmd_status
 }
 
@@ -96,6 +97,7 @@ cmd_reset() {
 }
 cmd_remove() {
   systemctl disable --now agentos-cloud-scan.timer >/dev/null 2>&1
+  rm -f /var/lib/agentos/cloud-installed
   docker rm -f "$NAME" >/dev/null 2>&1
   if [ "${1:-}" = "--purge" ]; then rm -rf "$DATA" "$CONF"; echo "✓ Đã gỡ và xóa dữ liệu hệ thống của Nextcloud (tệp trong $SHARE được giữ nguyên)"; else echo "✓ Đã gỡ container (giữ $DATA và mật khẩu để cài lại)"; fi
 }

@@ -106,6 +106,13 @@ function createSelfTest(o) {
       return R('network', 'Mạng và Tailscale', st, parts.join(' · '));
     }),
 
+    // Kho tệp riêng (Nextcloud trong Docker): chỉ kiểm khi đã cài (tệp đánh dấu do agentos-cloud ghi)
+    cloud: () => safe('cloud', 'Kho tệp riêng', async () => {
+      if (!exists(o.cloudMarker || '/var/lib/agentos/cloud-installed')) return R('cloud', 'Kho tệp riêng', 'ok', 'chưa cài');
+      try { const r = await fetch(o.cloudUrl || 'http://127.0.0.1:8280/status.php', { signal: AbortSignal.timeout(6000) }); const j = await r.json(); return j.installed ? R('cloud', 'Kho tệp riêng', 'ok', 'Nextcloud ' + (j.versionstring || '') + ' đang chạy') : R('cloud', 'Kho tệp riêng', 'fail', 'Nextcloud chưa cài xong'); }
+      catch (e) { return R('cloud', 'Kho tệp riêng', 'fail', 'Kho tệp riêng không trả lời (' + (e.cause && e.cause.code || e.name) + ')'); }
+    }),
+
     backup: () => safe('backup', 'Sao lưu ra ổ ngoài', async () => {
       if (!o.backup) return R('backup', 'Sao lưu ra ổ ngoài', 'ok', '');
       const s = o.backup.status();
@@ -123,8 +130,8 @@ function createSelfTest(o) {
     }),
   };
 
-  const LIGHT = ['telegram', 'services', 'engines', 'resources', 'storage', 'backup', 'queue'];
-  const FULL = ['telegram', 'services', 'engines', 'resources', 'storage', 'backup', 'tools', 'desk', 'network', 'queue'];
+  const LIGHT = ['telegram', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'queue'];
+  const FULL = ['telegram', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'queue'];
 
   async function runList(ids) { const out = []; for (const id of ids) out.push(await checks[id]()); return out; }
 

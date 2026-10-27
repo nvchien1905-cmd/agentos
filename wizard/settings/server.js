@@ -21,6 +21,8 @@ const { createProjects } = require('../../orchestrator/src/projects');
 const { createBackup } = require('../../orchestrator/src/backup');
 const { createUsage } = require('../../orchestrator/src/usage');
 const { createAuditLog } = require('../../orchestrator/src/auditlog');
+const { createFleet } = require('../../orchestrator/src/fleet');
+const { createDevices } = require('../../orchestrator/src/devices');
 const mask = require('../lib/mask');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
@@ -95,6 +97,10 @@ function createSettings(o) {
   const cloudBin = o.cloudBin || '/usr/local/sbin/agentos-cloud';
   const backupBin = o.backupBin || '/usr/local/sbin/agentos-backup';
   const diskBackup = createBackup(o.backupFiles || {});
+  let devicesInst = null; const devicesFile = o.devicesFile || '/var/lib/agentos/data/devices.json';
+  const devicesLib = () => devicesInst || (devicesInst = createDevices({ file: devicesFile, outDir: o.devicesOut || require('os').tmpdir(), fetch: o.devicesFetch, run: o.devicesRun }));
+  const fixDevicesOwner = () => { try { chownAgentos(devicesFile); } catch (e) { /* bỏ qua */ } };
+  let fleetInst = null; const fleetLib = () => fleetInst || (fleetInst = createFleet({ file: o.fleetFile || '/var/lib/agentos/data/fleet.json', fetch: o.fleetFetch }));
   // Mở cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC, chạy fn({raw, kvGet}), rồi đóng
   const withRoDb = (fn) => {
     let Database; try { Database = require('../../orchestrator/node_modules/better-sqlite3'); } catch (e) { try { Database = require('better-sqlite3'); } catch (e2) { throw new Error('Chưa đọc được cơ sở dữ liệu (thiếu thư viện).'); } }
@@ -559,6 +565,32 @@ function createSettings(o) {
     },
 
     // ----- Tailscale -----
+    // ---- Thiết bị (camera, ổ cắm/đèn thông minh): devices.js; tệp cấu hình quyền 600 của người dùng agentos
+    async 'GET /api/devices'() { return devicesLib().list(); },
+    async 'POST /api/devices/camera'(b) { const r = devicesLib().addCamera(b); fixDevicesOwner(); return r; },
+    async 'POST /api/devices/plug'(b) { const r = devicesLib().addPlug(b); fixDevicesOwner(); return r; },
+    async 'POST /api/devices/remove'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); return { ok: devicesLib().remove(b.kind === 'camera' ? 'camera' : 'plug', String(b.name || '')) }; },
+    async 'POST /api/devices/snapshot'(b) { const s = await devicesLib().snapshot(String(b.name || '')); const buf = fs.readFileSync(s.file); try { fs.rmSync(s.file, { force: true }); } catch (e) { /* bỏ qua */ } if (buf.length > 3e6) throw new Error('Ảnh quá lớn để xem thử.'); return { image: 'data:image/' + (buf[0] === 0x89 ? 'png' : 'jpeg') + ';base64,' + buf.toString('base64') }; },
+    async 'POST /api/devices/plug-test'(b) { return devicesLib().plug(String(b.name || ''), String(b.action || 'status')); },
+    // ---- Đội máy (fleet.js; cấu hình ở tệp JSON dùng chung với bộ điều phối)
+    async 'GET /api/fleet'() {
+      const f = fleetLib(), c = f.load(), tsi = await ts.info().catch(() => ({}));
+      return { agent: { enabled: c.agent.enabled, name: c.agent.name, port: c.agent.port, host: c.agent.host, hasKey: !!c.agent.key }, tailscaleIp: (tsi.ips || [])[0] || '', machines: await f.statusAll() };
+    },
+    async 'POST /api/fleet/agent'(b) {
+      const f = fleetLib();
+      if (b.enabled === false) { f.disableAgent(); } else {
+        const tsi = await ts.info().catch(() => ({})), ip = (tsi.ips || [])[0] || '';
+        f.enableAgent({ name: b.name, port: b.port === undefined || b.port === '' ? undefined : Number(b.port), host: ip, regenerate: b.regenerate === true });
+      }
+      try { chownAgentos(o.fleetFile || '/var/lib/agentos/data/fleet.json'); } catch (e) { /* bỏ qua */ }
+      if (!o.fleetFile) await run('systemctl', ['restart', 'agentos-orchestrator']);                 // nạp cấu hình cổng nhận lệnh
+      return { ok: true };
+    },
+    async 'POST /api/fleet/key'() { const c = fleetLib().load(); if (!c.agent.key) throw new Error('Chưa bật.'); return { key: c.agent.key, url: 'http://' + (c.agent.host || '<địa chỉ Tailscale>') + ':' + c.agent.port }; },
+    async 'POST /api/fleet/add'(b) { const m = fleetLib().addMachine(b); try { chownAgentos(o.fleetFile || '/var/lib/agentos/data/fleet.json'); } catch (e) { /* bỏ qua */ } return m; },
+    async 'POST /api/fleet/remove'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); return { ok: fleetLib().removeMachine(String(b.name || '')) }; },
+    async 'POST /api/fleet/update'(b) { return fleetLib().updateMachine(String(b.name || '')); },
     // ---- Nhật ký kiểm toán (chỉ đọc): danh sách việc, chi tiết 1 việc (công cụ AI đã xin), báo cáo tuần, xuất CSV
     async 'GET /api/audit'(b, ctx) { return withRoDb((db) => { const g = (k) => ctx.query.get(k) || ''; const a = createAuditLog({ db, projects: projectsLib() }); return { list: a.list({ days: g('days'), q: g('q'), status: g('status'), project: g('project'), denied: g('denied') === '1', limit: g('limit') }), week: a.week(7) }; }); },
     async 'GET /api/audit/job'(b, ctx) { return withRoDb((db) => { const d = createAuditLog({ db, projects: projectsLib() }).detail(ctx.query.get('id')); if (!d) throw new Error('Không có việc này.'); return d; }); },

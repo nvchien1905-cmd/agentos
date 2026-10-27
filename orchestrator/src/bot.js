@@ -7,6 +7,9 @@ function helpText(profiles) {
     '/claude, /codex, /gemini hoặc /deepseekapi <việc> - ép dùng một AI (khóa API hoặc tài khoản) (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
     profiles.map((p) => '/' + p.name + ' <việc> - ' + (p.description || 'dùng bộ công cụ ' + p.name) + '\n').join('') +
     '/viec - xem 5 việc gần nhất\n' +
+    '📷 /camera <tên> [câu hỏi] - chụp ảnh camera cửa hàng (có câu hỏi thì AI nhìn ảnh trả lời) · 🔌 /dien <tên> bat|tat|xem - bật/tắt ổ cắm, đèn thông minh\n' +
+    '🖥️ /may - ĐỘI MÁY: xem/giao việc/cập nhật các máy AgentOS khác của cửa hàng (qua Tailscale) · /may <tên> <việc> · /may them <tên> <địa chỉ> <khóa>\n' +
+    '🩺 /bacsi - nhờ AI phân tích các lỗi máy đang gặp và đề xuất cách sửa (máy cũng tự sửa lỗi quen thuộc như dịch vụ chết, ổ đầy, rồi báo)\n' +
     '🏛️ /hoidong <việc> - HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu và kết luận (cho việc quan trọng, tốn gấp ~3 lần hạn mức)\n' +
     '📁 /duan - DỰ ÁN: mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án (Claude hết hạn mức thì Codex làm tiếp). /duan moi <tên> · /duan <tên> · /duan thoat · #<tên-dự-án> <việc>\n' +
     '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
@@ -52,8 +55,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'camera', 'dien']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -168,6 +171,55 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
         case 'start': case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
+        case 'camera': {                                      // chụp ảnh camera trong cửa hàng; có câu hỏi thì AI nhìn ảnh trả lời
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /camera.';
+          if (!iot) return 'Máy này chưa có điều khiển thiết bị.';
+          const L = iot.list().cameras, a = String(cmd[3] || '').trim();
+          if (!a) return L.length ? '📷 Camera: ' + L.map((c) => c.name).join(', ') + '\nDùng: /camera <tên> (chụp ảnh) · /camera <tên> <câu hỏi> (AI nhìn ảnh trả lời, ví dụ có khách không)' : 'Chưa có camera nào. Thêm ở Cài đặt → Thiết bị.';
+          const cam = L.slice().sort((x, y) => y.name.length - x.name.length).find((c) => a.toLowerCase() === c.name.toLowerCase() || a.toLowerCase().startsWith(c.name.toLowerCase() + ' '));
+          if (!cam) return 'Không có camera trong "' + a.slice(0, 30) + '". Camera có: ' + L.map((c) => c.name).join(', ');
+          const q = a.slice(cam.name.length).trim();
+          return iot.snapshot(cam.name).then((s) => {
+            const hm = new Date(s.at + 7 * 3600 * 1000).toISOString().slice(11, 16);
+            if (!q) return { text: '📷 ' + cam.name + ' lúc ' + hm, files: [{ path: s.file, name: 'camera.jpg', kind: 'photo', temp: false }] };
+            const ack = submit(chatId, '[Camera "' + cam.name + '" lúc ' + hm + '] ' + q + '\n\n[Tệp đính kèm — đã lưu trên máy. Hãy xem ảnh bằng công cụ đọc ảnh rồi trả lời dựa trên ảnh]\n- Ảnh: ' + s.file, null, null, null);
+            return { text: '📷 ' + cam.name + ' lúc ' + hm + (ack ? '\n' + ack : ' — đang nhờ AI xem ảnh...'), files: [{ path: s.file, name: 'camera.jpg', kind: 'photo', temp: false }] };
+          }, (e) => '⚠️ ' + e.message);
+        }
+        case 'may': {                                         // ĐỘI MÁY: giao việc / xem tình trạng / cập nhật máy AgentOS khác (qua Tailscale)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /may.';
+          if (!fleet) return 'Máy này chưa có đội máy.';
+          const a = String(cmd[3] || '').trim(), m = a.match(/^(\S+)\s*([\s\S]*)$/), sub = m ? m[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd') : '';
+          if (!a) {
+            return fleet.statusAll().then((l) => (l.length ? '🖥️ Đội máy:\n' + l.map((x) => (x.online ? '🟢 ' + x.name + ' · bản ' + (x.version || '?') + ' · ' + (x.queued || 0) + ' việc chờ' + (x.running ? ', đang làm #' + x.running : '') + (x.diskFreeMb != null ? ' · ổ trống ' + Math.round(x.diskFreeMb / 1024) + ' GB' : '') : '🔴 ' + x.name + ' · không liên lạc được (' + x.error + ')')).join('\n') : 'Chưa có máy con nào.') + '\n\nThêm: /may them <tên> <địa chỉ> <khóa> · Giao việc: /may <tên> <việc> · Cập nhật: /may capnhat <tên> · Xóa: /may xoa <tên>');
+          }
+          if (sub === 'them') { const p = m[2].trim().split(/\s+/); if (p.length < 3) return 'Cách dùng: /may them <tên> <địa chỉ http://100.x.x.x:8433> <khóa>. Địa chỉ và khóa xem ở Cài đặt của máy con → Đội máy.'; try { fleet.addMachine({ name: p[0], url: p[1], key: p[2] }); } catch (e) { return '⚠️ ' + e.message; } return '✅ Đã thêm máy "' + p[0] + '". Gõ /may để xem có liên lạc được không. (Khóa vừa gõ nằm trong lịch sử chat này: nên xóa tin nhắn đó.)'; }
+          if (sub === 'xoa') return fleet.removeMachine(m[2].trim()) ? '🗑️ Đã xóa máy "' + m[2].trim() + '".' : 'Không có máy "' + m[2].trim() + '".';
+          if (sub === 'capnhat') return fleet.updateMachine(m[2].trim()).then((r) => '⬆️ ' + m[2].trim() + ': ' + r.text, (e) => '⚠️ ' + e.message);
+          const name = m[1], task = m[2].trim();
+          if (!task) return 'Cách dùng: /may ' + name + ' <việc cần làm>';
+          return fleet.sendTask(name, task).then((r) => {
+            const sendBack = (t) => (send ? send(chatId, t) : Promise.resolve()).catch(() => {});
+            (async () => {                                                  // chờ máy con làm xong (tối đa 15 phút) rồi gửi kết quả về đây
+              for (let i = 0; i < 180; i++) {
+                await new Promise((res) => setTimeout(res, 5000));
+                let j; try { j = await fleet.jobResult(name, r.jobId); } catch (e) { continue; }
+                if (['done', 'error', 'cancelled', 'interrupted', 'limit'].includes(j.status)) return sendBack('🖥️ ' + name + ' (việc #' + r.jobId + ' · ' + j.status + (j.engine ? ' · ' + j.engine : '') + '):\n' + (j.result || j.error || '(không có nội dung)'));
+              }
+              sendBack('🖥️ ' + name + ': việc #' + r.jobId + ' chưa xong sau 15 phút (vẫn có thể đang làm; hỏi lại bằng /may).');
+            })();
+            return '📤 Đã giao cho "' + name + '" (việc #' + r.jobId + '). Xong em báo. Việc chạy chế độ bảo vệ trên máy đó; nếu cần duyệt, nút duyệt hiện ở Telegram của máy đó.';
+          }, (e) => '⚠️ Không giao được cho "' + name + '": ' + e.message);
+        }
+        case 'bacsi': {                                      // nhờ AI chẩn đoán máy (chỉ đọc): tự chẩn đoán đầy đủ rồi giao AI giải thích nguyên nhân + đề xuất cách sửa
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /bacsi.';
+          if (!diagnose) return 'Máy này chưa có bác sĩ máy.';
+          return diagnose().then((d) => {
+            if (!d.bad) return '🩺 Tự chẩn đoán: mọi thứ ổn, không có gì cần AI xem.\n' + d.report;
+            const ack = submit(chatId, d.prompt, null, null, null);
+            return '🩺 ' + d.bad + ' mục có vấn đề. Em đã nhờ AI phân tích nguyên nhân và đề xuất cách sửa (AI không tự sửa; lệnh cần quyền sẽ hỏi anh duyệt).' + (ack ? '\n' + ack : '');
+          }, (e) => '⚠️ Không chẩn đoán được: ' + e.message);
+        }
         case 'hoidong': {                                    // HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu
           if (roles && !roles.canAsk(uid)) return 'Vai của bạn chỉ xem được báo cáo.';
           const prompt = String(cmd[3] || '').trim();

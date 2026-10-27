@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, fleet = o.fleet, iot = o.iot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -200,6 +200,15 @@ function createQuick(o) {
         case 'mokhoa': {
           const r = await desk.call({ cmd: 'unlock' });
           return r.ok ? (r.already ? '🔓 Màn hình không khóa.' : await withShot('🔓 Đã mở khóa màn hình.')) : '⚠️ ' + r.error;
+        }
+        case 'dien': {                                              // công tắc/ổ cắm/đèn thông minh: /dien <tên> bat|tat|xem
+          if (!iot) return '⚠️ Máy này chưa có điều khiển thiết bị.';
+          const L = iot.list().plugs, w = String(arg || '').trim();
+          if (!w) return L.length ? '🔌 Thiết bị: ' + L.map((p) => p.name + ' (' + p.type + ')').join(', ') + '\nDùng: /dien <tên> bat|tat|xem' : 'Chưa có thiết bị nào. Thêm ở Cài đặt → Thiết bị.';
+          const m = w.match(/^([\s\S]+?)\s+(bat|tat|xem|on|off|status)$/i) || [];
+          if (!m[1]) return 'Cách dùng: /dien <tên> bat|tat|xem. Thiết bị có: ' + (L.map((p) => p.name).join(', ') || '(chưa có)');
+          const act = { bat: 'on', on: 'on', tat: 'off', off: 'off', xem: 'status', status: 'status' }[m[2].toLowerCase()];
+          try { const r = await iot.plug(m[1], act); return (r.on === null ? '❔ ' : r.on ? '💡 ' : '⚫ ') + m[1] + (r.on === null ? ': không biết trạng thái' : r.on ? ': ĐANG BẬT' : ': đang tắt'); } catch (e) { return '⚠️ ' + e.message; }
         }
         case 'canhbao': return alerts ? await alerts.command(arg) : '⚠️ Máy này chưa có cảnh báo chủ động.';
         case 'gia': {                                              // tra giá + tồn (cùng lệnh /ton)

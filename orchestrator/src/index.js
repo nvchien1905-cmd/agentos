@@ -33,6 +33,10 @@ const { createUsage } = require('./usage');
 const { createAuditLog } = require('./auditlog');
 const { createHoiDap } = require('./hoidap');
 const { createAlerts } = require('./alerts');
+const { createDoctor } = require('./doctor');
+const { createFleet } = require('./fleet');
+const { createDevices } = require('./devices');
+const { mask: maskSecrets } = require('./auditlog');
 const { createSummarizer } = require('./summarizer');
 const router = require('./router');
 const { createMedia, imagePaths } = require('./media');
@@ -306,6 +310,19 @@ async function main() {
     async stop() { await Promise.all([worker.stop(), ...bgWorkers.map((b) => b.stop())]); },
   };
   const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
+  // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
+  const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
+  const fleetAgent = fleet.createAgent({
+    version: () => { try { return fs.readFileSync('/opt/agentos/VERSION', 'utf8').trim(); } catch (e) { return ''; } },
+    submit: (prompt, project) => { const id = db.addJob([...cfg.adminUserIds][0], prompt, null, null, 'hook', project && projects.get(project) ? project : null); setImmediate(() => crew.wake()); return id; },   // làn hook: luôn chế độ bảo vệ
+    getJob: (id) => { const j = db.getJob(id); if (!j || j.lane !== 'hook' || !String(j.prompt).startsWith('[VIỆC TỪ MÁY ĐẦU NÃO]')) return null; return { status: j.status, engine: j.engine, result: maskSecrets(j.result || '').slice(0, 20000), error: maskSecrets(j.error || '') }; },
+    update: () => updates.command('co'),
+    stats: () => ({ queued: db.queuedCount(), running: crew.currentJobId(), diskFreeMb: maint.diskFreeMb(cfg.workdir), uptimeSec: Math.round(process.uptime()), engines: crew.engineStatus ? crew.engineStatus() : [] }),
+  });
+  (function listenFleet(tries) {
+    fleetAgent.listen().then((a) => { if (a) log('Đội máy: cho phép máy đầu não điều khiển ở ' + a.address + ':' + a.port); }).catch((e) => { log('Đội máy: chưa mở được cổng (' + e.code + '), thử lại sau 60 giây'); if (tries < 60) setTimeout(() => listenFleet(tries + 1), 60000).unref(); });
+  })(0);
+  const iot = createDevices({ file: path.join(dataDir, 'devices.json'), outDir: path.join(cfg.workdir, 'inbox'), log });
   const alerts = createAlerts({ kiotviet, db, notify, admins: [...cfg.adminUserIds], log });
   alerts.start();
   const schedule = createSchedule({
@@ -340,7 +357,8 @@ async function main() {
     writable: { 'thư mục làm việc': cfg.workdir, 'thư mục OneDrive': path.join(cfg.oneDriveDir, 'AgentOS'), 'điểm khôi phục': path.join(dataDir, 'snapshots') },
     currentJob: () => crew.currentJobId(),
   });
-  const monitor = createHealthMon({ selftest, db, notify, admins: [...cfg.adminUserIds], log });
+  const doctor = createDoctor({ selftest, db, log });
+  const monitor = createHealthMon({ selftest, db, notify, admins: [...cfg.adminUserIds], log, doctor });
   monitor.start();
   // Sự kiện tự kích hoạt: hóa đơn mới, hàng sắp hết, webhook (xem /sukien). Việc sinh ra chạy ở làn nền; webhook luôn ở chế độ bảo vệ.
   const triggers = createTriggers({
@@ -354,13 +372,21 @@ async function main() {
   chungtu.start();
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
+    fleet, iot,
+    diagnose: async () => {
+      const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');
+      const report = selftest.format(res, '🩺 Tự chẩn đoán đầy đủ'), nbad = res.filter((r) => r.status === 'fail').length;
+      const prompt = '[BÁC SĨ MÁY — chỉ đọc] Máy AgentOS vừa tự chẩn đoán và có vấn đề. Kết quả:\n' + selftest.format(bad, 'Mục có vấn đề') + '\n\nHãy: (1) giải thích nguyên nhân khả dĩ nhất của TỪNG vấn đề; (2) đề xuất lệnh cụ thể để sửa, nói rõ lệnh nào an toàn, lệnh nào cần cẩn thận; ' +
+        '(3) KHÔNG tự chạy lệnh ghi/sửa hệ thống; được xin chạy lệnh chỉ đọc (systemctl status, journalctl -u <dịch vụ> -n 50, df -h) qua nút duyệt để tìm hiểu thêm. Trả lời ngắn gọn, theo thứ tự ưu tiên.';
+      return { bad: nbad || (bad.length ? bad.length : 0), report, prompt };
+    },
     voice, media, memory, projects, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
     send: async (chat, reply) => {                          // trả lời cho album (không đi qua vòng nhận tin)
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
       else if (reply) await tg.sendMessage(chat, reply);
     },
     quick: createQuick({ guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
-    remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
+    remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));

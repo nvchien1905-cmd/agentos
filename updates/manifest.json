@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.13",
-  "file": "agentos-update-2026.10.26.13.tar.gz",
-  "size": 272756,
-  "sha256": "3adea79315f3c7feb5256f59c467e23be38d23ee504149e2307e3c8de7cf42ef",
+  "version": "2026.10.26.14",
+  "file": "agentos-update-2026.10.26.14.tar.gz",
+  "size": 288624,
+  "sha256": "1837984c739df68297b519a4328e2adc80ce04a901609bcbed440c080eaca606",
   "date": "2026-10-27",
-  "notes": "Sao lưu ra ổ ngoài, lịch tự làm theo dự án, chứng từ tự động, hội đồng AI, chi phí AI, nhật ký web, hỏi đáp bán hàng, cảnh báo chủ động"
+  "notes": "Bác sĩ máy tự sửa lỗi, đội máy qua Tailscale, camera và ổ cắm thông minh"
 }

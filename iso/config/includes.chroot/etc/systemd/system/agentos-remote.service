@@ -1,0 +1,7 @@
+[Unit]
+Description=AgentOS - tao tai khoan SSH cho may dau nao (chi nhan khoa cong khai)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentos-remote
+Nice=10

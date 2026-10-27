@@ -35,7 +35,7 @@ const { createHoiDap } = require('./hoidap');
 const { createAlerts } = require('./alerts');
 const { createDoctor } = require('./doctor');
 const { createFleet } = require('./fleet');
-const { createKetNoi } = require('./ketnoi');
+const { createKetNoi, createRemoteAccess } = require('./ketnoi');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
 const { createSummarizer } = require('./summarizer');
@@ -319,11 +319,16 @@ async function main() {
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
     send: (chatId, text) => tg.sendMessage(chatId, text),
   });
+  const remoteAccess = createRemoteAccess({});
   const fleetAgent = fleet.createAgent({
     version: () => { try { return fs.readFileSync('/opt/agentos/VERSION', 'utf8').trim(); } catch (e) { return ''; } },
     submit: (prompt, project) => { const id = db.addJob([...cfg.adminUserIds][0], prompt, null, null, 'hook', project && projects.get(project) ? project : null); setImmediate(() => crew.wake()); return id; },   // làn hook: luôn chế độ bảo vệ
     getJob: (id) => { const j = db.getJob(id); if (!j || j.lane !== 'hook' || !String(j.prompt).startsWith('[VIỆC TỪ MÁY ĐẦU NÃO]')) return null; return { status: j.status, engine: j.engine, result: maskSecrets(j.result || '').slice(0, 20000), error: maskSecrets(j.error || '') }; },
     update: () => updates.command('co'),
+    sshKey: async (key) => {                                       // máy đầu não xin SSH vào (đã được chủ máy đầu não bấm Cho phép); chủ máy này tắt được bằng agent.allowSshKey=false trong fleet.json
+      if (fleet.load().agent.allowSshKey === false) throw new Error('Chủ máy này đã tắt "nhận khóa SSH" (fleet.json → agent.allowSshKey = false).');
+      return remoteAccess.request(key);
+    },
     stats: () => ({ queued: db.queuedCount(), running: crew.currentJobId(), diskFreeMb: maint.diskFreeMb(cfg.workdir), uptimeSec: Math.round(process.uptime()), engines: crew.engineStatus ? crew.engineStatus() : [] }),
   });
   (function listenFleet(tries) {

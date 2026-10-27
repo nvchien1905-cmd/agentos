@@ -1,0 +1,47 @@
+#!/bin/bash
+# CHO MÁY ĐẦU NÃO SSH VÀO (phần chạy bằng root, trên MÁY CON Linux). Bộ điều phối chạy bằng người dùng thường nên chỉ được XIN qua tệp
+# /var/lib/agentos/remote-request (1 dòng = 1 khóa SSH CÔNG KHAI do máy đầu não gửi, đã qua kênh ký HMAC của Đội máy và nút duyệt Telegram bên đầu não).
+# Làm: tạo tài khoản agentos-remote (khóa mật khẩu, chỉ đăng nhập bằng khóa), cho sudo không hỏi mật khẩu, thêm khóa, bật dịch vụ ssh.
+# Không nhận lệnh tùy ý. Kết quả: /var/lib/agentos/remote-result.json.
+set -u
+REQ=/var/lib/agentos/remote-request
+RES=/var/lib/agentos/remote-result.json
+USERN=agentos-remote
+[ "$(id -u)" = 0 ] || { echo "cần root" >&2; exit 1; }
+[ -f "$REQ" ] || exit 0
+line=$(head -c 2000 "$REQ" | head -n 1 | tr -d '\r'); rm -f "$REQ"
+
+json_escape() { printf '%s' "$1" | tr -d '"\\' | tr '\n' ' ' | cut -c1-240; }
+finish() { # ok added error
+  printf '{"ts":%s,"ok":%s,"added":%s,"user":"%s","error":"%s"}\n' "$(date +%s)" "$1" "$2" "$USERN" "$(json_escape "$3")" > "$RES.tmp" && mv "$RES.tmp" "$RES"; chmod 644 "$RES"
+  [ "$1" = true ] && exit 0 || exit 1
+}
+
+# chỉ đúng 1 dòng khóa công khai (không tùy chọn như command=, không khóa riêng)
+echo "$line" | grep -Eq '^ssh-(ed25519|rsa) [A-Za-z0-9+/]{20,800}={0,2}( [^[:cntrl:]]{0,80})?$' || finish false false "không phải 1 dòng khóa SSH công khai"
+set -- $line; KEYID="$1 $2"
+
+id "$USERN" >/dev/null 2>&1 || useradd -m -s /bin/bash -U "$USERN" || finish false false "không tạo được tài khoản $USERN"
+passwd -l "$USERN" >/dev/null 2>&1
+
+# sudo không hỏi mật khẩu (kiểm cú pháp trước khi cài để không làm hỏng sudo)
+tmp=$(mktemp); echo "$USERN ALL=(ALL) NOPASSWD:ALL" > "$tmp"
+if visudo -cf "$tmp" >/dev/null 2>&1; then install -m 0440 -o root -g root "$tmp" /etc/sudoers.d/agentos-remote; else rm -f "$tmp"; finish false false "cú pháp sudoers sai"; fi
+rm -f "$tmp"
+
+home=$(getent passwd "$USERN" | cut -d: -f6)
+install -d -m 700 -o "$USERN" -g "$USERN" "$home/.ssh"
+af="$home/.ssh/authorized_keys"; touch "$af"
+added=false
+if ! awk -v k="$KEYID" '{ if ($1" "$2 == k) f=1 } END { exit !f }' "$af"; then echo "$line" >> "$af"; added=true; fi
+chown "$USERN:$USERN" "$af"; chmod 600 "$af"
+
+# chỉ khóa, không mật khẩu cho tài khoản này
+install -d -m 755 /etc/ssh/sshd_config.d
+printf 'Match User %s\n    PasswordAuthentication no\n    KbdInteractiveAuthentication no\n    AuthenticationMethods publickey\n' "$USERN" > /etc/ssh/sshd_config.d/agentos-remote.conf
+if command -v sshd >/dev/null 2>&1 && ! sshd -t 2>/dev/null; then rm -f /etc/ssh/sshd_config.d/agentos-remote.conf; finish false false "cấu hình sshd lỗi, đã hoàn tác"; fi
+systemctl enable --now ssh >/dev/null 2>&1 || systemctl enable --now sshd >/dev/null 2>&1
+systemctl reload ssh >/dev/null 2>&1 || systemctl reload sshd >/dev/null 2>&1
+systemctl is-active --quiet ssh || systemctl is-active --quiet sshd || finish false "$added" "dịch vụ ssh không chạy"
+logger -t agentos-remote "đã nhận khóa SSH của máy đầu não (mới=$added)"
+finish true "$added" ""

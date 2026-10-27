@@ -91,6 +91,9 @@ systemctl enable --now agentos-os-update.path >/dev/null 2>&1 || systemctl enabl
 # Bác sĩ máy: bộ điều phối xin sửa lỗi an toàn qua tệp yêu cầu, dịch vụ này làm bằng root theo danh sách cố định (agentos-heal)
 chmod 755 /usr/local/sbin/agentos-heal 2>/dev/null || true
 systemctl enable --now agentos-heal.path >/dev/null 2>&1 || systemctl enable agentos-heal.path >/dev/null 2>&1 || true
+# Cho máy đầu não SSH vào (có sudo) sau khi chủ máy đầu não bấm Cho phép (/ketnoi): bộ điều phối chỉ xin qua tệp, agentos-remote làm bằng root
+chmod 755 /usr/local/sbin/agentos-remote 2>/dev/null || true
+systemctl enable --now agentos-remote.path >/dev/null 2>&1 || systemctl enable agentos-remote.path >/dev/null 2>&1 || true
 
 # Sửa màn hình trắng của trình hướng dẫn lần đầu trên một số card đồ họa: tắt tăng tốc GPU của Chromium kiosk
 W=/etc/xdg/autostart/agentos-wizard.desktop

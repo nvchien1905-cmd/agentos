@@ -12,7 +12,7 @@ const { spawn, execFileSync } = require('child_process');
 // fleet.js nằm cạnh tệp này sau khi cài (cai-dat-may-con.ps1 chép vào); chạy từ kho mã thì lấy ở orchestrator/src
 let createFleet; try { ({ createFleet } = require('./fleet')); } catch (e) { ({ createFleet } = require('../orchestrator/src/fleet')); }
 
-const VERSION = '2026.10.28.1-win';
+const VERSION = '2026.10.28.2-win';
 const baseDir = process.env.AGENTOS_WIN_DIR || path.join(process.env.ProgramData || os.tmpdir(), 'AgentOS');
 const fleetFile = process.env.AGENTOS_FLEET_FILE || path.join(baseDir, 'fleet.json');
 const confFile = process.env.AGENTOS_WIN_CONF || path.join(baseDir, 'windows-agent.json');

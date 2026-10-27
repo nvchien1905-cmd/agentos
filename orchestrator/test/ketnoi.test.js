@@ -94,3 +94,68 @@ test('ketnoi: chưa có khóa thì tự tạo bằng ssh-keygen; /ketnoi qua bot
   assert.match(await bot.handleCallback({ from: { id: 1 }, data: t.asks[0].b[0][1].data }), /Đã hủy/);
   await s.agent.close();
 });
+
+test('ketnoi: sau khi nối được SSH thì xin duyệt cài ứng dụng; chỉ cài khi bấm Cài; cái đã có bỏ qua, cài lỗi báo rõ', async () => {
+  const s = await setup(async () => ({ ok: true, added: true, user: 'agentos-remote', host: 'PC' }));
+  const cmds = [];
+  const run = async (bin, args) => {
+    const cmd = args[args.length - 1]; cmds.push(cmd);
+    if (cmd === 'echo agentos-ssh-ok') return { ok: true, out: 'agentos-ssh-ok\n', err: '' };
+    if (/command -v rsync/.test(cmd) || /command -v rustdesk/.test(cmd)) return { ok: false, out: '', err: '' };      // chưa có
+    if (/apt-get install/.test(cmd)) return { ok: true, out: '', err: '' };
+    return { ok: true, out: '', err: '' };
+  };
+  let installed = false;
+  const run2 = async (bin, args) => { const cmd = args[args.length - 1]; if (/apt-get install/.test(cmd)) installed = true; if (/command -v rsync/.test(cmd)) return { ok: installed, out: '', err: '' }; return run(bin, args); };
+  const t = kn(s, { run: run2 });
+  await t.k.request('1', 'May van phong'); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true);
+  await wait(() => t.asks.length > 1);
+  assert.match(t.asks[1].t, /Cài các ứng dụng/); assert.match(t.asks[1].t, /sudo/);
+  assert.ok(!cmds.some((c) => /apt-get install/.test(c)), 'chưa bấm Cài thì chưa cài gì');
+  assert.match(await t.k.answer(t.asks[1].b[0][0].data, 1, () => true), /đang cài/);
+  await wait(() => t.sent.length > 1);
+  assert.match(t.sent[1], /rsync, curl, jq: đã cài/); assert.match(t.sent[1], /RustDesk[^\n]*chưa có/); assert.match(t.sent[1], /sudo không hỏi mật khẩu: đã có/);
+  assert.ok(cmds.some((c) => /sudo -n sh -c/.test(c)));
+  // bấm Bỏ qua: không cài
+  const t2 = kn(s, { run: run2 }); installed = false;
+  await t2.k.request('1', 'May van phong'); await t2.k.answer(t2.asks[0].b[0][0].data, 1, () => true); await wait(() => t2.asks.length > 1);
+  assert.match(await t2.k.answer(t2.asks[1].b[0][1].data, 1, () => true), /Đã hủy/); assert.equal(installed, false);
+  await s.agent.close();
+});
+
+test('ketnoi: máy Windows dùng winget (RustDesk, Tailscale, Node) với lệnh cố định; chưa nối SSH thì không cài', async () => {
+  const s = await setup(async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }));
+  await assert.rejects(kn(s).k.provision('May van phong'), /chạy \/ketnoi/);
+  const orig = s.head.call; s.head.call = async (m, method, p, b, to) => (p === '/fleet/status' ? { platform: 'windows' } : orig(m, method, p, b, to));
+  const cmds = [], have = new Set();
+  const run = async (bin, args) => {
+    const c = args[args.length - 1]; cmds.push(c);
+    if (c === 'echo agentos-ssh-ok' || c === 'node --version') return { ok: true, out: 'agentos-ssh-ok', err: '' };
+    const id = (/--id (\S+)/.exec(c) || [])[1];
+    if (/winget install/.test(c)) { if (id === 'Tailscale.Tailscale') return { ok: false, out: '', err: 'Failed 0x8a150056' }; have.add(id); return { ok: true, out: '', err: '' }; }
+    if (/winget list/.test(c)) return { ok: have.has(id), out: '', err: '' };
+    return { ok: false, out: '', err: '' };
+  };
+  const t = kn(s, { run });
+  await t.k.connect('May van phong');
+  const r = await t.k.provision('May van phong');
+  assert.match(r, /RustDesk[^\n]*đã cài/); assert.match(r, /Tailscale[^\n]*không cài được — Failed 0x8a150056/); assert.match(r, /Node\.js[^\n]*đã có/);
+  assert.ok(cmds.some((c) => /^powershell -NoProfile -NonInteractive -Command "winget install --id RustDesk\.RustDesk -e --silent/.test(c)));
+  await s.agent.close();
+});
+
+test('máy con Linux: createRemoteAccess chỉ ghi tệp yêu cầu cho khóa công khai đúng dạng, chờ kết quả của tập lệnh root, báo lỗi/quá giờ', async () => {
+  const { createRemoteAccess } = require('../src/ketnoi');
+  const dir = tmp(), req = path.join(dir, 'req'), res = path.join(dir, 'res.json');
+  const ra = createRemoteAccess({ requestFile: req, resultFile: res, waitMs: 3000, pollMs: 20 });
+  for (const bad of ['', 'rm -rf /', 'command="x" ' + PUB, '-----BEGIN OPENSSH PRIVATE KEY-----', PUB + '\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC' + 'x'.repeat(30)]) await assert.rejects(ra.request(bad), /không đúng dạng/);
+  assert.ok(!fs.existsSync(req), 'khóa sai không được ghi ra tệp');
+  const root = setInterval(() => { if (fs.existsSync(req)) { fs.rmSync(req); fs.writeFileSync(res, JSON.stringify({ ts: Math.floor(Date.now() / 1000), ok: true, added: true, user: 'agentos-remote', error: '' })); } }, 20);
+  const r = await ra.request(PUB); clearInterval(root);
+  assert.equal(r.user, 'agentos-remote'); assert.equal(r.added, true);
+  const root2 = setInterval(() => { if (fs.existsSync(req)) { fs.rmSync(req); fs.writeFileSync(res, JSON.stringify({ ts: Math.floor(Date.now() / 1000), ok: false, error: 'cú pháp sudoers sai' })); } }, 20);
+  await assert.rejects(ra.request(PUB), /sudoers/); clearInterval(root2);
+  const slow = createRemoteAccess({ requestFile: req, resultFile: res, waitMs: 150, pollMs: 20 });
+  await assert.rejects(slow.request(PUB), /chưa xử lý/);
+  fs.rmSync(req, { force: true });
+});

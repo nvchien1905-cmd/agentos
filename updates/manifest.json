@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.14",
-  "file": "agentos-update-2026.10.26.14.tar.gz",
-  "size": 288624,
-  "sha256": "1837984c739df68297b519a4328e2adc80ce04a901609bcbed440c080eaca606",
+  "version": "2026.10.26.15",
+  "file": "agentos-update-2026.10.26.15.tar.gz",
+  "size": 290569,
+  "sha256": "18bcd8af9dc9d728cba8c2f429969e844ad0b354bb152fa69bc0a8f02bc311d8",
   "date": "2026-10-27",
-  "notes": "Bác sĩ máy tự sửa lỗi, đội máy qua Tailscale, camera và ổ cắm thông minh"
+  "notes": "Đăng nhập AI qua điện thoại, sao lưu tự chạy khi cắm USB"
 }

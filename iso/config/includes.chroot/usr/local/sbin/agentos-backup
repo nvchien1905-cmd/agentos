@@ -32,6 +32,7 @@ cmd_devices() { # liệt kê phân vùng có thể dùng làm ổ sao lưu (JSON
     [ "$TYPE" = part ] || [ "$TYPE" = disk ] || { [ "${BACKUP_ALLOW_LOOP:-0}" = 1 ] && [ "$TYPE" = loop ]; } || continue
     [ -n "$FSTYPE" ] && [ -n "$UUID" ] || continue
     case "$FSTYPE" in swap|LVM2_member|crypto_LUKS|linux_raid_member|iso9660|squashfs) continue ;; esac
+    [ "${SIZE:-0}" -ge 536870912 ] || continue                 # dưới 512 MB: không dùng làm ổ sao lưu (vd. phân vùng nhỏ của ổ cài đặt)
     [ "/dev/$KNAME" = "$rootdev" ] && continue
     case "$MOUNTPOINT" in /|/boot|/boot/efi|/usr|/var|/home) continue ;; esac
     local ext=false; { [ "$HOTPLUG" = 1 ] || [ "$RM" = 1 ] || [ "$TRAN" = usb ]; } && ext=true
@@ -71,11 +72,15 @@ cmd_set() {
   if same_disk_as_system "$ROOT"; then close_target; rm -f "$CONF"; die "ổ này CÙNG ổ với dữ liệu — sao lưu cùng một ổ không cứu được khi ổ hỏng. Chọn ổ khác."; fi
   mkdir -p "$ROOT/$SUB" && touch "$ROOT/$SUB/.agentos-backup" || { close_target; die "không ghi được vào ổ (chỉ đọc?)"; }
   close_target
+  if printf '%s' "$t" | grep -Eq '^[0-9a-fA-F-]{8,}$'; then
+    printf 'ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_UUID}=="%s", TAG+="systemd", ENV{SYSTEMD_WANTS}="agentos-backup-now.service"\n' "$t" > /etc/udev/rules.d/99-agentos-backup.rules
+    udevadm control --reload-rules 2>/dev/null
+  else rm -f /etc/udev/rules.d/99-agentos-backup.rules; fi
   systemctl daemon-reload; systemctl enable --now agentos-backup.timer agentos-backup.path >/dev/null 2>&1
   echo "✓ Đã chọn ổ sao lưu: $t (giữ bản cũ $keep ngày). Tự chạy mỗi ngày 03:30 và khi cắm ổ; chạy ngay: agentos-backup run"
 }
 
-cmd_off() { systemctl disable --now agentos-backup.timer agentos-backup.path >/dev/null 2>&1; rm -f "$CONF" "$STATUS"; echo "✓ Đã tắt sao lưu ra ổ ngoài (dữ liệu trên ổ ngoài vẫn còn)."; }
+cmd_off() { systemctl disable --now agentos-backup.timer agentos-backup.path >/dev/null 2>&1; rm -f "$CONF" "$STATUS" /etc/udev/rules.d/99-agentos-backup.rules; udevadm control --reload-rules 2>/dev/null; echo "✓ Đã tắt sao lưu ra ổ ngoài (dữ liệu trên ổ ngoài vẫn còn)."; }
 
 # rsync một nguồn vào mirror, giữ bản cũ/đã xóa ở phien-ban/<stamp>
 sync_one() { # nguồn tên [rsync-args...]

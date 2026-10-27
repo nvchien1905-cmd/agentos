@@ -300,3 +300,20 @@ test('Cài đặt: Thiết bị — thêm camera/ổ cắm (chỉ địa chỉ n
     assert.equal((await S.call('POST', 'devices/remove', { kind: 'camera', name: 'Quầy' })).status, 400); assert.equal((await S.call('POST', 'devices/remove', { kind: 'camera', name: 'Quầy', confirm: true })).status, 200); assert.equal((await S.call('GET', 'devices')).body.cameras.length, 0);
   } finally { await S.s.close(); await new Promise((r) => srv.close(r)); }
 });
+
+test('Cài đặt: đăng nhập AI QUA ĐIỆN THOẠI — không mở cửa sổ dòng lệnh: bắt đầu, hiện link + mã + QR, gửi link sang Telegram, dán mã, hủy', async () => {
+  const calls = []; let view = { status: 'idle' };
+  const login = { start: (e) => { calls.push(['start', e]); view = { id: 'x', engine: e, status: 'running', url: 'https://auth.openai.com/codex/device', code: e === 'codex' ? 'ABCD-12345' : null, needsInput: e !== 'codex', tail: '' }; return view; },
+    get: () => view, input: (t) => { calls.push(['input', t]); return view; }, cancel: () => { calls.push(['cancel']); view = { status: 'idle' }; return view; } };
+  const sent = [];
+  const S = await boot({ login, qrSvg: async (u) => '<svg data-u="' + u + '"></svg>', tgSend: async (token, chat, text) => { sent.push({ token, chat, text }); } });
+  try {
+    assert.equal((await S.call('POST', 'ai/login/start', { engine: 'deepseekapi' })).status, 400, 'AI dùng khóa API: không đăng nhập tài khoản');
+    const v = (await S.call('POST', 'ai/login/start', { engine: 'codex' })).body; assert.equal(v.status, 'running'); assert.equal(v.code, 'ABCD-12345'); assert.match(v.qr, /<svg/); assert.deepEqual(calls[0], ['start', 'codex']);
+    assert.equal((await S.call('GET', 'ai/login/state')).body.url, 'https://auth.openai.com/codex/device');
+    assert.equal((await S.call('POST', 'ai/login/phone')).status, 200); assert.equal(sent.length, 1); assert.equal(sent[0].chat, '111222333'); assert.match(sent[0].text, /https:\/\/auth\.openai\.com\/codex\/device/); assert.match(sent[0].text, /Nhập mã: ABCD-12345/);
+    await S.call('POST', 'ai/login/start', { engine: 'claude' }); assert.equal((await S.call('POST', 'ai/login/input', { text: 'MA-DAN-VAO' })).status, 200); assert.deepEqual(calls[calls.length - 1], ['input', 'MA-DAN-VAO']);
+    await S.call('POST', 'ai/login/phone'); assert.match(sent[1].text, /dán vào trang Cài đặt/);
+    assert.equal((await S.call('POST', 'ai/login/cancel')).status, 200); assert.equal((await S.call('POST', 'ai/login/phone')).status, 400, 'hủy rồi thì không còn gì để gửi');
+  } finally { await S.s.close(); }
+});

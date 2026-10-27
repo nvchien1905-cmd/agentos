@@ -42,6 +42,37 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
   function toast(t, bad) { var e = document.getElementById('toast'); e.textContent = t; e.style.background = bad ? '#8f1d16' : '#17202b'; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(function () { e.style.display = 'none'; }, 5000); }
   function fail(e) { toast(e.message || String(e), true); }
   function ask(msg) { return window.confirm(msg); }
+  // ĐĂNG NHẬP AI QUA ĐIỆN THOẠI: link + mã (Codex) hoặc ô dán mã (Claude/Gemini); gửi link sang Telegram để mở bằng điện thoại
+  var loginEngine = null, loginTimer = null;
+  function startPhoneLogin(eng) {
+    loginEngine = eng; toast('Đang chuẩn bị đăng nhập ' + eng + '…');
+    api('POST', 'ai/login/start', { engine: eng }).then(function () { pollPhoneLogin(eng); }).catch(function (e) { loginEngine = null; fail(e); });
+  }
+  function pollPhoneLogin(eng) {
+    clearTimeout(loginTimer);
+    api('GET', 'ai/login/state').then(function (v) {
+      var box = document.getElementById('lgbox'); if (!box || v.engine !== eng) return;
+      var x = '<h3>Đăng nhập ' + esc(eng) + ' bằng điện thoại</h3>';
+      if (v.status === 'running') {
+        if (!v.url) x += '<p class="mute">Đang chuẩn bị đường dẫn đăng nhập…</p>';
+        else {
+          x += '<p><a class="b p" href="' + esc(v.url) + '" target="_blank" rel="noopener">1. Mở trang đăng nhập</a> <button class="b" id="lgp">📱 Gửi link' + (v.code ? ' + mã' : '') + ' vào Telegram</button></p>';
+          if (v.qr) x += '<div style="max-width:160px">' + v.qr + '</div><p class="mute">Hoặc quét mã QR bằng điện thoại.</p>';
+          if (v.code) x += '<p>2. Nhập mã này vào trang đó rồi bấm Tiếp tục:</p><p style="font-size:30px;letter-spacing:4px;font-weight:700;text-align:center">' + esc(v.code) + '</p><p class="mute">Máy tự nhận khi bạn xong, không cần làm gì thêm. Tài khoản bật khóa bảo mật/xác thực 2 lớp thì làm trên điện thoại hoặc máy của bạn (có khóa), không cần cắm vào máy này.</p>';
+          else if (v.needsInput) x += '<p>2. Đăng nhập xong, trang hiện một <b>mã</b>. Sao chép và dán vào đây:</p><div class="row"><input id="lgc" placeholder="Dán mã" autocomplete="off" style="flex:1"><button class="b p" id="lgs">Gửi mã</button></div>';
+        }
+        x += '<p><button class="b" id="lgx">Hủy</button></p>';
+      } else if (v.status === 'done') { x += '<p class="ok">✔ Đăng nhập xong.</p>'; loginEngine = null; box.innerHTML = x; toast('Đã đăng nhập ' + eng); setTimeout(render, 1500); return; }
+      else if (v.status === 'error') { x += '<p class="bad">Chưa được: ' + esc(v.error || 'lỗi không rõ') + '</p>' + (v.tail ? '<pre>' + esc(v.tail) + '</pre>' : ''); loginEngine = null; }
+      var keep = document.getElementById('lgc') ? document.getElementById('lgc').value : '';
+      if (box.getAttribute('data-h') !== x) { box.innerHTML = x; box.setAttribute('data-h', x); if (document.getElementById('lgc')) document.getElementById('lgc').value = keep; }
+      box.style.display = 'block';
+      var bp = document.getElementById('lgp'); if (bp) bp.onclick = function () { api('POST', 'ai/login/phone').then(function () { toast('Đã gửi vào Telegram, mở trên điện thoại'); }).catch(fail); };
+      var bs = document.getElementById('lgs'); if (bs) bs.onclick = function () { api('POST', 'ai/login/input', { text: document.getElementById('lgc').value }).then(function () { toast('Đã gửi mã, đang chờ…'); }).catch(fail); };
+      var bx = document.getElementById('lgx'); if (bx) bx.onclick = function () { api('POST', 'ai/login/cancel').then(function () { loginEngine = null; box.style.display = 'none'; box.setAttribute('data-h', ''); }); };
+      if (v.status === 'running') loginTimer = setTimeout(function () { pollPhoneLogin(eng); }, 2000);
+    }).catch(function () { loginTimer = setTimeout(function () { pollPhoneLogin(eng); }, 3000); });
+  }
 
   // ----- cửa sổ nhật ký công việc nền -----
   function watchJob(id, title, done) {
@@ -113,7 +144,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     },
     ai: function () {
       api('GET', 'ai').then(function (r) {
-        var h = '<h2>AI và khóa API</h2>' + (r.configured ? '' : '<div class="banner">Máy chưa cấu hình xong, chưa lưu được khóa. Hoàn tất trình hướng dẫn lần đầu.</div>') + '<p class="mute">Mỗi AI dùng <b>tài khoản đăng nhập</b> hoặc <b>khóa API</b> của bạn. Có khóa thì dùng khóa (tính tiền theo lượng dùng của hãng). Bot tự chuyển sang AI kế tiếp khi hết hạn mức.</p>';
+        var h = '<h2>AI và khóa API</h2><div id="lgbox" class="card" style="display:none"></div>' + (r.configured ? '' : '<div class="banner">Máy chưa cấu hình xong, chưa lưu được khóa. Hoàn tất trình hướng dẫn lần đầu.</div>') + '<p class="mute">Mỗi AI dùng <b>tài khoản đăng nhập</b> hoặc <b>khóa API</b> của bạn. Có khóa thì dùng khóa (tính tiền theo lượng dùng của hãng). Bot tự chuyển sang AI kế tiếp khi hết hạn mức.</p>';
         r.engines.forEach(function (e) {
           var login = e.id !== 'deepseekapi';
           h += '<div class="card"><div class="row"><h3 class="grow" style="margin:0">' + esc(e.name) + '</h3><label><input type="checkbox" data-en="' + e.id + '" ' + (e.enabled ? 'checked' : '') + '> Dùng trong bot</label></div>' +
@@ -121,14 +152,15 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
             (login ? '<p style="margin:6px 0">Tài khoản đăng nhập: ' + (e.login && e.login.loggedIn ? '<span class="ok">✓ Đã đăng nhập</span> · ' + esc(e.login.how) + (e.login.who ? ' · <b>' + esc(e.login.who) + '</b>' : '') : '<span class="bad">✗ Chưa đăng nhập</span> <span class="mute">(bấm "Đăng nhập bằng tài khoản" bên dưới)</span>') + '</p>' : '') +
             '<p style="margin:6px 0" class="mute">Bot đang dùng: <b>' + (e.using === 'key' ? 'khóa API' : e.using === 'account' ? 'tài khoản đăng nhập' : 'chưa có gì để dùng') + '</b>' + (e.key && e.login && e.login.loggedIn ? ' (khóa được ưu tiên hơn tài khoản)' : '') + '</p>' +
             '<div class="row"><input type="password" id="k-' + e.id + '" placeholder="Dán khóa API (' + esc(e.where) + ')" autocomplete="off"><button class="b p" data-sk="' + e.id + '">Lưu khóa</button>' + (e.key ? '<button class="b d" data-ck="' + e.id + '">Xóa khóa</button>' : '') + '</div>' +
-            '<div class="row" style="margin-top:8px">' + (e.installed ? '' : '<button class="b" data-in="' + e.id + '">Cài phần mềm</button>') + (login && e.installed ? '<button class="b" data-lg="' + e.id + '">Đăng nhập bằng tài khoản</button>' : '') + '</div></div>';
+            '<div class="row" style="margin-top:8px">' + (e.installed ? '' : '<button class="b" data-in="' + e.id + '">Cài phần mềm</button>') + (login && e.installed ? '<button class="b" data-lg="' + e.id + '">📱 Đăng nhập bằng điện thoại</button>' : '') + '</div></div>';
         });
         h += '<div class="row"><button class="b p" id="so">Lưu danh sách AI đang dùng</button><small>Thứ tự ưu tiên: ' + esc(r.order.join(' → ') || '—') + '</small></div>';
         set(h);
         [].forEach.call(main.querySelectorAll('button[data-sk]'), function (b) { b.onclick = function () { var id = b.getAttribute('data-sk'), v = document.getElementById('k-' + id).value.trim(); if (!v) return toast('Chưa dán khóa', true); toast('Đang kiểm khóa với hãng...'); api('POST', 'ai/key', { engine: id, key: v }).then(function (j) { toast('✔ ' + j.detail + ' (' + j.masked + ')'); if (j.job) watchJob(j.job, 'Cài phần mềm', render); else render(); }).catch(fail); }; });
         [].forEach.call(main.querySelectorAll('button[data-ck]'), function (b) { b.onclick = function () { if (ask('Xóa khóa API này?')) api('POST', 'ai/key/clear', { engine: b.getAttribute('data-ck') }).then(render).catch(fail); }; });
         [].forEach.call(main.querySelectorAll('button[data-in]'), function (b) { b.onclick = function () { api('POST', 'ai/install', { engine: b.getAttribute('data-in') }).then(function (j) { watchJob(j.job, 'Cài phần mềm', render); }).catch(fail); }; });
-        [].forEach.call(main.querySelectorAll('button[data-lg]'), function (b) { b.onclick = function () { api('POST', 'ai/login', { engine: b.getAttribute('data-lg') }).then(function (j) { toast(j.hint); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-lg]'), function (b) { b.onclick = function () { startPhoneLogin(b.getAttribute('data-lg')); }; });
+        if (loginEngine) pollPhoneLogin(loginEngine);
         on('so', function () { var order = []; [].forEach.call(main.querySelectorAll('input[data-en]'), function (c) { if (c.checked) order.push(c.getAttribute('data-en')); }); api('POST', 'ai/order', { order: order }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
       }).catch(fail);
     },

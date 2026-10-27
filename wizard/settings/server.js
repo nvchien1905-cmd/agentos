@@ -22,6 +22,8 @@ const { createBackup } = require('../../orchestrator/src/backup');
 const { createUsage } = require('../../orchestrator/src/usage');
 const { createAuditLog } = require('../../orchestrator/src/auditlog');
 const { createFleet } = require('../../orchestrator/src/fleet');
+const { createLogin } = require('../lib/login');
+const qrLib = require('../lib/qr');
 const { createDevices } = require('../../orchestrator/src/devices');
 const mask = require('../lib/mask');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
@@ -97,6 +99,9 @@ function createSettings(o) {
   const cloudBin = o.cloudBin || '/usr/local/sbin/agentos-cloud';
   const backupBin = o.backupBin || '/usr/local/sbin/agentos-backup';
   const diskBackup = createBackup(o.backupFiles || {});
+  let phoneLoginInst = null; const phoneLogin = () => phoneLoginInst || (phoneLoginInst = o.login || createLogin());
+  // QR của link đăng nhập (nếu máy có qrencode); không có thì thôi, vẫn có link + nút gửi Telegram
+  const loginView = async (v) => { v = await v; if (v && v.url && v.status === 'running') { try { v.qr = await (o.qrSvg ? o.qrSvg(v.url) : qrLib.svg(run, v.url)); } catch (e) { v.qr = null; } } return v; };
   let devicesInst = null; const devicesFile = o.devicesFile || '/var/lib/agentos/data/devices.json';
   const devicesLib = () => devicesInst || (devicesInst = createDevices({ file: devicesFile, outDir: o.devicesOut || require('os').tmpdir(), fetch: o.devicesFetch, run: o.devicesRun }));
   const fixDevicesOwner = () => { try { chownAgentos(devicesFile); } catch (e) { /* bỏ qua */ } };
@@ -327,6 +332,24 @@ function createSettings(o) {
       const eng = String(b.engine);
       if (!engines.PACKAGES[eng]) throw new Error('AI không biết');
       return { job: startJob('Cài ' + apikeys.NAMES[eng], [['runuser', ['-u', 'agentos', '--', 'env', 'HOME=' + engines.HOME, 'PATH=' + engines.PREFIX + '/bin:/usr/bin:/bin', 'npm', 'install', '-g', '--prefix', engines.PREFIX, '--no-audit', '--no-fund', engines.PACKAGES[eng]]]]) };
+    },
+    // ĐĂNG NHẬP AI QUA ĐIỆN THOẠI (không mở cửa sổ dòng lệnh): chạy lệnh đăng nhập chính thức trong nền, trang này hiện link + mã (Codex: mã thiết bị; Claude/Gemini: dán mã lại);
+    // nút "Gửi vào Telegram" đưa link + mã sang điện thoại, người dùng bấm link trên điện thoại (đã đăng nhập sẵn, dùng được khóa bảo mật/ứng dụng xác thực của họ).
+    async 'POST /api/ai/login/start'(b) {
+      const eng = String(b.engine); if (!['claude', 'codex', 'gemini'].includes(eng)) throw new Error('AI này dùng khóa API, không đăng nhập tài khoản');
+      if (!(await engines.installed(run, eng))) throw new Error('Chưa cài phần mềm ' + eng + ': bấm "Cài phần mềm" trước.');
+      return loginView(phoneLogin().start(eng));
+    },
+    async 'GET /api/ai/login/state'() { return loginView(phoneLogin().get()); },
+    async 'POST /api/ai/login/input'(b) { return loginView(phoneLogin().input(String(b.text || ''))); },
+    async 'POST /api/ai/login/cancel'() { return loginView(phoneLogin().cancel()); },
+    async 'POST /api/ai/login/phone'() {
+      const v = phoneLogin().get(); if (v.status !== 'running' || !v.url) throw new Error('Chưa có đường dẫn đăng nhập để gửi (bấm đăng nhập trước).');
+      const text = readEnv() || '', token = envVal(text, 'TELEGRAM_TOKEN'), owner = envVal(text, 'ADMIN_USER_IDS').split(',')[0].trim();
+      if (!token || !owner) throw new Error('Chưa cấu hình bot Telegram.');
+      const msg = '🔐 Đăng nhập ' + v.engine + ' cho máy AgentOS\n1) Bấm đường dẫn: ' + v.url + '\n' + (v.code ? '2) Nhập mã: ' + v.code : v.needsInput ? '2) Đăng nhập xong, trang hiện một MÃ: sao chép rồi dán vào trang Cài đặt trên máy (ô "Dán mã").' : '') + '\n(Mở bằng điện thoại hoặc máy nào cũng được.)';
+      await (o.tgSend || tgLib.send)(token, owner, msg);
+      return { ok: true };
     },
     async 'POST /api/ai/login'(b, ctx) {
       const eng = String(b.engine);

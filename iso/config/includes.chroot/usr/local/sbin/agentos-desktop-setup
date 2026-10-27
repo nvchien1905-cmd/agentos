@@ -5,7 +5,7 @@
 #   - Ứng dụng Claude / ChatGPT dạng cửa sổ web riêng (Linux không có bản chính thức) trên màn hình chính.
 set -e
 export DEBIAN_FRONTEND=noninteractive
-PKGS="ibus ibus-unikey ibus-gtk3 ibus-gtk4 im-config dconf-cli xarchiver thunar-archive-plugin unzip p7zip-full unar fonts-noto-color-emoji"
+PKGS="rsync ibus ibus-unikey ibus-gtk3 ibus-gtk4 im-config dconf-cli xarchiver thunar-archive-plugin unzip p7zip-full unar fonts-noto-color-emoji"
 apt-get install -y --no-install-recommends $PKGS >/dev/null 2>&1 || { apt-get update >/dev/null 2>&1; apt-get install -y --no-install-recommends $PKGS; }
 
 # Văn phòng (Word/Excel/PowerPoint): LibreOffice Writer/Calc/Impress đọc-sửa-lưu .docx .xlsx .pptx, phông tương thích (Carlito=Calibri, Caladea=Cambria, Liberation=Arial/Times New Roman),

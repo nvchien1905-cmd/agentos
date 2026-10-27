@@ -183,3 +183,27 @@ test('Telegram: tệp gửi lúc đang ở dự án được chép vào TAI-LIEU
   assert.ok(fs.existsSync(path.join(p.dir, 'TAI-LIEU', 'hoadon.pdf'))); assert.ok(out.block.includes(path.join(p.dir, 'TAI-LIEU', 'hoadon.pdf')) && !out.block.includes(src));
   P.setActive('111', null); const same = pc.adoptFiles('111', '111', { block: 'b', files: [{ path: src }] }); assert.equal(same.block, 'b');
 });
+
+test('lịch tự làm của dự án: thêm/xóa, đúng giờ + đúng thứ thì giao việc VÀO dự án (một lần/ngày), /hen trong dự án thao tác trên lịch dự án', async () => {
+  const { createSchedule } = require('../src/schedule');
+  const { db, projects: P } = mk(); const p = P.create('Kế toán');
+  // 2026-10-27 là Thứ Ba (days: 2); 08:05 giờ VN
+  let t = Date.parse('2026-10-27T08:05:00+07:00'); const jobs = [];
+  const S = createSchedule({ db, notify: async () => {}, admins: ['111'], now: () => t, projects: P, submitJob: (chat, text, project) => jobs.push({ chat, text, project }) });
+  P.setActive('111', p.id);
+  assert.match(await S.command('hen', '08:00 t2-t6 lập báo cáo doanh số', { chatId: '111' }), /Dự án "Kế toán": #1 lúc 08:00 \(T2,T3,T4,T5,T6/);
+  assert.match(await S.command('hen', '18:00 cn tổng kết tuần', { chatId: '111' }), /#2 lúc 18:00 \(CN/);
+  assert.match(await S.command('hen', '', { chatId: '111' }), /#1 08:00.*#2 18:00/s);
+  assert.match(await S.command('hen', '25:00 x', { chatId: '111' }), /Cách dùng/);
+  const before = jobs.length; await S.tick();
+  const mine = jobs.slice(before).filter((j) => j.project === p.id); assert.equal(mine.length, 1); assert.equal(mine[0].text, 'lập báo cáo doanh số'); assert.equal(mine[0].chat, '111');
+  await S.tick(); assert.equal(jobs.slice(before).filter((j) => j.project === p.id).length, 1, 'chỉ một lần mỗi ngày');
+  assert.equal(P.get(p.id).schedule[0].last, '2026-10-27');
+  t = Date.parse('2026-10-28T08:05:00+07:00'); await S.tick(); assert.equal(jobs.filter((j) => j.project === p.id).length, 2, 'hôm sau (T4) chạy lại');
+  t = Date.parse('2026-11-01T18:10:00+07:00'); await S.tick(); assert.ok(jobs.some((j) => j.text === 'tổng kết tuần'), 'Chủ nhật 18:00 chạy việc CN');
+  t = Date.parse("2026-10-31T08:05:00+07:00"); const n = jobs.length; await S.tick(); assert.equal(jobs.length, n, 'Thứ Bảy không chạy việc T2-T6');
+  assert.match(await S.command('hen', 'xoa 1', { chatId: '111' }), /Đã xóa việc #1/); assert.equal(P.get(p.id).schedule.length, 1);
+  assert.throws(() => P.addSchedule(p.id, { time: '9:61', text: 'x y' }), /Giờ/);
+  // người xóa dự án thì lịch không còn chạy
+  P.remove(p.id); t = Date.parse('2026-11-08T18:10:00+07:00'); const n2 = jobs.length; await S.tick(); assert.equal(jobs.length, n2);
+});

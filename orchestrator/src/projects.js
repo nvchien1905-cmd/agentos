@@ -86,6 +86,14 @@ function createProjects(o) {
   }
   const archive = (id, on) => update(id, (p) => { p.archived = on !== false; });
   function setEngine(id, eng) { return update(id, (p) => { p.engine = eng ? String(eng) : null; }); }
+  const setChungTu = (id, on) => update(id, (p) => { p.chungtu = !!on; });
+  // Dự án làm kho kiến thức cho hỏi đáp nhân viên bán hàng (chỉ một dự án: bật dự án này thì dự án khác tự tắt)
+  function setHoiDap(id, on) {
+    const st = load(); const p = st.list.find((x) => x.id === id && !x.deleted); if (!p) throw new Error('Không có dự án này.');
+    if (on) for (const x of st.list) x.hoidap = false;
+    p.hoidap = !!on; save(st); return pub(p);
+  }
+  const hoidapProject = () => { const p = load().list.find((x) => x.hoidap && !x.deleted && !x.archived); return p ? pub(p) : null; };
   function setUsers(id, uids) { return update(id, (p) => { p.users = [...new Set((uids || []).map((u) => String(u).trim()).filter((u) => /^\d{3,}$/.test(u)))]; }); }
 
   // Xóa = chuyển vào thùng rác 30 ngày (không xóa hẳn ngay)
@@ -106,6 +114,32 @@ function createProjects(o) {
     if (n) { st.list = keep; save(st); }
     return n;
   }
+
+  // ---------- lịch tự làm của dự án (cùng tệp .du-an.json nên trang Cài đặt cũng sửa được) ----------
+  // Mỗi mục: { id, time 'HH:MM' (giờ VN), days [1..7] (1=Thứ 2 ... 7=Chủ nhật; rỗng = mọi ngày), text, last 'YYYY-MM-DD' }
+  const MAX_SCHEDULES = 20;
+  const DAY_NAMES = { 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7', 7: 'CN' };
+  function addSchedule(id, s) {
+    const time = String((s && s.time) || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!time || Number(time[1]) > 23 || Number(time[2]) > 59) throw new Error('Giờ không hợp lệ (ví dụ 08:00).');
+    const text = String((s && s.text) || '').trim(); if (text.length < 2 || text.length > 2000) throw new Error('Việc cần giao dài 2–2000 ký tự.');
+    const days = [...new Set((s.days || []).map(Number).filter((d) => d >= 1 && d <= 7))].sort();
+    let out;
+    update(id, (p) => {
+      p.schedule = Array.isArray(p.schedule) ? p.schedule : [];
+      if (p.schedule.length >= MAX_SCHEDULES) throw new Error('Mỗi dự án tối đa ' + MAX_SCHEDULES + ' việc hẹn giờ.');
+      out = { id: p.schedule.reduce((m, x) => Math.max(m, x.id), 0) + 1, time: String(time[1]).padStart(2, '0') + ':' + time[2], days, text, last: '' };
+      p.schedule.push(out);
+    });
+    return out;
+  }
+  function removeSchedule(id, sid) {
+    let n = 0;
+    update(id, (p) => { const before = (p.schedule || []).length; p.schedule = (p.schedule || []).filter((x) => x.id !== Number(sid)); n = before - p.schedule.length; });
+    return n > 0;
+  }
+  function markRan(id, sid, date) { update(id, (p) => { const x = (p.schedule || []).find((y) => y.id === Number(sid)); if (x) x.last = date; }); }
+  const daysText = (days) => (!days || !days.length || days.length === 7 ? 'mỗi ngày' : days.map((d) => DAY_NAMES[d]).join(','));
 
   // ---------- chỉ dẫn ----------
   function instructions(id) {
@@ -148,7 +182,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

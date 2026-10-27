@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { promptFor: chungtuPrompt, WATCH_DIR } = require('./chungtu');
 
 // Lệnh /duan trên Telegram + tiện ích gắn việc vào dự án (bot.js gọi). Tách riêng để dễ thử.
 const na = (s) => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
@@ -24,7 +25,7 @@ function createProjectCommands(o) {
       '/duan — danh sách · /duan <tên> — vào dự án · /duan thoat — về chế độ chung\n' +
       '#<tên-dự-án> <việc> — hỏi một lần trong dự án mà không đổi chỗ đang đứng\n' +
       '/duan chidan — xem chỉ dẫn · /duan tep — xem tệp' +
-      (adm ? '\n/duan moi <tên> — tạo dự án · /duan chidan <văn bản> (thay) hoặc /duan chidan them <dòng> · /duan ai <claude|codex|gemini|deepseekapi|tudong>\n' +
+      (adm ? '\n/duan moi <tên> — tạo dự án · /duan chidan <văn bản> (thay) hoặc /duan chidan them <dòng> · /duan ai <claude|codex|gemini|deepseekapi|tudong> · /duan chungtu bat|tat (đọc hóa đơn/phiếu tự động) · /duan hoidap bat|tat (kho kiến thức cho nhân viên bán hàng)\n' +
         '/duan luutru [tên] · /duan hienlai <tên> · /duan xoa <tên> co (vào thùng rác 30 ngày) · /duan giao <ID Telegram> · /duan bogiao <ID>' : '');
   }
 
@@ -82,6 +83,23 @@ function createProjectCommands(o) {
         if (!engines().includes(k)) return '⚠️ AI "' + rest + '" chưa bật trên máy. Có: ' + engines().join(', ') + '.';
         projects.setEngine(t.p.id, k); return '✅ ' + label(t.p) + ' ưu tiên ' + ENGINES[k] + ' (hết hạn mức thì tự chuyển sang AI khác, dùng chung dữ liệu dự án).';
       }
+      case 'chungtu': {                                          // chế độ xử lý chứng từ tự động của dự án
+        const e = need(); if (e) return e; const t = target(''); if (t.err) return t.err;
+        const k = na(rest);
+        if (!k) return label(t.p) + ': chế độ chứng từ ' + (t.p.chungtu ? 'BẬT' : 'tắt') + '. Bật: /duan chungtu bat — ảnh/PDF hóa đơn gửi vào đây (hoặc bỏ vào thư mục ' + WATCH_DIR + ' của dự án) sẽ được AI đọc, kiểm tra số liệu và ghi vào KET-QUA/chung-tu.xlsx.';
+        if (!['bat', 'tat', 'on', 'off'].includes(k)) return 'Cách dùng: /duan chungtu bat|tat';
+        const on = k === 'bat' || k === 'on'; projects.setChungTu(t.p.id, on);
+        if (on) { try { projects.ensureDirs(t.p); fs.mkdirSync(path.join(t.p.dir, WATCH_DIR), { recursive: true }); } catch (x) { /* bỏ qua */ } }
+        return on ? '✅ ' + label(t.p) + ': đã BẬT chế độ chứng từ. Gửi ảnh/PDF hóa đơn vào đây, hoặc bỏ tệp vào thư mục ' + WATCH_DIR + ' (từ điện thoại/Kho tệp riêng). Sổ: KET-QUA/chung-tu.xlsx.' : '✅ ' + label(t.p) + ': đã tắt chế độ chứng từ.';
+      }
+      case 'hoidap': {                                           // dự án làm kho kiến thức cho nhân viên bán hàng hỏi đáp
+        const e = need(); if (e) return e; const t = target('');  if (t.err) return t.err;
+        const k = na(rest);
+        if (!k) return label(t.p) + ': ' + (t.p.hoidap ? 'ĐANG là dự án hỏi đáp cho nhân viên bán hàng' : 'chưa phải dự án hỏi đáp') + '. Bật: /duan hoidap bat (chỉ một dự án; bỏ vào SO-TAY/CHI-DAN chính sách bán hàng, bảo hành, khuyến mại). Cho nhân viên: /vaitro dat <ID> banhang.';
+        if (!['bat', 'tat', 'on', 'off'].includes(k)) return 'Cách dùng: /duan hoidap bat|tat';
+        projects.setHoiDap(t.p.id, k === 'bat' || k === 'on');
+        return k === 'bat' || k === 'on' ? '✅ ' + label(t.p) + ' là dự án HỎI ĐÁP cho nhân viên bán hàng. Nhân viên (vai banhang) nhắn câu hỏi, bot tra KiotViet rồi trả lời theo chỉ dẫn/sổ tay của dự án này.' : '✅ Đã tắt dự án hỏi đáp.';
+      }
       case 'luutru': {
         const e = need(); if (e) return e; const t = target(rest); if (t.err) return t.err;
         projects.archive(t.p.id, true); if (projects.active(chatId) === null) { /* active() đã tự bỏ */ }
@@ -119,6 +137,12 @@ function createProjectCommands(o) {
     }
   }
 
+  // Dự án bật chế độ chứng từ: tin có ảnh/PDF được thay lời nhắc mặc định bằng quy trình đọc chứng từ + ghi sổ
+  function chungtuAsk(chatId, uid, caption, files) {
+    const p = current(chatId, uid); if (!p || !p.chungtu) return null;
+    return chungtuPrompt(p, files || [], caption || '');
+  }
+
   // Tệp gửi lúc đang ở dự án: chép vào TAI-LIEU và đổi đường dẫn trong câu lệnh sang bản trong dự án
   function adoptFiles(chatId, uid, prepared) {
     const p = current(chatId, uid); if (!p || !prepared || !prepared.files || !prepared.files.length) return prepared;
@@ -134,7 +158,7 @@ function createProjectCommands(o) {
     return Object.assign({}, prepared, { block: block + '\n[Tệp đã được lưu vào TAI-LIEU của dự án "' + p.name + '"]' });
   }
 
-  return { run, current, help, listText, adoptFiles, na };
+  return { run, current, help, listText, adoptFiles, chungtuAsk, na };
 }
 
 module.exports = { createProjectCommands };

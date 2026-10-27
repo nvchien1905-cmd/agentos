@@ -7,6 +7,7 @@ function helpText(profiles) {
     '/claude, /codex, /gemini hoặc /deepseekapi <việc> - ép dùng một AI (khóa API hoặc tài khoản) (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
     profiles.map((p) => '/' + p.name + ' <việc> - ' + (p.description || 'dùng bộ công cụ ' + p.name) + '\n').join('') +
     '/viec - xem 5 việc gần nhất\n' +
+    '🏛️ /hoidong <việc> - HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu và kết luận (cho việc quan trọng, tốn gấp ~3 lần hạn mức)\n' +
     '📁 /duan - DỰ ÁN: mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án (Claude hết hạn mức thì Codex làm tiếp). /duan moi <tên> · /duan <tên> · /duan thoat · #<tên-dự-án> <việc>\n' +
     '--- Lệnh nhanh (không qua AI, chỉ quản trị viên) ---\n' +
     '/manhinh - chụp màn hình máy gửi về đây · /cuaso - xem các cửa sổ đang mở\n' +
@@ -19,12 +20,15 @@ function helpText(profiles) {
     '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> - KiotViet\n' +
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
+    '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +
+    '📊 /chiphi [tuan|thang|homnay] - thống kê dùng AI theo AI và theo dự án · /chiphi tran <AI> <số việc/tháng> - đặt trần tháng (vượt thì dồn sang AI khác)\n' +
+    '💾 /saoluudia [chay] - xem/chạy ngay SAO LƯU dữ liệu ra ổ USB/HDD ngoài (phòng ổ trong máy hỏng)\n' +
     '/capnhat [co|tudong bat|tudong tat] - cập nhật phần mềm AgentOS khi có bản mới (không cần boot lại)\n' +
     '/capnhat hedieuhanh [co] - cập nhật HỆ ĐIỀU HÀNH Debian (Linux, Chrome, LibreOffice...) lên bản mới nhất\n' +
     '/tailscale [ketnoi|ngat co] - đường vào dự phòng khi Telegram/mạng lỗi · /in <tệp trong OneDrive> [may <tên>] - in qua máy in của máy\n' +
     '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +
-    '/nhatky - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ\n' +
+    '/nhatky [tuan] - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ; /nhatky tuan = báo cáo 7 ngày (ai nhắn, AI làm gì, bị từ chối gì); xem chi tiết trên Cài đặt → Nhật ký\n' +
     '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
     '/hangrao [bat|tat] - hàng rào cho AI toàn quyền (cấm đọc khóa, hỏi trước khi gửi ra ngoài/dính tiền)\n' +
     '/nen <việc> - giao việc NỀN chạy song song (không chờ hàng đợi), xong báo riêng · /tieptuc [số việc] - làm tiếp việc bị ngắt/lỗi · /sukien - AI tự làm khi có hóa đơn mới, hàng sắp hết, hoặc webhook\n' +
@@ -48,8 +52,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -59,9 +63,11 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
   const pcmd = projects ? createProjectCommands({ db, projects, isAdmin, memory, engines: () => worker.engineNames() }) : null;
 
   // project: undefined = dự án đang chọn của cuộc trò chuyện; null = chế độ chung; chuỗi = mã dự án (cú pháp #tên)
-  function submit(chatId, prompt, pref, profile, project) {
+  function submit(chatId, prompt, pref, profile, project, council) {
     const cur = pcmd ? pcmd.current(chatId) : null;
-    const id = db.addJob(chatId, prompt, pref, profile, 'main', project === undefined ? (cur ? cur.id : null) : project);
+    // Chứng từ: chỉ Claude ghi được sổ qua cổng duyệt (Codex/Gemini ở chế độ chỉ đọc) nên ưu tiên Claude
+    if (!pref && /^\[CHỨNG TỪ/.test(prompt) && worker.engineNames().includes('claude')) pref = 'claude';
+    const id = db.addJob(chatId, prompt, pref, profile, 'main', project === undefined ? (cur ? cur.id : null) : project, council);
     const ahead = db.aheadOf(id);
     setImmediate(() => worker.wake());
     if (quietAck) return ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó). Gõ /huy để hủy.' : null;        // việc làm ngay: bot hiện "đang gõ" + tin trạng thái thay cho tin báo nhận
@@ -88,7 +94,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         const p = pcmd ? pcmd.adoptFiles(chatId, uid, p0) : p0;
         const cap = msgs.map((m) => String(m.caption || m.text || '').trim()).filter(Boolean)[0] || '';
         if (!p.block) return p.errors.length ? '⚠️ ' + p.errors.join('\n') : 'Không đọc được tệp đính kèm.';
-        const ask = cap || 'Anh gửi tệp đính kèm. Hãy xem và mô tả ngắn gọn những gì thấy, rồi hỏi lại nếu chưa rõ anh cần làm gì.';
+        const ct = pcmd ? pcmd.chungtuAsk(chatId, uid, cap, p.files.map((f) => f.path)) : null;
+        const ask = ct || cap || 'Anh gửi tệp đính kèm. Hãy xem và mô tả ngắn gọn những gì thấy, rồi hỏi lại nếu chưa rõ anh cần làm gì.';
         const reply = await handle(Object.assign({}, last, ATT_KEYS, { text: ask + '\n\n' + p.block }));
         const warn = p.errors.length ? '⚠️ ' + p.errors.join('\n') + '\n' : '';
         if (reply && typeof reply === 'object') return Object.assign({}, reply, { text: warn + (reply.text || '') });
@@ -161,6 +168,13 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
         case 'start': case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
+        case 'hoidong': {                                    // HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu
+          if (roles && !roles.canAsk(uid)) return 'Vai của bạn chỉ xem được báo cáo.';
+          const prompt = String(cmd[3] || '').trim();
+          if (!prompt) return 'Cách dùng: /hoidong <việc quan trọng>. Hai AI làm ĐỘC LẬP rồi AI thứ ba đối chiếu, chỉ ra chỗ khác nhau và kết luận. Tốn gấp khoảng 3 lần hạn mức nên chỉ dùng cho việc quan trọng (soạn hợp đồng, quyết định giá, số liệu thuế...).';
+          if (worker.engineNames().length < 2) return 'Hội đồng cần bật ít nhất 2 AI (Cài đặt → AI và khóa API).';
+          return submit(chatId, prompt, null, null, undefined, true) || '🏛️ Đã giao cho hội đồng AI (làm lâu hơn bình thường).';
+        }
         case 'duan': case 'project': return pcmd ? pcmd.run(chatId, uid, cmd[3]) : 'Máy này chưa hỗ trợ dự án.';
         case 'moi': {
           const cur = pcmd ? pcmd.current(chatId, uid) : null;
@@ -183,6 +197,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           return rows.map((j) => '#' + j.id + ' [' + (ICON[j.status] || j.status) + (j.engine ? ', ' + j.engine : '') + (j.profile ? ', /' + j.profile : '') + '] ' + j.prompt.slice(0, 60).replace(/\s+/g, ' ')).join('\n');
         }
         case 'nhatky': {
+          if (auditlog && /^(tuan|week|7)$/.test(String(cmd[3] || '').trim().toLowerCase())) return isAdmin(uid) ? auditlog.weekText(7) : 'Chỉ chủ máy xem được báo cáo tuần.';
           const rows = db.recentAudit(15);
           if (!rows.length) return 'Chưa có lần xin dùng công cụ nào.';
           const MARK = { allow: '✅', deny: '⛔' };
@@ -244,6 +259,15 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         }
         default: return 'Lệnh không có. Gõ /help để xem danh sách.';
       }
+    }
+    // Vai nhân viên bán hàng: tin nhắn thường = câu hỏi hỏi đáp (tra KiotViet rồi AI trả lời chỉ đọc)
+    if (roles && roles.hoidapOnly && roles.hoidapOnly(uid)) {
+      if (!hoidap) return 'Máy này chưa bật hỏi đáp bán hàng.';
+      return hoidap.ask(chatId, text).then((r) => {
+        setImmediate(() => worker.wake());
+        const ahead = db.aheadOf(r.jobId);
+        return quietAck ? (ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó).' : null) : 'Đang tra giúp bạn...';
+      }, (e) => '⚠️ Chưa tra được: ' + e.message);
     }
     if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo: gõ /doanhso hoặc /ton <sản phẩm>.';
     return submit(chatId, text, null);

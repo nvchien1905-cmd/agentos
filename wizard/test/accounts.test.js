@@ -225,3 +225,42 @@ test('Dự án (Cài đặt): tạo, đổi AI ưu tiên/người dùng, lưu ch
     assert.equal((await S.call('POST', 'projects/delete', { id: c.id, confirm: true })).status, 200); assert.equal((await S.call('GET', 'projects')).body.list.length, 0);
   } finally { await S.s.close(); }
 });
+
+test('Cài đặt: sao lưu ra ổ ngoài — liệt kê ổ, chọn ổ (kiểm đầu vào), chạy/kiểm tra bằng công việc nền, tắt cần xác nhận', async () => {
+  const dir = tmp(); const bin = path.join(dir, 'agentos-backup'); const calls = path.join(dir, 'calls.txt');
+  fs.writeFileSync(bin, '#!/bin/sh\necho "$@" >> ' + calls + '\ncase "$1" in devices) echo \'{"path":"/dev/sdb1","uuid":"AAAA-1111","label":"USB","fstype":"ext4","size":8000000000,"mount":"","external":true,"model":"x"}\' ;; *) echo ok ;; esac\n', { mode: 0o755 });
+  const files = { statusFile: path.join(dir, 'st.json'), confFile: path.join(dir, 'conf.json'), triggerFile: path.join(dir, 'now') };
+  const S = await boot({ backupBin: bin, backupFiles: files, run: async (cmd, args) => { if (cmd === bin) return new Promise((res) => require('child_process').execFile(cmd, args, (e, out, err) => res({ code: e ? 1 : 0, out, err }))); return { code: 0, out: 'inactive\n', err: '' }; } });
+  try {
+    let g = (await S.call('GET', 'diskbackup')).body; assert.equal(g.status.configured, false); assert.equal(g.devices[0].uuid, 'AAAA-1111'); assert.equal(g.devices[0].external, true);
+    for (const bad of [{ target: '' }, { target: 'a b; rm -rf /' }, { target: 'AAAA-1111', keepDays: 0 }, { target: 'AAAA-1111', keepDays: 9999 }]) assert.equal((await S.call('POST', 'diskbackup/set', bad)).status, 400, JSON.stringify(bad));
+    const j = (await S.call('POST', 'diskbackup/set', { target: 'AAAA-1111', keepDays: 14 })).body.job; assert.ok(j);
+    const end = Date.now() + 5000; let job; while (Date.now() < end) { job = (await S.call('GET', 'jobs/' + j + '?from=0')).body; if (job.status !== 'running') break; await new Promise((r) => setTimeout(r, 30)); }
+    assert.ok(job.lines.some((l) => l === '$ ' + bin + ' set AAAA-1111 14'));
+    fs.writeFileSync(files.confFile, '{"target":"AAAA-1111","keepDays":14}'); fs.writeFileSync(files.statusFile, JSON.stringify({ ok: true, at: 'x', ts: Date.now() / 1000, message: 'ok', bytes: 1, files: 1, secs: 1 }));
+    g = (await S.call('GET', 'diskbackup')).body; assert.equal(g.status.ok, true); assert.equal(g.status.keepDays, 14);
+    assert.equal((await S.call('POST', 'diskbackup/off', {})).status, 400); assert.equal((await S.call('POST', 'diskbackup/off', { confirm: true })).status, 200);
+  } finally { await S.s.close(); }
+});
+
+test('Cài đặt: Chi phí AI đọc cơ sở dữ liệu bộ điều phối ở chế độ chỉ đọc (theo AI, dự án, ngày)', { skip: (() => { try { require('../../orchestrator/node_modules/better-sqlite3'); return false; } catch (e) { try { require('better-sqlite3'); return false; } catch (e2) { return true; } } })() }, async () => {
+  const { openDb } = require('../../orchestrator/src/db'); const dir = tmp(); const file = path.join(dir, 'a.db'); const db = openDb(file);
+  const id = db.addJob('1', 'x'); db.claimNext(); db.raw.prepare("UPDATE jobs SET engine='claude', status='done', started_at=?, finished_at=?, cost_usd=0.4 WHERE id=?").run(Date.now() - 5000, Date.now(), id); db.close();
+  const S = await boot({ dbFile: file, onedriveDir: dir });
+  try {
+    const r = (await S.call('GET', 'usage?days=7')).body; assert.equal(r.days, 7); assert.equal(r.perEngine[0].engine, 'claude'); assert.equal(r.perEngine[0].jobs, 1); assert.equal(r.perEngine[0].cost, 0.4); assert.equal(r.daily.length, 7);
+    const S2 = await boot({ dbFile: path.join(dir, 'khong-co.db') }); try { assert.equal((await S2.call('GET', 'usage')).status, 400); } finally { await S2.s.close(); }
+  } finally { await S.s.close(); }
+});
+
+test('Cài đặt: Nhật ký (chỉ đọc) — danh sách, chi tiết, CSV', { skip: (() => { try { require('../../orchestrator/node_modules/better-sqlite3'); return false; } catch (e) { try { require('better-sqlite3'); return false; } catch (e2) { return true; } } })() }, async () => {
+  const { openDb } = require('../../orchestrator/src/db'); const dir = tmp(); const file = path.join(dir, 'b.db'); const db = openDb(file);
+  const id = db.addJob('111', 'Việc thử, có "ngoặc"'); db.claimNext(); db.finishJob(id, 'done', { result: 'xong' }); db.addAudit({ jobId: id, tool: 'Write', cls: 'write', decision: 'allow', source: 'auto', summary: '/srv/x' }); db.close();
+  const S = await boot({ dbFile: file, onedriveDir: dir });
+  try {
+    const r = (await S.call('GET', 'audit?days=7')).body; assert.equal(r.list.length, 1); assert.equal(r.list[0].tools, 1); assert.equal(r.week.total, 1);
+    const d = (await S.call('GET', 'audit/job?id=' + id)).body; assert.equal(d.result, 'xong'); assert.equal(d.tools[0].tool, 'Write');
+    assert.equal((await S.call('GET', 'audit/job?id=999')).status, 400);
+    assert.match((await S.call('GET', 'audit/csv?days=7')).body.csv, /^﻿Việc,/);
+  } finally { await S.s.close(); }
+});

@@ -18,6 +18,9 @@ const fullaccess = require('../lib/fullaccess');
 const odauth = require('../lib/odauth');
 const synclist = require('../lib/synclist');
 const { createProjects } = require('../../orchestrator/src/projects');
+const { createBackup } = require('../../orchestrator/src/backup');
+const { createUsage } = require('../../orchestrator/src/usage');
+const { createAuditLog } = require('../../orchestrator/src/auditlog');
 const mask = require('../lib/mask');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
@@ -90,6 +93,14 @@ function createSettings(o) {
   }, o || {});
   const run = o.run || defaultRun;
   const cloudBin = o.cloudBin || '/usr/local/sbin/agentos-cloud';
+  const backupBin = o.backupBin || '/usr/local/sbin/agentos-backup';
+  const diskBackup = createBackup(o.backupFiles || {});
+  // Mở cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC, chạy fn({raw, kvGet}), rồi đóng
+  const withRoDb = (fn) => {
+    let Database; try { Database = require('../../orchestrator/node_modules/better-sqlite3'); } catch (e) { try { Database = require('better-sqlite3'); } catch (e2) { throw new Error('Chưa đọc được cơ sở dữ liệu (thiếu thư viện).'); } }
+    let raw; try { raw = new Database(o.dbFile || '/var/lib/agentos/data/agentos.db', { readonly: true, fileMustExist: true }); } catch (e) { throw new Error('Không mở được cơ sở dữ liệu: ' + e.message); }
+    try { return fn({ raw, kvGet: (k) => { const r = raw.prepare('SELECT v FROM kv WHERE k = ?').get(k); return r ? r.v : null; } }); } finally { raw.close(); }
+  };
   let projectsInst = null;
   const projectsLib = () => projectsInst || (projectsInst = o.projects || createProjects({ baseDir: o.onedriveDir }));
   // Trang Cài đặt chạy bằng root: dự án vừa tạo/sửa phải thuộc người dùng agentos để bộ điều phối ghi được
@@ -548,6 +559,37 @@ function createSettings(o) {
     },
 
     // ----- Tailscale -----
+    // ---- Nhật ký kiểm toán (chỉ đọc): danh sách việc, chi tiết 1 việc (công cụ AI đã xin), báo cáo tuần, xuất CSV
+    async 'GET /api/audit'(b, ctx) { return withRoDb((db) => { const g = (k) => ctx.query.get(k) || ''; const a = createAuditLog({ db, projects: projectsLib() }); return { list: a.list({ days: g('days'), q: g('q'), status: g('status'), project: g('project'), denied: g('denied') === '1', limit: g('limit') }), week: a.week(7) }; }); },
+    async 'GET /api/audit/job'(b, ctx) { return withRoDb((db) => { const d = createAuditLog({ db, projects: projectsLib() }).detail(ctx.query.get('id')); if (!d) throw new Error('Không có việc này.'); return d; }); },
+    async 'GET /api/audit/csv'(b, ctx) { return withRoDb((db) => ({ csv: createAuditLog({ db, projects: projectsLib() }).csv(Number(ctx.query.get('days')) || 30) })); },
+    // ---- Thống kê sử dụng AI (đọc cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC; đặt trần tháng bằng /chiphi trên Telegram)
+    async 'GET /api/usage'(b, ctx) {
+      let Database; try { Database = require('../../orchestrator/node_modules/better-sqlite3'); } catch (e) { try { Database = require('better-sqlite3'); } catch (e2) { throw new Error('Chưa đọc được cơ sở dữ liệu (thiếu thư viện).'); } }
+      const dbFile = o.dbFile || '/var/lib/agentos/data/agentos.db';
+      let raw; try { raw = new Database(dbFile, { readonly: true, fileMustExist: true }); } catch (e) { throw new Error('Không mở được cơ sở dữ liệu: ' + e.message); }
+      try {
+        const kv = (k) => { const r = raw.prepare('SELECT v FROM kv WHERE k = ?').get(k); return r ? r.v : null; };
+        const days = Math.min(366, Math.max(1, Number(ctx.query.get('days')) || 30));
+        return createUsage({ db: { raw, kvGet: kv }, projects: projectsLib() }).summary(days);
+      } finally { raw.close(); }
+    },
+    // ---- Sao lưu dữ liệu ra ổ ngoài (tập lệnh root agentos-backup)
+    async 'GET /api/diskbackup'() {
+      const r = await run(backupBin, ['devices']);
+      const devices = String(r.out || '').split(/\r?\n/).filter((l) => l.startsWith('{')).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
+      return { status: diskBackup.status(), devices, timer: await isActive('agentos-backup.timer') };
+    },
+    async 'POST /api/diskbackup/set'(b) {
+      if (busy()) throw new Error('Đang có một công việc khác chạy, đợi xong rồi thử lại.');
+      const target = String(b.target || '').trim(), days = b.keepDays == null || b.keepDays === '' ? 30 : Math.round(Number(b.keepDays));
+      if (!/^[A-Za-z0-9-]{8,40}$/.test(target) && !/^\/[\w./ -]{1,200}$/.test(target)) throw new Error('Ổ không hợp lệ.');
+      if (!(days >= 1 && days <= 3650)) throw new Error('Số ngày giữ bản cũ từ 1 đến 3650.');
+      return { job: startJob('Chọn ổ sao lưu ngoài', [[backupBin, ['set', target, String(days)]]]) };
+    },
+    async 'POST /api/diskbackup/run'() { if (busy()) throw new Error('Đang có một công việc khác chạy.'); return { job: startJob('Sao lưu ra ổ ngoài', [[backupBin, ['run']]], { keepGoing: false }) }; },
+    async 'POST /api/diskbackup/verify'() { if (busy()) throw new Error('Đang có một công việc khác chạy.'); return { job: startJob('Kiểm tra khôi phục từ ổ ngoài', [[backupBin, ['verify']]]) }; },
+    async 'POST /api/diskbackup/off'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = await run(backupBin, ['off']); if (r.code !== 0) throw new Error(String(r.err || r.out).slice(-200)); return { ok: true }; },
     // ---- Dự án (projects.js dùng chung với bộ điều phối; danh sách nằm ở tệp .du-an.json trong thư mục dự án)
     async 'GET /api/projects'() {
       const text = readEnv() || '';
@@ -563,9 +605,13 @@ function createSettings(o) {
       if (b.engine !== undefined) P.setEngine(id, b.engine || null);
       if (b.users !== undefined) P.setUsers(id, Array.isArray(b.users) ? b.users : String(b.users || '').split(/[\s,;]+/));
       if (b.archived !== undefined) P.archive(id, !!b.archived);
+      if (b.hoidap !== undefined) P.setHoiDap(id, !!b.hoidap);
+      if (b.chungtu !== undefined) { P.setChungTu(id, !!b.chungtu); if (b.chungtu) { try { fs.mkdirSync(path.join(P.dirOf(id), 'CHUNG-TU-MOI'), { recursive: true }); } catch (e) { /* bỏ qua */ } } }
       fixProjectOwner(P.get(id)); return { project: P.get(id) };
     },
     async 'POST /api/projects/instructions'(b) { const P = projectsLib(); P.setInstructions(String(b.id || ''), b.text); fixProjectOwner(P.get(String(b.id))); return { ok: true }; },
+    async 'POST /api/projects/schedule/add'(b) { const P = projectsLib(); const j = P.addSchedule(String(b.id || ''), { time: b.time, days: Array.isArray(b.days) ? b.days : [], text: b.text }); fixProjectOwner(P.get(String(b.id))); return { schedule: j }; },
+    async 'POST /api/projects/schedule/delete'(b) { return { ok: projectsLib().removeSchedule(String(b.id || ''), Number(b.sid)) }; },
     async 'POST /api/projects/files'(b) { const P = projectsLib(), id = String(b.id || ''); if (!P.get(id)) throw new Error('Không có dự án này.'); return { docs: P.files(id, 'TAI-LIEU'), results: P.files(id, 'KET-QUA'), dir: P.dirOf(id) }; },
     async 'POST /api/projects/delete'(b) {
       if (b.confirm !== true) throw new Error('Cần xác nhận');

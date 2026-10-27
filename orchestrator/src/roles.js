@@ -4,11 +4,13 @@
 // Người khác chỉ có các vai dưới đây, và việc của họ LUÔN chạy ở chế độ BẢO VỆ (chỉ đọc, hỏi duyệt, hộp cô lập), không bao giờ được hưởng chế độ toàn quyền:
 //   xem       chỉ xem báo cáo: /doanhso /ton, không nhắn việc cho AI
 //   nhanvien  /doanhso /ton /doc + nhắn AI (chỉ đọc file trong thư mục làm việc/OneDrive)
+//   banhang   chỉ hỏi đáp bán hàng: nhắn câu hỏi tự nhiên, bot tra KiotViet (giá, tồn) rồi AI trả lời chỉ đọc theo dữ liệu đó (không giá vốn/doanh thu)
 //   ketoan    nhanvien + /doi /thay /in /baocao (đọc và sửa tệp Word/Excel/PowerPoint)
 // Lưu ở cơ sở dữ liệu (kv 'users' = { "<id Telegram>": "<vai>" }), thêm/bớt bằng /vaitro từ Telegram, không cần sửa tệp cấu hình.
 const ROLES = {
   xem: { label: 'Chỉ xem báo cáo', quick: ['doanhso', 'ton'], ask: false },
   nhanvien: { label: 'Nhân viên', quick: ['doanhso', 'ton', 'doc'], ask: true },
+  banhang: { label: 'Nhân viên bán hàng (hỏi đáp)', quick: ['ton', 'gia'], ask: false, hoidap: true },
   ketoan: { label: 'Kế toán', quick: ['doanhso', 'ton', 'doc', 'doi', 'thay', 'in', 'baocao'], ask: true },
 };
 const KEY = 'users';
@@ -29,6 +31,8 @@ function createRoles({ db, allowed, adminIds, log }) {
     roleOf,
     label: (uid) => (isAdmin(uid) ? 'Chủ máy' : (ROLES[roleOf(uid)] || ROLES.nhanvien).label),
     canQuick: (uid, name) => isAdmin(uid) || (ROLES[roleOf(uid)] || ROLES.nhanvien).quick.includes(name),
+    // Vai chỉ hỏi đáp bán hàng: tin nhắn thường được bot tra KiotViet rồi giao AI trả lời chỉ đọc (hoidap.js)
+    hoidapOnly: (uid) => !isAdmin(uid) && !!(ROLES[roleOf(uid)] || {}).hoidap,
     canAsk: (uid) => isAdmin(uid) || (ROLES[roleOf(uid)] || ROLES.nhanvien).ask,
     set(uid, role) {
       uid = String(uid).trim(); role = String(role || '').toLowerCase();

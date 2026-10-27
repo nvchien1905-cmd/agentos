@@ -1,0 +1,10 @@
+[Unit]
+Description=AgentOS - sao luu ra o ngoai moi ngay 03:30
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

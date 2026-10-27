@@ -25,7 +25,7 @@ const minutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
 function createSchedule(o) {
   const db = o.db, kv = o.kiotviet, log = o.log || (() => {});
   const now = o.now || (() => Date.now());
-  const notify = o.notify, submitJob = o.submitJob;
+  const notify = o.notify, submitJob = o.submitJob, projects = o.projects || null;
   const admins = o.admins || [];
   const diskFreeMb = o.diskFreeMb || (() => Infinity);
   const dataDir = o.oneDriveDir || '';
@@ -44,7 +44,7 @@ function createSchedule(o) {
   const save = (s) => db.kvSet(KEY, JSON.stringify(s));
   function vn(ms) {
     const d = new Date((ms === undefined ? now() : ms) + 7 * 3600 * 1000);
-    return { date: d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()), min: d.getUTCHours() * 60 + d.getUTCMinutes(), show: pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1) };
+    return { dow: d.getUTCDay() === 0 ? 7 : d.getUTCDay(), date: d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()), min: d.getUTCHours() * 60 + d.getUTCMinutes(), show: pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1) };
   }
 
   function lastBackup() {
@@ -107,6 +107,17 @@ function createSchedule(o) {
       save(s);
       try { submitJob(j.chatId, j.text); log('hẹn giờ #' + j.id + ' đã giao việc cho AI'); } catch (e) { log('hẹn giờ #' + j.id + ' lỗi: ' + e.message); }
     }
+    // Lịch tự làm của từng DỰ ÁN (việc chạy trong dự án đó: thư mục, chỉ dẫn, sổ tay, AI ưu tiên của dự án)
+    if (projects) {
+      for (const p of projects.list()) {
+        for (const j of p.schedule || []) {
+          if (!due(j.time, j.last) || (j.days && j.days.length && !j.days.includes(t.dow))) continue;
+          try { projects.markRan(p.id, j.id, t.date); } catch (e) { continue; }          // ghi trước: lỗi giữa chừng cũng không chạy lặp
+          fired++;
+          try { submitJob(String(admins[0] || (p.users && p.users[0]) || ''), j.text, p.id); log('hẹn giờ dự án "' + p.name + '" #' + j.id + ' đã giao việc cho AI'); } catch (e) { log('hẹn giờ dự án ' + p.id + ' lỗi: ' + e.message); }
+        }
+      }
+    }
     if (dirty) save(s);
     return fired;
   }
@@ -130,6 +141,8 @@ function createSchedule(o) {
     }
     // /hen
     const a = noAccent(arg);
+    const proj = projects && ctx && ctx.chatId != null ? projects.active(ctx.chatId) : null;       // đang ở dự án: /hen thao tác trên lịch của DỰ ÁN
+    if (proj) return projectHen(proj, arg, a);
     if (!a) {
       return '⏰ Báo cáo hằng ngày: ' + (s.report.enabled ? s.report.time : 'tắt') + '\n' +
         (s.jobs.length ? 'Việc hẹn giờ (mỗi ngày):\n' + s.jobs.map((j) => '#' + j.id + ' ' + j.time + ' · ' + j.text.slice(0, 80).replace(/\s+/g, ' ')).join('\n') : 'Chưa có việc hẹn giờ nào.') +
@@ -149,6 +162,33 @@ function createSchedule(o) {
     const job = { id: s.nextId++, time: tm, text: m[2].trim().slice(0, 2000), chatId: String((ctx && ctx.chatId) || admins[0] || ''), last: '' };
     s.jobs.push(job); save(s);
     return '✅ Đã hẹn #' + job.id + ': mỗi ngày lúc ' + tm + ' (giờ Việt Nam) giao cho AI: ' + job.text.slice(0, 100) + '\nDùng AI mặc định, tính vào hạn mức như bình thường. Xóa: /hen xoa ' + job.id;
+  }
+
+  const DAYSPEC = /^(t[2-7]|cn)([-,](t[2-7]|cn))*$/;
+  function parseDays(spec) {
+    const map = { t2: 1, t3: 2, t4: 3, t5: 4, t6: 5, t7: 6, cn: 7 }; spec = spec.toLowerCase();
+    if (spec.includes('-') && !spec.includes(',')) { const [x, y] = spec.split('-'); const out = []; for (let d = map[x]; d !== undefined; d = d % 7 + 1) { out.push(d); if (d === map[y]) break; if (out.length > 7) break; } return out; }
+    return spec.split(',').map((x) => map[x]).filter(Boolean);
+  }
+  // /hen trong dự án: /hen (xem) · /hen 08:00 [t2-t6|t2,t4|cn] <việc> · /hen xoa <số>
+  function projectHen(p, arg, a) {
+    if (!a) {
+      const list = p.schedule || [];
+      return '⏰ Lịch tự làm của dự án "' + p.name + '":\n' + (list.length ? list.map((j) => '#' + j.id + ' ' + j.time + ' (' + projects.daysText(j.days) + ') · ' + j.text.slice(0, 80).replace(/\s+/g, ' ')).join('\n') : 'Chưa có.') +
+        '\nThêm: /hen 08:00 <việc> hoặc /hen 08:00 t2-t6 <việc> · Xóa: /hen xoa <số>. Việc chạy trong dự án (thư mục, chỉ dẫn, sổ tay riêng).';
+    }
+    let m = a.match(/^(?:xoa|huy|bo) #?(\d+)$/);
+    if (m) return projects.removeSchedule(p.id, Number(m[1])) ? '🗑️ Đã xóa việc #' + m[1] + ' của dự án "' + p.name + '".' : 'Dự án "' + p.name + '" không có việc hẹn giờ #' + m[1] + '.';
+    m = arg.match(/^(\S+)\s+([\s\S]+)$/);
+    const tm = m && parseTime(m[1]);
+    if (!tm) return 'Cách dùng: /hen 08:00 <việc>, /hen 08:00 t2-t6 <việc>, /hen 18:00 cn <việc>';
+    let rest = m[2].trim(), days = [];
+    const m2 = rest.match(/^(\S+)\s+([\s\S]+)$/);
+    if (m2 && DAYSPEC.test(m2[1].toLowerCase())) { days = parseDays(m2[1]); rest = m2[2].trim(); }
+    try {
+      const j = projects.addSchedule(p.id, { time: tm, days, text: rest });
+      return '✅ Dự án "' + p.name + '": #' + j.id + ' lúc ' + j.time + ' (' + projects.daysText(j.days) + ', giờ Việt Nam) giao cho AI: ' + j.text.slice(0, 100) + '\nKết quả gửi về Telegram của chủ máy. Xóa: /hen xoa ' + j.id;
+    } catch (e) { return '⚠️ ' + e.message; }
   }
 
   return { tick, command, buildReport, runReport, parseTime, load };

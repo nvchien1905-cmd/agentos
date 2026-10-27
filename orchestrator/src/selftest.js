@@ -106,6 +106,16 @@ function createSelfTest(o) {
       return R('network', 'Mạng và Tailscale', st, parts.join(' · '));
     }),
 
+    backup: () => safe('backup', 'Sao lưu ra ổ ngoài', async () => {
+      if (!o.backup) return R('backup', 'Sao lưu ra ổ ngoài', 'ok', '');
+      const s = o.backup.status();
+      if (!s.configured) return R('backup', 'Sao lưu ra ổ ngoài', 'warn', 'chưa bật: dữ liệu chỉ nằm trên một ổ đĩa, ổ hỏng là mất. Cắm USB/HDD rồi chọn ổ ở Cài đặt → Sao lưu ngoài.');
+      if (s.ok === null) return R('backup', 'Sao lưu ra ổ ngoài', 'warn', s.message);
+      if (!s.lastOk) return R('backup', 'Sao lưu ra ổ ngoài', 'fail', 'lần sao lưu gần nhất LỖI: ' + s.message);
+      if (s.stale) return R('backup', 'Sao lưu ra ổ ngoài', 'fail', 'đã hơn ' + o.backup.STALE_HOURS + ' giờ chưa có bản sao lưu mới (ổ chưa cắm?). Lần cuối: ' + s.at);
+      return R('backup', 'Sao lưu ra ổ ngoài', 'ok', 'lần cuối ' + s.at + ' (' + o.backup.human(s.bytes) + ')');
+    }),
+
     queue: () => safe('queue', 'Hàng đợi việc', async () => {
       if (!o.db) return R('queue', 'Hàng đợi việc', 'ok', '');
       const waiting = o.db.waitingCount ? o.db.waitingCount() : 0, queued = o.db.queuedCount();
@@ -113,8 +123,8 @@ function createSelfTest(o) {
     }),
   };
 
-  const LIGHT = ['telegram', 'services', 'engines', 'resources', 'storage', 'queue'];
-  const FULL = ['telegram', 'services', 'engines', 'resources', 'storage', 'tools', 'desk', 'network', 'queue'];
+  const LIGHT = ['telegram', 'services', 'engines', 'resources', 'storage', 'backup', 'queue'];
+  const FULL = ['telegram', 'services', 'engines', 'resources', 'storage', 'backup', 'tools', 'desk', 'network', 'queue'];
 
   async function runList(ids) { const out = []; for (const id of ids) out.push(await checks[id]()); return out; }
 

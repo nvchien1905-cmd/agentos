@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.26.12",
-  "file": "agentos-update-2026.10.26.12.tar.gz",
-  "size": 239841,
-  "sha256": "0344f3e17c3ce558518ef514389ed32ae7cb9c6f6c54c4bd700b3aacd44ebbf5",
-  "date": "2026-10-26",
-  "notes": "Dự án: mỗi dự án có thư mục, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án"
+  "version": "2026.10.26.13",
+  "file": "agentos-update-2026.10.26.13.tar.gz",
+  "size": 272756,
+  "sha256": "3adea79315f3c7feb5256f59c467e23be38d23ee504149e2307e3c8de7cf42ef",
+  "date": "2026-10-27",
+  "notes": "Sao lưu ra ổ ngoài, lịch tự làm theo dự án, chứng từ tự động, hội đồng AI, chi phí AI, nhật ký web, hỏi đáp bán hàng, cảnh báo chủ động"
 }

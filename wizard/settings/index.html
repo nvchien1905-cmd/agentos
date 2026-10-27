@@ -32,7 +32,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -192,6 +192,67 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         set(out);
       }).catch(function (e) { set('<h2>Tài khoản và thông tin đã lưu</h2><p class="bad">' + esc(e.message) + '</p>'); });
     },
+    aud: function () {
+      var f = { days: 7, q: '', status: '', denied: false };
+      function qs() { return 'days=' + f.days + '&q=' + encodeURIComponent(f.q) + '&status=' + f.status + (f.denied ? '&denied=1' : '') + '&limit=150'; }
+      function draw(r) {
+        var w = r.week, st = {}; w.byStatus.forEach(function (x) { st[x.status] = x.n; });
+        var h = '<h2>Nhật ký</h2><div class="card"><p>7 ngày qua: <b>' + w.total + '</b> việc (' + (st.done || 0) + ' xong, ' + (st.error || 0) + ' lỗi) · AI xin dùng công cụ: ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'allow' ? x.n : 0); }, 0) + ' được phép, ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'deny' ? x.n : 0); }, 0) + ' bị từ chối.</p>' +
+          '<div class="row"><select id="aud-d"><option value="1">Hôm nay</option><option value="7">7 ngày</option><option value="30">30 ngày</option><option value="90">90 ngày</option></select>' +
+          '<select id="aud-s"><option value="">Mọi trạng thái</option><option value="done">Xong</option><option value="error">Lỗi</option><option value="cancelled">Đã hủy</option></select>' +
+          '<label class="mute"><input type="checkbox" id="aud-x"> chỉ việc có công cụ bị từ chối</label><input id="aud-q" placeholder="Tìm trong nội dung" style="flex:1;min-width:140px"><button class="b p" id="aud-go">Lọc</button><button class="b" id="aud-csv">Xuất CSV</button></div>' +
+          '<table class="t"><tr><th>#</th><th>Lúc</th><th>Người nhắn</th><th>Dự án</th><th>AI</th><th>Kết quả</th><th>Giây</th><th>Công cụ</th><th>Nội dung</th></tr>' +
+          r.list.map(function (j) { return '<tr data-j="' + j.id + '" style="cursor:pointer"><td>' + j.id + '</td><td>' + esc(j.at) + '</td><td>' + esc(j.who) + '</td><td>' + esc(j.projectName || '') + '</td><td>' + esc(j.engine || '') + '</td><td>' + esc(j.statusText) + '</td><td>' + (j.secs == null ? '' : j.secs) + '</td><td>' + j.tools + (j.denied ? ' <b class="bad">(' + j.denied + ' từ chối)</b>' : '') + '</td><td>' + esc(j.prompt) + '</td></tr>'; }).join('') + '</table><div id="aud-det"></div></div>';
+        set(h);
+        document.getElementById('aud-d').value = String(f.days); document.getElementById('aud-s').value = f.status; document.getElementById('aud-x').checked = f.denied; document.getElementById('aud-q').value = f.q;
+        on('aud-go', function () { f.days = Number(document.getElementById('aud-d').value); f.status = document.getElementById('aud-s').value; f.denied = document.getElementById('aud-x').checked; f.q = document.getElementById('aud-q').value; load(); });
+        on('aud-csv', function () { api('GET', 'audit/csv?days=' + f.days).then(function (x) { var b = new Blob([x.csv], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'nhat-ky-agentos.csv'; document.body.appendChild(a); a.click(); a.remove(); }).catch(fail); });
+        [].forEach.call(main.querySelectorAll('tr[data-j]'), function (tr) { tr.onclick = function () { api('GET', 'audit/job?id=' + tr.getAttribute('data-j')).then(function (d) {
+          document.getElementById('aud-det').innerHTML = '<h3>Việc #' + d.id + ' · ' + esc(d.statusText) + (d.council ? ' · hội đồng AI' : '') + '</h3><p class="mute">' + esc(d.who) + ' · ' + esc(d.at) + (d.engine ? ' · AI: ' + esc(d.engine) : '') + (d.projectName ? ' · dự án: ' + esc(d.projectName) : '') + '</p><p><b>Yêu cầu:</b></p><pre style="white-space:pre-wrap">' + esc(d.prompt.slice(0, 3000)) + '</pre><p><b>Kết quả:</b></p><pre style="white-space:pre-wrap">' + esc((d.result || d.error || '').slice(0, 4000)) + '</pre><p><b>Công cụ AI đã xin (' + d.tools.length + '):</b></p><ul>' + d.tools.map(function (t) { return '<li>' + esc(t.at) + ' ' + (t.decision === 'allow' ? '✅' : '⛔') + ' ' + esc(t.tool) + ' (' + esc(t.source || '') + ') ' + esc(t.summary) + '</li>'; }).join('') + '</ul>'; }).catch(fail); }; });
+      }
+      function load() { api('GET', 'audit?' + qs()).then(draw).catch(function (e) { set('<h2>Nhật ký</h2><p class="bad">' + esc(e.message) + '</p>'); }); }
+      load();
+    },
+    usg: function () {
+      var days = 30;
+      function draw(r) {
+        var mx = Math.max.apply(null, r.daily.map(function (d) { return d.total; }).concat([1]));
+        var h = '<h2>Sử dụng AI</h2><div class="card"><div class="row"><button class="b' + (days === 7 ? ' p' : '') + '" data-d="7">7 ngày</button><button class="b' + (days === 30 ? ' p' : '') + '" data-d="30">30 ngày</button><button class="b' + (days === 90 ? ' p' : '') + '" data-d="90">90 ngày</button></div>';
+        if (!r.rows.length) h += '<p class="mute">Chưa có việc nào trong khoảng này.</p>';
+        else {
+          h += '<h3>Theo AI</h3><table class="t"><tr><th>AI</th><th>Việc</th><th>Lỗi</th><th>Thời gian</th><th>Chi phí khóa API</th><th>Tháng này / trần</th></tr>' +
+            r.perEngine.map(function (e) { var m = r.month[e.engine] || {}; return '<tr><td>' + esc(e.name) + '</td><td>' + e.jobs + '</td><td>' + e.errors + '</td><td>' + Math.round(e.secs / 60) + ' phút</td><td>' + (e.cost ? '$' + e.cost.toFixed(2) : '–') + '</td><td>' + (m.used || 0) + (m.cap ? ' / ' + m.cap : ' / không đặt') + '</td></tr>'; }).join('') + '</table>';
+          h += '<h3>Theo dự án</h3><table class="t"><tr><th>Dự án</th><th>Việc</th><th>Thời gian</th><th>AI đã dùng</th></tr>' +
+            r.perProject.map(function (p) { return '<tr><td>' + esc(p.name) + '</td><td>' + p.jobs + '</td><td>' + Math.round(p.secs / 60) + ' phút</td><td>' + Object.keys(p.engines).map(function (k) { return esc(k) + ' ' + p.engines[k]; }).join(', ') + '</td></tr>'; }).join('') + '</table>';
+          h += '<h3>Theo ngày (số việc xong)</h3><div style="display:flex;align-items:flex-end;gap:2px;height:90px">' + r.daily.map(function (d) { return '<div title="' + esc(d.date) + ': ' + d.total + ' việc" style="flex:1;background:#4a8;min-height:2px;height:' + Math.round(d.total / mx * 88) + 'px"></div>'; }).join('') + '</div>';
+        }
+        set(h + '<p class="mute">Đặt trần số việc mỗi tháng cho từng AI bằng lệnh Telegram: /chiphi tran claude 300. Vượt trần thì việc tự dồn sang AI khác còn trong ngân sách. Chi phí USD chỉ có với AI chạy bằng khóa API.</p></div>');
+        [].forEach.call(main.querySelectorAll('button[data-d]'), function (b) { b.onclick = function () { days = Number(b.getAttribute('data-d')); load(); }; });
+      }
+      function load() { api('GET', 'usage?days=' + days).then(draw).catch(function (e) { set('<h2>Sử dụng AI</h2><p class="bad">' + esc(e.message) + '</p>'); }); }
+      load();
+    },
+    dbk: function () {
+      api('GET', 'diskbackup').then(function (r) {
+        var s = r.status, h = '<h2>Sao lưu dữ liệu ra ổ ngoài</h2><div class="card"><p class="mute">Dữ liệu của máy (kho tệp, dự án, sổ tay, cơ sở dữ liệu) hiện nằm trên một ổ đĩa. Cắm ổ USB/HDD rồi chọn ổ ở đây: mỗi đêm 03:30 và mỗi lần cắm ổ máy tự sao lưu. Tệp bị sửa hoặc xóa nhầm được giữ lại để khôi phục. Mật khẩu, token và khóa API KHÔNG được chép ra ổ.</p>';
+        if (!s.configured) h += '<p><span class="bad">Chưa bật sao lưu ra ổ ngoài.</span></p>';
+        else h += '<p>' + (s.ok ? '<span class="ok">✓ Bình thường</span>' : s.ok === null ? '<span class="mute">' + esc(s.message) + '</span>' : '<span class="bad">⚠ Có vấn đề</span>') + (s.at ? ' · lần gần nhất ' + esc(s.at) + (s.lastOk ? ' (' + Math.round((s.bytes || 0) / 1048576) + ' MB, ' + s.files + ' tệp mới/đổi)' : '') : '') + (s.lastOk ? '' : ' · ' + esc(s.message || '')) + (s.stale ? ' · <span class="bad">đã quá 40 giờ chưa có bản mới</span>' : '') + '</p><p class="mute">Ổ đang dùng: ' + esc(s.target || '') + ' · giữ bản cũ ' + esc(s.keepDays) + ' ngày</p>';
+        h += '<h3>Chọn ổ</h3>';
+        if (!r.devices.length) h += '<p class="mute">Không thấy ổ nào ngoài ổ hệ thống. Cắm USB/HDD vào máy rồi bấm tải lại.</p>';
+        r.devices.forEach(function (d, i) {
+          h += '<div class="row"><label><input type="radio" name="dbkd" value="' + esc(d.uuid) + '"' + (s.target === d.uuid ? ' checked' : '') + '> ' + esc(d.label || d.path) + ' · ' + Math.round(d.size / 1073741824) + ' GB · ' + esc(d.fstype) + (d.external ? ' · <b>ổ ngoài</b>' : ' · <span class="mute">ổ trong máy</span>') + (d.mount ? ' · đang gắn ' + esc(d.mount) : '') + '</label></div>';
+        });
+        h += '<div class="row" style="margin-top:6px"><label class="mute">Giữ bản cũ/đã xóa <input id="dbkn" type="number" min="1" max="3650" value="' + esc(s.keepDays || 30) + '" style="width:80px"> ngày</label><button class="b p" id="dbks">Dùng ổ này</button></div>' +
+          '<div class="row" style="margin-top:10px"><button class="b" id="dbkr">Sao lưu ngay</button><button class="b" id="dbkv">Kiểm tra khôi phục</button><button class="b" id="dbkx">Tải lại</button>' + (s.configured ? '<button class="b" id="dbko">Tắt</button>' : '') + '</div>' +
+          '<p class="mute">Ổ phải khác ổ đang chứa dữ liệu. Định dạng ext4 (Linux) giữ được quyền tệp; exFAT/FAT/NTFS dùng được nhưng không giữ quyền và bỏ qua liên kết tượng trưng. Khôi phục: chép về thư mục KHOI-PHUC, không ghi đè bản gốc (lệnh agentos-backup restore).</p></div>';
+        set(h);
+        on('dbks', function () { var el = main.querySelector('input[name=dbkd]:checked'); if (!el) return toast('Chọn một ổ trước'); api('POST', 'diskbackup/set', { target: el.value, keepDays: document.getElementById('dbkn').value }).then(function (j) { watchJob(j.job, 'Chọn ổ sao lưu', render); }).catch(fail); });
+        on('dbkr', function () { api('POST', 'diskbackup/run').then(function (j) { watchJob(j.job, 'Sao lưu ra ổ ngoài', render); }).catch(fail); });
+        on('dbkv', function () { api('POST', 'diskbackup/verify').then(function (j) { watchJob(j.job, 'Kiểm tra khôi phục', render); }).catch(fail); });
+        on('dbkx', render);
+        on('dbko', function () { if (ask('Tắt sao lưu tự động ra ổ ngoài? Dữ liệu đã có trên ổ vẫn giữ.')) api('POST', 'diskbackup/off', { confirm: true }).then(render).catch(fail); });
+      }).catch(function (e) { set('<h2>Sao lưu ngoài</h2><p class="bad">' + esc(e.message) + '</p>'); });
+    },
     proj: function () {
       api('GET', 'projects').then(function (r) {
         var h = '<h2>Dự án</h2><div class="card"><p class="mute">Mỗi dự án có <b>thư mục tệp</b>, <b>chỉ dẫn</b>, <b>sổ tay</b> và <b>lịch sử</b> riêng. Dữ liệu do AgentOS giữ nên mọi AI (Claude, Codex, Gemini, DeepSeek) dùng chung: Claude hết hạn mức thì Codex làm tiếp đúng dự án đó. Trên Telegram: /duan, /duan &lt;tên&gt;, #tên-dự-án &lt;việc&gt;.</p>' +
@@ -201,7 +262,9 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           var opts = '<option value="">Tự chọn</option>' + r.engines.map(function (e) { return '<option value="' + esc(e) + '"' + (p.engine === e ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join('');
           h += '<div class="card"><h3>📁 ' + esc(p.name) + (p.archived ? ' <span class="mute">(đã cất)</span>' : '') + '</h3>' +
             '<p class="mute">' + p.usage.docs + ' tài liệu · ' + p.usage.results + ' kết quả · mã <code>' + esc(p.id) + '</code> · ' + esc(p.dir) + '</p>' +
-            '<div class="row"><label class="mute">AI ưu tiên <select id="pe' + i + '">' + opts + '</select></label><label class="mute">Người được dùng (ID Telegram, cách nhau dấu phẩy) <input id="pu' + i + '" value="' + esc(p.users.join(', ')) + '"></label></div>' +
+            '<div class="row"><label class="mute">AI ưu tiên <select id="pe' + i + '">' + opts + '</select></label><label class="mute"><input type="checkbox" id="pc' + i + '"' + (p.chungtu ? ' checked' : '') + '> Đọc chứng từ tự động (hóa đơn, phiếu) → sổ Excel</label><label class="mute"><input type="checkbox" id="ph' + i + '"' + (p.hoidap ? ' checked' : '') + '> Kho kiến thức hỏi đáp cho nhân viên bán hàng</label><label class="mute">Người được dùng (ID Telegram, cách nhau dấu phẩy) <input id="pu' + i + '" value="' + esc(p.users.join(', ')) + '"></label></div>' +
+            '<p class="mute" style="margin:8px 0 2px">⏰ Lịch tự làm (giờ Việt Nam; kết quả gửi về Telegram của chủ máy):</p><ul>' + (p.schedule && p.schedule.length ? p.schedule.map(function (j) { return '<li>' + esc(j.time) + ' · ' + (j.days && j.days.length && j.days.length < 7 ? j.days.map(function (d) { return ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'][d]; }).join(',') : 'mỗi ngày') + ' · ' + esc(j.text.slice(0, 120)) + ' <button class="b" data-sd="' + i + ':' + j.id + '">Xóa</button></li>'; }).join('') : '<li class="mute">(chưa có)</li>') + '</ul>' +
+            '<div class="row"><input id="st' + i + '" type="time" value="08:00"><input id="sw' + i + '" placeholder="Thứ (để trống = mỗi ngày): 1,2,3,4,5 = T2–T6" style="width:210px"><input id="sx' + i + '" placeholder="Việc giao cho AI, ví dụ: lập báo cáo doanh số hôm qua" style="flex:1;min-width:200px"><button class="b" data-sa="' + i + '">Thêm lịch</button></div>' +
             '<p class="mute" style="margin:8px 0 2px">Chỉ dẫn cho AI (mọi AI đều đọc; không ghi mật khẩu):</p><textarea id="pi' + i + '" rows="5" style="width:100%;box-sizing:border-box">' + esc(p.instructions) + '</textarea>' +
             '<div class="row" style="margin-top:6px"><button class="b p" data-ps="' + i + '">Lưu</button><button class="b" data-pf="' + i + '">Xem tệp</button><button class="b" data-pa="' + i + '">' + (p.archived ? 'Hiện lại' : 'Cất đi') + '</button><button class="b" data-pd="' + i + '">Xóa</button></div><div id="pfl' + i + '"></div></div>';
         });
@@ -209,8 +272,12 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         on('pc', function () { api('POST', 'projects/create', { name: document.getElementById('pn').value }).then(function () { toast('Đã tạo dự án'); render(); }).catch(fail); });
         [].forEach.call(main.querySelectorAll('button[data-ps]'), function (b) { b.onclick = function () {
           var i = b.getAttribute('data-ps'), p = r.list[i];
-          api('POST', 'projects/update', { id: p.id, engine: document.getElementById('pe' + i).value || null, users: document.getElementById('pu' + i).value })
+          api('POST', 'projects/update', { id: p.id, engine: document.getElementById('pe' + i).value || null, chungtu: document.getElementById('pc' + i).checked, hoidap: document.getElementById('ph' + i).checked, users: document.getElementById('pu' + i).value })
             .then(function () { return api('POST', 'projects/instructions', { id: p.id, text: document.getElementById('pi' + i).value }); }).then(function () { toast('Đã lưu'); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-sa]'), function (b) { b.onclick = function () {
+          var i = b.getAttribute('data-sa'), p = r.list[i], d = document.getElementById('sw' + i).value.split(/[^1-7]+/).filter(Boolean).map(Number);
+          api('POST', 'projects/schedule/add', { id: p.id, time: document.getElementById('st' + i).value, days: d, text: document.getElementById('sx' + i).value }).then(function () { toast('Đã thêm lịch'); render(); }).catch(fail); }; });
+        [].forEach.call(main.querySelectorAll('button[data-sd]'), function (b) { b.onclick = function () { var x = b.getAttribute('data-sd').split(':'); api('POST', 'projects/schedule/delete', { id: r.list[x[0]].id, sid: Number(x[1]) }).then(render).catch(fail); }; });
         [].forEach.call(main.querySelectorAll('button[data-pf]'), function (b) { b.onclick = function () {
           var i = b.getAttribute('data-pf'), p = r.list[i];
           api('POST', 'projects/files', { id: p.id }).then(function (f) {

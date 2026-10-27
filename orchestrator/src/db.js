@@ -54,6 +54,8 @@ function openDb(file) {
   // Làn chạy: 'main' (hàng đợi chính, tuần tự) | 'bg' (việc nền chạy song song, /nen) | 'event' | 'hook' (sự kiện tự kích hoạt; hook luôn chạy chế độ bảo vệ)
   // Dự án: việc gắn với một dự án có ngữ cảnh, phiên và sổ tay riêng (xem projects.js); trống = trò chuyện chung
   if (!cols.includes('project')) db.exec('ALTER TABLE jobs ADD COLUMN project TEXT');
+  // Hội đồng AI: việc quan trọng do hai AI làm độc lập rồi AI thứ ba (hoặc một trong hai) đối chiếu (worker.js)
+  if (!cols.includes('council')) db.exec('ALTER TABLE jobs ADD COLUMN council INTEGER DEFAULT 0');
   if (!cols.includes('lane')) db.exec("ALTER TABLE jobs ADD COLUMN lane TEXT DEFAULT 'main'");
   // Tìm lại ngữ cảnh cũ theo nội dung: FTS5 (không phân biệt dấu). Thiếu FTS5 thì bỏ qua (search trả mảng rỗng).
   let hasFts = false;
@@ -70,7 +72,7 @@ function openDb(file) {
   const nextByLanes = new Map();
 
   const q = {
-    add: db.prepare('INSERT INTO jobs (chat_id, prompt, engine_pref, profile, created_at, lane, project) VALUES (?, ?, ?, ?, ?, ?, ?)'),
+    add: db.prepare('INSERT INTO jobs (chat_id, prompt, engine_pref, profile, created_at, lane, project, council) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
     get: db.prepare('SELECT * FROM jobs WHERE id = ?'),
     next: db.prepare("SELECT * FROM jobs WHERE status = 'queued' OR (status = 'waiting' AND run_after <= ?) ORDER BY id LIMIT 1"),
     run: db.prepare("UPDATE jobs SET status = 'running', started_at = ? WHERE id = ? AND status IN ('queued','waiting')"),
@@ -98,7 +100,7 @@ function openDb(file) {
 
   return {
     raw: db,
-    addJob(chatId, prompt, enginePref, profile, lane, project) { return Number(q.add.run(String(chatId), prompt, enginePref || null, profile || null, now(), lane || 'main', project || null).lastInsertRowid); },
+    addJob(chatId, prompt, enginePref, profile, lane, project, council) { return Number(q.add.run(String(chatId), prompt, enginePref || null, profile || null, now(), lane || 'main', project || null, council ? 1 : 0).lastInsertRowid); },
     // "Phạm vi" của một việc = cuộc trò chuyện (chat) hoặc cuộc trò chuyện TRONG một dự án: 'chatId' hoặc 'chatId#mã-dự-án'. Mọi khóa phiên/ngữ cảnh/tóm tắt dùng phạm vi này.
     scopeOf(job) { return String(job.chat_id) + (job.project ? '#' + job.project : ''); },
     getJob(id) { return q.get.get(id); },

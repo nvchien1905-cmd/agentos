@@ -1,0 +1,186 @@
+#!/bin/bash
+# SAO LƯU DỮ LIỆU RA Ổ NGOÀI (USB/HDD) — phòng ổ đĩa của máy hỏng. Khác agentos-sao-luu (chỉ cấu hình, nằm cùng ổ).
+#   Chép: thư mục dữ liệu AI/kho tệp (/srv/onedrive), dữ liệu Nextcloud (/srv/nextcloud), cơ sở dữ liệu bộ điều phối, cấu hình.
+#   Cách làm: bản "hiện tại" luôn khớp máy; tệp bị sửa/xóa được giữ lại ở phien-ban/<ngày giờ>/ trong KEEP ngày (xóa nhầm vẫn lấy lại được).
+#   Chạy bằng root. Cấu hình ở /etc/agentos/backup.json. Trạng thái: /var/lib/agentos/backup-status.json (bộ điều phối đọc để báo khi hỏng/quá hạn).
+# Dùng: agentos-backup devices | set <UUID|/đường/dẫn> [số-ngày-giữ] | run | status | verify | restore <đường dẫn trong bản sao lưu> | versions | off
+set -u
+CONF=/etc/agentos/backup.json
+STATUS=/var/lib/agentos/backup-status.json
+MNT=/mnt/agentos-backup
+OD=${ONEDRIVE_DIR:-/srv/onedrive}
+NC=${NEXTCLOUD_DIR:-/srv/nextcloud}
+DB=${DB_PATH:-/var/lib/agentos/data/agentos.db}
+SUB=AgentOS-sao-luu
+
+die() { echo "LỖI: $*" >&2; exit 1; }
+need_rsync() { command -v rsync >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync >/dev/null 2>&1; command -v rsync >/dev/null 2>&1; }
+[ "$(id -u)" = 0 ] || die "cần chạy bằng root"
+jget() { [ -f "$CONF" ] && sed -n "s/.*\"$1\": *\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$CONF" | head -1; }
+now_iso() { date +%Y-%m-%dT%H:%M:%S%z; }
+write_status() { # ok(true|false) mensaje bytes files secs
+  mkdir -p "$(dirname "$STATUS")"
+  local m; m=$(printf '%s' "$2" | tr -d '"\\' | tr '\n' ' ' | cut -c1-300)
+  printf '{\n  "ok": %s,\n  "at": "%s",\n  "ts": %s,\n  "message": "%s",\n  "bytes": %s,\n  "files": %s,\n  "secs": %s,\n  "target": "%s"\n}\n' "$1" "$(now_iso)" "$(date +%s)" "$m" "${3:-0}" "${4:-0}" "${5:-0}" "$(jget target)" > "$STATUS.tmp" && mv "$STATUS.tmp" "$STATUS"; chmod 644 "$STATUS"
+}
+
+cmd_devices() { # liệt kê phân vùng có thể dùng làm ổ sao lưu (JSON một dòng mỗi ổ)
+  command -v lsblk >/dev/null || die "thiếu lsblk"
+  local rootdev; rootdev=$(findmnt -no SOURCE / 2>/dev/null | sed 's/\[.*//')
+  lsblk -P -b -o KNAME,NAME,TYPE,SIZE,FSTYPE,UUID,LABEL,MOUNTPOINT,RM,TRAN,HOTPLUG,MODEL 2>/dev/null | while IFS= read -r line; do
+    eval "$line"
+    [ "$TYPE" = part ] || [ "$TYPE" = disk ] || { [ "${BACKUP_ALLOW_LOOP:-0}" = 1 ] && [ "$TYPE" = loop ]; } || continue
+    [ -n "$FSTYPE" ] && [ -n "$UUID" ] || continue
+    case "$FSTYPE" in swap|LVM2_member|crypto_LUKS|linux_raid_member|iso9660|squashfs) continue ;; esac
+    [ "/dev/$KNAME" = "$rootdev" ] && continue
+    case "$MOUNTPOINT" in /|/boot|/boot/efi|/usr|/var|/home) continue ;; esac
+    local ext=false; { [ "$HOTPLUG" = 1 ] || [ "$RM" = 1 ] || [ "$TRAN" = usb ]; } && ext=true
+    printf '{"path":"%s","uuid":"%s","label":"%s","fstype":"%s","size":%s,"mount":"%s","external":%s,"model":"%s"}\n' "/dev/$KNAME" "$UUID" "$(printf '%s' "$LABEL" | tr -d '"\\')" "$FSTYPE" "${SIZE:-0}" "$MOUNTPOINT" "$ext" "$(printf '%s' "$MODEL" | tr -d '"\\')"
+  done
+}
+
+# Gắn ổ (nếu cần) và in ra thư mục gốc để chép. Đặt biến MOUNTED_BY_US=1 nếu chính mình gắn (để tháo sau khi xong).
+MOUNTED_BY_US=0
+open_target() {
+  local t; t=$(jget target); [ -n "$t" ] || die "chưa chọn ổ sao lưu (agentos-backup set <UUID|đường dẫn>)"
+  if [ -d "$t" ] && [ "${t#/dev/}" = "$t" ] && ! printf '%s' "$t" | grep -Eq '^[0-9a-fA-F-]{8,}$'; then ROOT=$t; return 0; fi
+  local dev; dev=$(blkid -U "$t" 2>/dev/null) || true
+  [ -n "$dev" ] || return 1                                  # chưa cắm ổ
+  local cur; cur=$(findmnt -no TARGET "$dev" 2>/dev/null | head -1)
+  if [ -n "$cur" ]; then ROOT=$cur; return 0; fi
+  mkdir -p "$MNT"; mountpoint -q "$MNT" && umount "$MNT" 2>/dev/null          # dư mount từ lần chạy bị ngắt giữa chừng
+  mount -o noatime "$dev" "$MNT" 2>/dev/null || mount "$dev" "$MNT" || return 2
+  MOUNTED_BY_US=1; ROOT=$MNT; return 0
+}
+close_target() { sync; if [ "$MOUNTED_BY_US" = 1 ]; then umount "$MNT" 2>/dev/null; MOUNTED_BY_US=0; fi; return 0; }
+trap close_target EXIT                                      # lỗi giữa chừng cũng tháo ổ, không để ổ gắn dở
+
+same_disk_as_system() { # ổ sao lưu KHÔNG được cùng ổ với dữ liệu (sẽ vô nghĩa)
+  local a b; a=$(df -P "$1" | awk 'NR==2{print $1}'); b=$(df -P "$OD" 2>/dev/null | awk 'NR==2{print $1}')
+  [ -n "$a" ] && [ "$a" = "$b" ]
+}
+
+cmd_set() {
+  local t=${1:-}; local keep=${2:-30}
+  [ -n "$t" ] || die "cách dùng: agentos-backup set <UUID|đường dẫn> [số ngày giữ bản cũ]"
+  printf '%s' "$keep" | grep -Eq '^[0-9]+$' && [ "$keep" -ge 1 ] && [ "$keep" -le 3650 ] || die "số ngày giữ phải từ 1 đến 3650"
+  need_rsync || die "không cài được rsync (cần mạng)"
+  mkdir -p /etc/agentos
+  printf '{\n  "target": "%s",\n  "keepDays": %s\n}\n' "$t" "$keep" > "$CONF"; chmod 644 "$CONF"
+  open_target || die "chưa thấy ổ $t (đã cắm chưa?)"
+  if same_disk_as_system "$ROOT"; then close_target; rm -f "$CONF"; die "ổ này CÙNG ổ với dữ liệu — sao lưu cùng một ổ không cứu được khi ổ hỏng. Chọn ổ khác."; fi
+  mkdir -p "$ROOT/$SUB" && touch "$ROOT/$SUB/.agentos-backup" || { close_target; die "không ghi được vào ổ (chỉ đọc?)"; }
+  close_target
+  systemctl daemon-reload; systemctl enable --now agentos-backup.timer agentos-backup.path >/dev/null 2>&1
+  echo "✓ Đã chọn ổ sao lưu: $t (giữ bản cũ $keep ngày). Tự chạy mỗi ngày 03:30 và khi cắm ổ; chạy ngay: agentos-backup run"
+}
+
+cmd_off() { systemctl disable --now agentos-backup.timer agentos-backup.path >/dev/null 2>&1; rm -f "$CONF" "$STATUS"; echo "✓ Đã tắt sao lưu ra ổ ngoài (dữ liệu trên ổ ngoài vẫn còn)."; }
+
+# rsync một nguồn vào mirror, giữ bản cũ/đã xóa ở phien-ban/<stamp>
+sync_one() { # nguồn tên [rsync-args...]
+  local src=$1 name=$2; shift 2
+  [ -d "$src" ] || return 0
+  mkdir -p "$DEST/$name" || { echo 99 >> "$RCS"; return 0; }
+  LC_ALL=C rsync -rltD --delete --backup --backup-dir="$VER/$name" "${PERMS[@]}" --info=stats2 "$@" "$src"/ "$DEST/$name"/ >>"$LOG" 2>&1
+  echo $? >> "$RCS"
+}
+
+cmd_run() {
+  local t0; t0=$(date +%s)
+  exec 9>/var/lock/agentos-backup.lock; flock -n 9 || { echo "Đang có một lần sao lưu khác chạy."; return 0; }
+  need_rsync || { write_status false "máy chưa cài rsync" 0 0 0; die "thiếu rsync"; }
+  open_target; local rc=$?
+  if [ $rc -ne 0 ]; then
+    [ $rc -eq 1 ] && { write_status false "chưa cắm ổ sao lưu" 0 0 0; echo "Chưa cắm ổ sao lưu."; return 3; }
+    write_status false "không gắn được ổ sao lưu" 0 0 0; die "không gắn được ổ sao lưu"
+  fi
+  if same_disk_as_system "$ROOT"; then close_target; write_status false "ổ sao lưu trùng ổ dữ liệu" 0 0 0; die "ổ sao lưu trùng ổ dữ liệu"; fi
+  DEST=$ROOT/$SUB/ban-sao; STAMP=$(date +%Y-%m-%d_%H%M); VER=$ROOT/$SUB/phien-ban/$STAMP; LOG=$ROOT/$SUB/nhat-ky-lan-cuoi.txt
+  mkdir -p "$DEST" "$ROOT/$SUB/phien-ban" 2>/dev/null || { close_target; write_status false "không ghi được vào ổ sao lưu" 0 0 0; die "không ghi được vào ổ"; }
+  touch "$ROOT/$SUB/.agentos-backup"; : > "$LOG"
+  local fs; fs=$(findmnt -no FSTYPE -T "$ROOT" 2>/dev/null)
+  case "$fs" in vfat|exfat|ntfs|fuseblk|msdos) PERMS=(--no-perms --no-owner --no-group --no-links --modify-window=2) ;; *) PERMS=(-pog) ;; esac
+
+  # Dữ liệu cần chụp nhất quán trước: cơ sở dữ liệu đang ghi
+  local T; T=$(mktemp -d); trap 'rm -rf "$T"' RETURN
+  mkdir -p "$T/cau-hinh"
+  if [ -f "$DB" ]; then sqlite3 "$DB" ".backup '$T/cau-hinh/agentos.db'" 2>/dev/null || cp "$DB" "$T/cau-hinh/agentos.db"; fi
+  [ -f "$NC/data/owncloud.db" ] && sqlite3 "$NC/data/owncloud.db" ".backup '$T/cau-hinh/nextcloud-owncloud.db'" 2>/dev/null
+  [ -d /etc/agentos ] && mkdir -p "$T/cau-hinh/etc-agentos" && cp -a /etc/agentos/. "$T/cau-hinh/etc-agentos/" 2>/dev/null
+  # KHÔNG chép khóa/token/mật khẩu ra ổ ngoài (ổ có thể bị mất): che các dòng bí mật
+  if [ -f "$T/cau-hinh/etc-agentos/orchestrator.env" ]; then sed -i -E 's/^([A-Za-z_]*(TOKEN|SECRET|KEY|PASSWORD|PASS|CODE)[A-Za-z_]*=).*/\1***da-che***/I' "$T/cau-hinh/etc-agentos/orchestrator.env"; fi
+  rm -f "$T/cau-hinh/etc-agentos/cloud.json" "$T/cau-hinh/etc-agentos/backup.json"
+  apt-mark showmanual > "$T/cau-hinh/phan-mem-da-cai.txt" 2>/dev/null
+  cat > "$T/cau-hinh/KHOI-PHUC.txt" <<EOF
+Sao lưu AgentOS $(date +%F\ %H:%M) từ máy $(hostname).
+ban-sao/du-lieu-ai   = thư mục $OD (dữ liệu AI, sổ tay, dự án, kho tệp)
+ban-sao/nextcloud    = $NC (dữ liệu Nextcloud)
+ban-sao/cau-hinh     = cơ sở dữ liệu bộ điều phối + cấu hình đã che bí mật (KHÔNG có mật khẩu/token: nhập lại bằng trình hướng dẫn)
+phien-ban/<ngày giờ> = bản CŨ/đã xóa của tệp bị đổi trong lần sao lưu đó
+Khôi phục một tệp/thư mục:  sudo agentos-backup restore du-lieu-ai/AgentOS/DU-AN/ten-du-an
+EOF
+  # Đủ chỗ không? (cần ~ dung lượng nguồn trừ phần đã có trên ổ; dư 5%)
+  local need have; need=$(( $(du -sb "$OD" 2>/dev/null | cut -f1) + $(du -scb "$NC/config" "$NC/data" "$NC/custom_apps" 2>/dev/null | tail -1 | cut -f1) )); have=$(df -PB1 "$ROOT" | awk 'NR==2{print $4}')
+  local mine; mine=$(du -sb "$DEST" 2>/dev/null | cut -f1); need=$(( need - ${mine:-0} ))
+  if [ "$need" -gt 0 ] && [ "$(( need + need / 20 ))" -gt "$have" ]; then
+    close_target; write_status false "ổ sao lưu không đủ chỗ (cần khoảng $(numfmt --to=iec $need), còn $(numfmt --to=iec $have))" 0 0 0; die "ổ sao lưu không đủ chỗ"
+  fi
+  RCS=$T/rcs; : > "$RCS"
+  sync_one "$OD" du-lieu-ai --exclude='.Trash*' --exclude='.~lock*'
+  sync_one "$T/cau-hinh" cau-hinh
+  sync_one "$NC" nextcloud --exclude='/data/owncloud.db*' --exclude='/data/*.log' --exclude='/data/nextcloud.log' --exclude='/data/appdata_*/preview/' --include='/config/***' --include='/data/***' --include='/custom_apps/***' --exclude='/*'
+  local out_files; out_files=$(sed -n 's/^Number of regular files transferred: *//p' "$LOG" | tr -d ',.' | awk '{s+=$1} END{print s+0}')
+  local badrc; badrc=$(grep -vE '^(0|24)$' "$RCS" | head -1)
+  if [ -n "$badrc" ]; then
+    local why; why=$(grep -iE 'rsync:|rsync error|No space|không đủ|read-only' "$LOG" | head -2 | tr '
+' ' ')
+    close_target; write_status false "chép lỗi (mã $badrc): $why" 0 "$out_files" "$(( $(date +%s) - t0 ))"; die "sao lưu lỗi (mã $badrc)"
+  fi
+
+  # Kiểm tra sau khi chép: còn tệp nào khác nhau không (chỉ so kích thước + thời gian)
+  local diff=0 d
+  for spec in "$OD|du-lieu-ai"; do d=$(rsync -rn --delete "${PERMS[@]}" --exclude='.Trash*' --exclude='.~lock*' --out-format=%n "${spec%%|*}"/ "$DEST/${spec##*|}"/ 2>/dev/null | grep -v '/$' | wc -l); diff=$((diff + d)); done
+  find "$ROOT/$SUB/phien-ban" -mindepth 1 -maxdepth 1 -type d -mtime +"$(jget keepDays)" -exec rm -rf {} + 2>/dev/null
+  rmdir "$VER"/* "$VER" 2>/dev/null
+  local bytes secs; bytes=$(du -sb "$DEST" 2>/dev/null | cut -f1); secs=$(( $(date +%s) - t0 ))
+  close_target
+  if [ "$diff" -gt 5 ]; then write_status false "sau khi chép vẫn còn $diff tệp khác nhau (máy đang ghi nhiều?), thử lại" "${bytes:-0}" "$out_files" "$secs"; return 4; fi
+  write_status true "đã sao lưu, đã kiểm tra khớp" "${bytes:-0}" "$out_files" "$secs"
+  echo "✓ Sao lưu xong ($(numfmt --to=iec "${bytes:-0}" 2>/dev/null || echo "${bytes:-0}"), $secs giây, $out_files tệp mới/đổi)"
+}
+
+cmd_status() { [ -f "$STATUS" ] && cat "$STATUS" || echo '{"ok": false, "message": "chưa sao lưu lần nào"}'; [ -f "$CONF" ] && cat "$CONF"; }
+
+cmd_versions() { open_target || die "chưa cắm ổ"; ls -1 "$ROOT/$SUB/phien-ban" 2>/dev/null | sort -r | head -50; close_target; }
+
+# Khôi phục KHÔNG ghi đè: chép về /srv/onedrive/AgentOS/KHOI-PHUC/<ngày giờ>/
+cmd_restore() {
+  local rel=${1:-}; [ -n "$rel" ] || die "cách dùng: agentos-backup restore <đường dẫn trong ban-sao, ví dụ du-lieu-ai/AgentOS/DU-AN/x>"
+  case "$rel" in /*|*..*) die "đường dẫn không hợp lệ";; esac
+  open_target || die "chưa cắm ổ sao lưu"
+  local src="$ROOT/$SUB/ban-sao/$rel"; [ -e "$src" ] || { close_target; die "không có $rel trong bản sao lưu"; }
+  local dst="$OD/AgentOS/KHOI-PHUC/$(date +%Y-%m-%d_%H%M)/$(dirname "$rel")"
+  mkdir -p "$dst"; cp -a "$src" "$dst"/ || { close_target; die "không chép được"; }
+  chown -R agentos:agentos "$OD/AgentOS/KHOI-PHUC" 2>/dev/null
+  close_target; echo "✓ Đã khôi phục về $dst (bản gốc không bị ghi đè)"
+}
+
+# Thử khôi phục thật: lấy ngẫu nhiên vài tệp từ bản sao lưu và so sánh với bản trên máy
+cmd_verify() {
+  open_target || { write_status false "chưa cắm ổ sao lưu" 0 0 0; die "chưa cắm ổ"; }
+  local base="$ROOT/$SUB/ban-sao/du-lieu-ai" bad=0 n=0 f
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue; n=$((n+1))
+    local rel=${f#"$base"/}
+    [ -f "$OD/$rel" ] && ! cmp -s "$f" "$OD/$rel" && { bad=$((bad+1)); echo "KHÁC: $rel"; }
+  done < <(find "$base" -type f 2>/dev/null | shuf -n 20)
+  close_target
+  [ "$n" -gt 0 ] || die "bản sao lưu trống"
+  [ "$bad" -eq 0 ] && echo "✓ Kiểm tra $n tệp ngẫu nhiên: khớp với máy (đọc lại được từ ổ ngoài)" || { echo "⚠️ $bad/$n tệp khác bản trên máy (có thể do vừa được sửa)"; return 5; }
+}
+
+case "${1:-}" in
+  devices) cmd_devices ;; set) shift; cmd_set "$@" ;; run) cmd_run ;; status) cmd_status ;; verify) cmd_verify ;; restore) shift; cmd_restore "$@" ;; versions) cmd_versions ;; off) cmd_off ;;
+  *) echo "Cách dùng: agentos-backup devices|set <UUID|đường dẫn> [ngày]|run|status|verify|restore <đường dẫn>|versions|off"; exit 2 ;;
+esac

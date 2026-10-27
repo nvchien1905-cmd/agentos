@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - chay sao luu ngay khi co yeu cau (bot/Cai dat tao tep yeu cau)
+
+[Path]
+PathExists=/var/lib/agentos/backup-now
+Unit=agentos-backup-now.service
+
+[Install]
+WantedBy=multi-user.target

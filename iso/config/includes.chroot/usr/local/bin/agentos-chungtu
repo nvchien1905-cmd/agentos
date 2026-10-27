@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+# CHỨNG TỪ TỰ ĐỘNG: ghi dữ liệu hóa đơn/phiếu (AI đọc từ ảnh/PDF) vào bảng Excel của dự án, có KIỂM TRA số học và chống trùng.
+# AI chỉ ĐỌC chứng từ; việc ghi sổ + kiểm tra do công cụ này làm (cố định, không phụ thuộc AI nào) -> kết quả giống nhau dù Claude hay Codex đọc.
+#   agentos-chungtu add --project-dir <thư mục dự án> --file <tệp.json> [--source <ảnh/PDF gốc>]
+#   agentos-chungtu list --project-dir <thư mục dự án> [--limit N]
+# Ghi vào <dự án>/KET-QUA/chung-tu.xlsx: sheet "Chứng từ" (mỗi chứng từ 1 dòng) + "Dòng hàng" (từng mặt hàng). In ra JSON:
+#   {"status": "added"|"duplicate"|"needs_review", "issues": [...], "row": N}
+# needs_review vẫn được GHI (kèm cột "Cần xem lại") để không mất dữ liệu; AI phải hỏi lại chủ máy về các điểm nghi ngờ.
+import argparse, datetime, json, os, re, sys
+
+HEAD = ['Ngày nhập', 'Loại', 'Ngày chứng từ', 'Số', 'Ký hiệu', 'Bên bán', 'MST bên bán', 'Bên mua', 'MST bên mua',
+        'Tổng chưa thuế', 'Thuế suất %', 'Tiền thuế', 'Tổng thanh toán', 'Tệp gốc', 'Cần xem lại', 'Ghi chú kiểm tra', 'Khóa']
+LHEAD = ['Khóa chứng từ', 'Tên hàng', 'ĐVT', 'Số lượng', 'Đơn giá', 'Thành tiền']
+TYPES = {'hoa-don-mua', 'hoa-don-ban', 'phieu-thu', 'phieu-chi', 'phieu-nhap', 'phieu-xuat', 'khac'}
+
+
+def num(x):
+    if x is None or x == '':
+        return None
+    if isinstance(x, (int, float)):
+        return float(x)
+    s = re.sub(r'[^\d,.\-]', '', str(x))
+    if not s:
+        return None
+    # 1.234.567 hoặc 1.234.567,5 (kiểu Việt) / 1,234,567.5 (kiểu Anh)
+    if s.count('.') > 1 or (s.count('.') == 1 and s.count(',') == 1 and s.rfind('.') < s.rfind(',')):
+        s = s.replace('.', '').replace(',', '.')
+    elif s.count(',') > 1 or (s.count(',') == 1 and s.count('.') == 1):
+        s = s.replace(',', '')
+    elif s.count(',') == 1:
+        s = s.replace(',', '.') if len(s.split(',')[1]) != 3 else s.replace(',', '')
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def f(x):
+    return str(int(x)) if x == int(x) else str(x)
+
+
+def clean_mst(x):
+    return re.sub(r'\D', '', str(x or ''))
+
+
+def validate(d):
+    issues = []
+    if d.get('loai') and d['loai'] not in TYPES:
+        issues.append('loại chứng từ lạ: %s' % d['loai'])
+    try:
+        datetime.date.fromisoformat(str(d.get('ngay') or ''))
+        if datetime.date.fromisoformat(d['ngay']) > datetime.date.today() + datetime.timedelta(days=1):
+            issues.append('ngày chứng từ ở tương lai (%s)' % d['ngay'])
+    except ValueError:
+        issues.append('thiếu hoặc sai ngày chứng từ (cần YYYY-MM-DD)')
+    if not d.get('so'):
+        issues.append('thiếu số chứng từ')
+    if not (d.get('ben_ban') or {}).get('ten') and d.get('loai') in (None, 'hoa-don-mua', 'phieu-nhap'):
+        issues.append('thiếu tên bên bán')
+    for k, label in (('ben_ban', 'bên bán'), ('ben_mua', 'bên mua')):
+        m = clean_mst((d.get(k) or {}).get('mst'))
+        if m and len(m) not in (10, 13):
+            issues.append('MST %s có %d chữ số (phải 10 hoặc 13): %s' % (label, len(m), m))
+    total = num(d.get('tong_thanh_toan'))
+    pre = num(d.get('tong_chua_thue'))
+    tax = num(d.get('tien_thue'))
+    rate = num(d.get('thue_suat'))
+    if total is None:
+        issues.append('thiếu tổng thanh toán')
+    if pre is not None and tax is not None and total is not None and abs(pre + tax - total) > max(1000, 0.002 * total):
+        issues.append('chưa thuế %s + thuế %s ≠ tổng %s' % (int(pre), int(tax), int(total)))
+    if pre is not None and rate is not None and tax is not None and abs(pre * rate / 100.0 - tax) > max(1000, 0.01 * max(tax, 1)):
+        issues.append('thuế %s%% của %s phải ≈ %s, ghi %s' % (rate, int(pre), int(pre * rate / 100.0), int(tax)))
+    lines = d.get('lines') or []
+    s = 0.0
+    ok_lines = 0
+    for i, ln in enumerate(lines, 1):
+        q, p, t = num(ln.get('so_luong')), num(ln.get('don_gia')), num(ln.get('thanh_tien'))
+        if q is not None and p is not None and t is not None and abs(q * p - t) > max(500, 0.005 * abs(t)):
+            issues.append('dòng %d (%s): %s × %s ≠ %s' % (i, ln.get('ten') or '?', f(q), f(p), f(t)))
+        if t is not None:
+            s += t
+            ok_lines += 1
+    base = pre if pre is not None else (total if (tax is None and total is not None) else None)
+    if lines and ok_lines == len(lines) and base is not None and abs(s - base) > max(1000, 0.005 * base):
+        issues.append('tổng các dòng hàng %s ≠ %s trên chứng từ' % (int(s), int(base)))
+    return issues
+
+
+def key_of(d):
+    mst = clean_mst((d.get('ben_ban') or {}).get('mst')) or re.sub(r'\W+', '', str((d.get('ben_ban') or {}).get('ten') or '')).lower()
+    return '|'.join([mst, str(d.get('ky_hieu') or '').strip().upper(), str(d.get('so') or '').strip().lstrip('0'), str(d.get('ngay') or '')])
+
+
+def open_book(path):
+    from openpyxl import Workbook, load_workbook
+    if os.path.exists(path):
+        wb = load_workbook(path)
+    else:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Chứng từ'
+        ws.append(HEAD)
+        ws2 = wb.create_sheet('Dòng hàng')
+        ws2.append(LHEAD)
+        for w, cols in ((ws, (12, 14, 14, 12, 10, 30, 14, 30, 14, 16, 10, 14, 16, 30, 12, 50, 24)), (ws2, (24, 36, 8, 10, 14, 16))):
+            for i, c in enumerate(cols):
+                w.column_dimensions[chr(65 + i)].width = c
+            w.freeze_panes = 'A2'
+    return wb
+
+
+def cmd_add(a):
+    d = json.load(open(a.file, encoding='utf-8'))
+    pdir = os.path.abspath(a.project_dir)
+    out = os.path.join(pdir, 'KET-QUA')
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, 'chung-tu.xlsx')
+    wb = open_book(path)
+    ws, ws2 = wb['Chứng từ'], wb['Dòng hàng']
+    key = key_of(d)
+    for r in range(2, ws.max_row + 1):
+        if ws.cell(r, 17).value == key:
+            print(json.dumps({'status': 'duplicate', 'issues': ['đã có chứng từ này ở dòng %d' % r], 'row': r}, ensure_ascii=False))
+            return 0
+    issues = validate(d)
+    bb, bm = d.get('ben_ban') or {}, d.get('ben_mua') or {}
+    ws.append([datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), d.get('loai') or '', d.get('ngay') or '', d.get('so') or '', d.get('ky_hieu') or '',
+               bb.get('ten') or '', clean_mst(bb.get('mst')), bm.get('ten') or '', clean_mst(bm.get('mst')),
+               num(d.get('tong_chua_thue')), num(d.get('thue_suat')), num(d.get('tien_thue')), num(d.get('tong_thanh_toan')),
+               os.path.basename(a.source or ''), 'CÓ' if issues else '', '; '.join(issues), key])
+    for ln in d.get('lines') or []:
+        ws2.append([key, ln.get('ten') or '', ln.get('dvt') or '', num(ln.get('so_luong')), num(ln.get('don_gia')), num(ln.get('thanh_tien'))])
+    tmp = path + '.tmp'
+    wb.save(tmp)
+    os.replace(tmp, path)
+    row = ws.max_row
+    print(json.dumps({'status': 'needs_review' if issues else 'added', 'issues': issues, 'row': row, 'file': path}, ensure_ascii=False))
+    return 0
+
+
+def cmd_list(a):
+    path = os.path.join(os.path.abspath(a.project_dir), 'KET-QUA', 'chung-tu.xlsx')
+    if not os.path.exists(path):
+        print('[]')
+        return 0
+    from openpyxl import load_workbook
+    ws = load_workbook(path, read_only=True)['Chứng từ']
+    rows = [list(r) for r in ws.iter_rows(min_row=2, values_only=True)]
+    out = [dict(zip(HEAD, r)) for r in rows[-a.limit:]]
+    print(json.dumps(out, ensure_ascii=False, default=str))
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest='cmd', required=True)
+    a = sub.add_parser('add'); a.add_argument('--project-dir', required=True); a.add_argument('--file', required=True); a.add_argument('--source', default='')
+    l = sub.add_parser('list'); l.add_argument('--project-dir', required=True); l.add_argument('--limit', type=int, default=20)
+    args = p.parse_args()
+    try:
+        return cmd_add(args) if args.cmd == 'add' else cmd_list(args)
+    except ModuleNotFoundError:
+        print(json.dumps({'status': 'error', 'issues': ['thiếu thư viện openpyxl trên máy']}, ensure_ascii=False)); return 2
+    except Exception as e:  # noqa
+        print(json.dumps({'status': 'error', 'issues': [str(e)]}, ensure_ascii=False)); return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

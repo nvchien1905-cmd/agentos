@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
 
 const ALIAS = { kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, remote = o.remote, links = o.links, snap = o.snapshot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -200,6 +200,33 @@ function createQuick(o) {
         case 'mokhoa': {
           const r = await desk.call({ cmd: 'unlock' });
           return r.ok ? (r.already ? '🔓 Màn hình không khóa.' : await withShot('🔓 Đã mở khóa màn hình.')) : '⚠️ ' + r.error;
+        }
+        case 'canhbao': return alerts ? await alerts.command(arg) : '⚠️ Máy này chưa có cảnh báo chủ động.';
+        case 'gia': {                                              // tra giá + tồn (cùng lệnh /ton)
+          if (!kv || !kv.configured()) return '⚠️ Chưa nối KiotViet.';
+          return await kv.stock(arg);
+        }
+        case 'chiphi': {                                           // thống kê sử dụng AI + ngân sách tháng
+          if (!usage) return '⚠️ Máy này chưa có thống kê sử dụng.';
+          const w = noAccent(arg);
+          const m = w.match(/^(?:tran|ngansach|nganquy)\s+(\w+)\s+(\d+|bo|tat)$/);
+          if (m) {
+            const eng = m[1] === 'deepseek' ? 'deepseekapi' : m[1];
+            if (!['claude', 'codex', 'gemini', 'deepseekapi'].includes(eng)) return 'AI không biết: ' + m[1] + '. Có: claude, codex, gemini, deepseekapi.';
+            const off = m[2] === 'bo' || m[2] === 'tat'; usage.setBudget(eng, off ? 0 : Number(m[2]));
+            return off ? '✅ Đã bỏ trần tháng của ' + eng + '.' : '✅ Trần tháng ' + eng + ': ' + m[2] + ' việc. Vượt trần thì việc tự dồn sang AI khác còn trong ngân sách (AI nào cũng vượt thì vẫn chạy).';
+          }
+          const days = /tuan/.test(w) ? 7 : /thang/.test(w) ? 30 : /homnay|hom nay/.test(w) ? 1 : 30;
+          return usage.text(days) + '\n\nĐặt trần: /chiphi tran <claude|codex|gemini|deepseekapi> <số việc/tháng> · bỏ: /chiphi tran claude bo · xem: /chiphi tuan|thang|homnay';
+        }
+        case 'saoluudia': {                                        // sao lưu dữ liệu ra ổ USB/HDD ngoài (agentos-backup)
+          if (!backup) return '⚠️ Máy này chưa có tính năng sao lưu ra ổ ngoài.';
+          const w = noAccent(arg).replace(/ /g, '');
+          if (/^(chay|ngay|run)$/.test(w)) {
+            if (!backup.configured()) return backup.text();
+            return backup.request() ? '💾 Đã yêu cầu sao lưu ngay. Xong em báo; xem lại bằng /saoluudia.' : '⚠️ Không gửi được yêu cầu sao lưu (kiểm tra dịch vụ agentos-backup.path).';
+          }
+          return backup.text();
         }
         case 'saoluu': {
           if (!snap) return '⚠️ Máy này chưa có tính năng điểm khôi phục.';

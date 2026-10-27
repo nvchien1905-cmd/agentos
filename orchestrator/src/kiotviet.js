@@ -109,6 +109,30 @@ function createKiotViet(o) {
       return { total: out.length, items: out.slice(0, limit || 15) };
     },
 
+    // Hóa đơn trong khoảng ngày [from, to) (YYYY-MM-DD) dạng gọn, dùng cho cảnh báo doanh số (alerts.js)
+    async invoiceTotals(from, to) {
+      const all = [];
+      for (let cur = 0; cur < 20000; cur += 100) {
+        const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), fromPurchaseDate: from, toPurchaseDate: to, orderBy: 'purchaseDate', orderDirection: 'Asc' });
+        const d = await get('/invoices?' + qs.toString());
+        const items = d.data || [];
+        all.push(...items.map((i) => ({ id: i.id, total: i.total, status: i.status, branchName: i.branchName, purchaseDate: i.purchaseDate })));
+        if (items.length < 100 || all.length >= (d.total || 0)) break;
+      }
+      return all;
+    },
+
+    // Danh sách sản phẩm có giá + tồn theo chi nhánh (dùng cho hỏi đáp bán hàng)
+    async products(query, limit) {
+      const q = String(query || '').trim(); if (q.length < 2) return [];
+      const qs = new URLSearchParams({ name: q, includeInventory: 'true', pageSize: String(limit || 5) });
+      const d = await get('/products?' + qs.toString());
+      return (d.data || []).slice(0, limit || 5).map((p) => {
+        const inv = (p.inventories || []).filter((x) => Number(x.onHand) !== 0).map((x) => ({ name: x.branchName, onHand: Number(x.onHand) }));
+        return { name: p.name || '?', code: p.code || '?', price: p.basePrice, branches: inv, total: (p.inventories || []).reduce((s, x) => s + (Number(x.onHand) || 0), 0) };
+      });
+    },
+
     async stock(query) {
       const q = String(query || '').trim();
       if (q.length < 2) return 'Cách dùng: /ton <tên hoặc mã sản phẩm>, ví dụ /ton nồi chiên';

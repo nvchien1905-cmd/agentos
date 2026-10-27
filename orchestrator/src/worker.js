@@ -3,6 +3,7 @@
 const RESUME_FAIL_RE = /no conversation found|session.*not found|thread.*not found|cannot resume|could not resume|error resuming|invalid session/i;
 const NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', deepseekapi: 'DeepSeek (API)' };
 
+const NL = String.fromCharCode(10);
 const pad = (n) => String(n).padStart(2, '0');
 function fmtTime(ms) {
   const d = new Date(ms);
@@ -19,7 +20,7 @@ function fmtTime(ms) {
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
 // `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget }) {
   lanes = lanes && lanes.length ? lanes : ['main'];
   const isMain = lanes.length === 1 && lanes[0] === 'main';
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
@@ -112,6 +113,37 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     return res;
   }
 
+  // HỘI ĐỒNG AI: hai AI làm ĐỘC LẬP (không thấy bài của nhau), AI thứ ba (nếu có, không thì AI thứ nhất) đối chiếu rồi kết luận.
+  // Mỗi bước chỉ dùng AI còn hạn mức; AI hết hạn mức giữa chừng thì bỏ qua, thiếu AI thì làm bình thường kèm ghi chú.
+  async function councilRun(job, cands) {
+    const live = () => cands.filter((e) => available(e));
+    const asJob = (p) => Object.assign({}, job, { prompt: p, council: 0 });
+    const answers = [];
+    const tried = new Set();
+    for (const e of live()) {
+      if (answers.length >= 2) break;
+      tried.add(e);
+      const res = await runWithRetry(asJob(job.prompt), e, null);
+      if (res.limit) { db.kvSet('cool:' + e, res.resetAt || now() + cooldownMs); continue; }
+      if (res.cancelled) return { cancelled: true, error: res.error };
+      if (res.ok) answers.push({ eng: e, text: String(res.text || '').trim() }); else await safeNotify(job.chat_id, name(e) + ' lỗi trong hội đồng, bỏ qua: ' + String(res.error || '').slice(0, 200));
+    }
+    if (answers.length < 2) return { fallback: true, answers };
+    const pool = live().filter((e) => !tried.has(e)).concat(answers.map((a) => a.eng));
+    const judge = pool[0];
+    const rp = 'Bạn là TRỌNG TÀI của hội đồng AI. Yêu cầu gốc của chủ máy:' + NL + '<<<' + job.prompt + '>>>' + NL + NL +
+      'Ý KIẾN 1 (' + name(answers[0].eng) + '):' + NL + '<<<' + answers[0].text.slice(0, 6000) + '>>>' + NL + NL +
+      'Ý KIẾN 2 (' + name(answers[1].eng) + '):' + NL + '<<<' + answers[1].text.slice(0, 6000) + '>>>' + NL + NL +
+      'Hãy: (1) nêu các điểm HAI Ý KIẾN KHÁC NHAU (số liệu, kết luận, các bước); (2) với mỗi điểm khác, kiểm tra lại bằng công cụ nếu có thể (đọc tệp, tính lại) và nói bên nào đúng, có căn cứ gì; ' +
+      '(3) đưa KẾT LUẬN CUỐI rõ ràng, và nêu điều chủ máy nên tự xác nhận nếu vẫn chưa chắc. Nếu hai ý kiến giống nhau thì nói ngắn gọn là thống nhất. Không lặp lại nguyên văn hai ý kiến.';
+    const jr = await runWithRetry(asJob(rp), judge, null);
+    if (jr.limit) db.kvSet('cool:' + judge, jr.resetAt || now() + cooldownMs);
+    const verdict = jr.ok ? String(jr.text || '').trim() : '(Trọng tài ' + name(judge) + ' không trả lời được: ' + String(jr.error || 'lỗi').slice(0, 150) + '. Xem hai ý kiến bên dưới tự đối chiếu.)';
+    const cut = (s) => (s.length > 1500 ? s.slice(0, 1500) + '…' : s);
+    return { ok: true, judge, answers, text: '🏛️ HỘI ĐỒNG AI — ' + name(answers[0].eng) + ' và ' + name(answers[1].eng) + ' làm độc lập, ' + name(judge) + ' đối chiếu' + NL + NL + verdict +
+      NL + NL + '— Ý kiến ' + name(answers[0].eng) + ':' + NL + cut(answers[0].text) + NL + NL + '— Ý kiến ' + name(answers[1].eng) + ':' + NL + cut(answers[1].text) };
+  }
+
   async function runOne() {
     const job = db.claimNext(now(), lanes);
     if (!job) return false;
@@ -135,6 +167,21 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       await safeNotify(job.chat_id, 'Việc #' + job.id + ' chưa chạy được: ' + notReady);
       return true;
     }
+    if (job.council) {
+      if (ui) { try { ui.begin(job); } catch (e) { log('bắt đầu tin trạng thái lỗi: ' + e.message); } }
+      let cr;
+      try { cr = await councilRun(job, cands); } catch (e) { cr = { ok: false, error: e.message }; }
+      let cmeta = { secs: 0, steps: 0 };
+      if (ui) { try { cmeta = await ui.end(job); } catch (e) { /* bỏ qua */ } }
+      if (cr.cancelled) { db.finishJob(job.id, 'cancelled', { error: cr.error }); await safeNotify(job.chat_id, 'Việc #' + job.id + ' đã hủy.'); return true; }
+      if (cr.ok) {
+        db.finishJob(job.id, 'done', { result: cr.text });
+        if (answer) { try { await answer(job, cr.text, { engine: cr.judge, primary: order[0], name: name(cr.judge), secs: cmeta.secs, steps: cmeta.steps }); } catch (e) { await safeNotify(job.chat_id, cr.text); } } else await safeNotify(job.chat_id, cr.text);
+        return true;
+      }
+      if (!cr.fallback) { db.finishJob(job.id, 'error', { error: cr.error || 'lỗi' }); await safeNotify(job.chat_id, 'Việc #' + job.id + ' (hội đồng) lỗi: ' + String(cr.error || '').slice(0, 300)); return true; }
+      await safeNotify(job.chat_id, 'Hội đồng cần ít nhất 2 AI còn hạn mức (hiện chỉ có ' + cr.answers.length + '). Em làm bình thường bằng một AI.');
+    }
     const tried = new Set();
     let res = null, used = null;
     log('bắt đầu việc #' + job.id + (wasWaiting ? ' (sau khi chờ hạn mức)' : ''));
@@ -142,7 +189,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     if (ui) { try { ui.begin(job); } catch (e) { log('bắt đầu tin trạng thái lỗi: ' + e.message); } }
     try {
     for (;;) {
-      const eng = cands.find((e) => !tried.has(e) && available(e));
+      // Ưu tiên AI còn trong ngân sách tháng (trần mềm: AI nào cũng vượt thì vẫn chạy bình thường)
+      const eng = cands.find((e) => !tried.has(e) && available(e) && !(overBudget && overBudget(e))) || cands.find((e) => !tried.has(e) && available(e));
       if (!eng) break;
       used = eng;
       res = await attempt(job, eng);

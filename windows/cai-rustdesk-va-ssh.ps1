@@ -26,7 +26,7 @@ if (Hoi 'C. Cho phep may dau nao AgentOS tu chep KHOA SSH CONG KHAI sang may nay
   $f = Join-Path $dir 'windows-agent.json'
   $c = if (Test-Path $f) { Get-Content $f -Raw | ConvertFrom-Json } else { [pscustomobject]@{ ai = 'none' } }
   $c | Add-Member -NotePropertyName allowSshKey -NotePropertyValue $true -Force
-  ($c | ConvertTo-Json) | Set-Content -Encoding UTF8 $f
+  [IO.File]::WriteAllText($f, ($c | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
   # Tai khoan quan tri: sshd mac dinh doc khoa o ProgramData\ssh\administrators_authorized_keys (can quyen quan tri de ghi). Doi sang doc khoa trong thu muc nguoi dung nhu tai khoan thuong.
   $cfg = Join-Path $env:ProgramData 'ssh\sshd_config'
   if (Test-Path $cfg) {

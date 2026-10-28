@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.3",
-  "file": "agentos-update-2026.10.28.3.tar.gz",
-  "size": 299636,
-  "sha256": "75eba9ddd5fef38284bcddadc1400707570a24b9ceacdcf1107cb35d029c97c9",
+  "version": "2026.10.28.4",
+  "file": "agentos-update-2026.10.28.4.tar.gz",
+  "size": 299957,
+  "sha256": "9c2bc3e9f00d22fea998054e792f36b4973c388ab6a60f0a5b872b0783727834",
   "date": "2026-10-28",
-  "notes": "Kết nối máy chỉ một lệnh /ketnoi: các máy cùng tài khoản Tailscale tự ghép đôi (không nhập khóa), máy đầu não SSH vào có sudo và cài ứng dụng cần thiết, chỉ sau khi anh bấm Kết nối trên Telegram."
+  "notes": "Gọn hơn: máy đầu não tự báo khi thấy máy mới cùng tài khoản Tailscale (một thẻ Kết nối, kết quả ghi vào thẻ). Sửa lỗi máy Windows báo chưa bật nhận khóa SSH."
 }

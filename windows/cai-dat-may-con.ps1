@@ -44,14 +44,14 @@ Push-Location $dest; $key = (& $node -e $js $Ten $Cong $ts) | Select-Object -Las
 $confFile = Join-Path $dest 'windows-agent.json'
 if (-not (Test-Path $confFile)) {
   $ai = 'none'; if (Get-Command claude -ErrorAction SilentlyContinue) { $ai = 'claude' } elseif (Get-Command codex -ErrorAction SilentlyContinue) { $ai = 'codex' }
-  (@{ ai = $ai; workdir = (Join-Path $env:USERPROFILE 'AgentOS-May-Con'); timeoutSec = 600 } | ConvertTo-Json) | Set-Content -Encoding UTF8 $confFile
+  [IO.File]::WriteAllText($confFile, (@{ ai = $ai; workdir = (Join-Path $env:USERPROFILE 'AgentOS-May-Con'); timeoutSec = 600 } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 }
 
 # Cho may dau nao (cung tai khoan Tailscale) SSH vao: bat OpenSSH Server (chi mang Tailscale) va nhan khoa SSH cong khai tu may dau nao (lenh /ketnoi tren Telegram).
 if (-not $KhongSSH) {
-  $c = Get-Content $confFile -Raw | ConvertFrom-Json
+  $c = (Get-Content $confFile -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json
   $c | Add-Member -NotePropertyName allowSshKey -NotePropertyValue $true -Force
-  ($c | ConvertTo-Json) | Set-Content -Encoding UTF8 $confFile
+  [IO.File]::WriteAllText($confFile, ($c | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))      # UTF-8 KHONG BOM (Node doc JSON co BOM se loi)
   if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) { Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null }
   Set-Service -Name sshd -StartupType Automatic; Start-Service sshd
   Get-NetFirewallRule -Name 'sshd' -ErrorAction SilentlyContinue | Remove-NetFirewallRule

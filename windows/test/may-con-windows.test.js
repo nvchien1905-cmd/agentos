@@ -53,3 +53,13 @@ test('máy con Windows: nhận khóa SSH công khai chỉ khi chủ máy bật; 
   installSshKey(K); assert.equal(fs.readFileSync(path.join(ssh, 'authorized_keys'), 'utf8').split('\n').filter((l) => l.startsWith('ssh-ed25519')).length, 1, 'giữ khóa cũ của người khác, không thêm trùng');
   delete process.env.AGENTOS_WIN_CONF;
 });
+
+test('máy con Windows: đọc được windows-agent.json có BOM (PowerShell 5.1 ghi UTF-8 kèm BOM) — trước đây bị bỏ qua nên "chưa bật nhận khóa"', () => {
+  const { installSshKey } = require('../may-con-windows');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'winbom-')), conf = path.join(dir, 'w.json');
+  process.env.AGENTOS_WIN_CONF = conf;
+  fs.writeFileSync(conf, '﻿' + JSON.stringify({ ai: 'none', sshDir: path.join(dir, 'ssh'), allowSshKey: true }));
+  const K = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SzG5k2xF0Tnb8EVkhrHk4Z7TFhqRlpPE agentos-dau-nao';
+  assert.equal(installSshKey(K).ok, true);
+  delete process.env.AGENTOS_WIN_CONF;
+});

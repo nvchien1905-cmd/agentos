@@ -40,20 +40,24 @@ function kn(fleet, extra) {
   }, extra || {}));
   return { k, sent, edits, asks, runs };
 }
+const last = (t) => t.edits[t.edits.length - 1];
+const one = (c) => ({ tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'x', os: 'linux' }] }), agentPort: c.port });
 
-test('ketnoi: /ketnoi tự dò máy cùng tài khoản Tailscale, MỘT thẻ duyệt rồi ghép đôi + chép khóa công khai + kiểm ứng dụng; chưa bấm thì chưa làm gì', async () => {
+test('ketnoi: /ketnoi tự dò máy cùng tài khoản Tailscale, MỘT thẻ ngắn; bấm Kết nối thì ghép đôi + chép khóa công khai + kiểm ứng dụng và ghi kết quả vào chính thẻ; chưa bấm thì chưa làm gì', async () => {
   const c = await child(), h = head();
   const t = kn(h, { agentPort: c.port, tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'desktop-x', os: 'linux' }, { ip: '127.0.0.2', host: 'dien-thoai', os: 'android' }] }) });
   assert.equal(await t.k.request('1', ''), null);
-  assert.match(t.sent[0], /Tìm thấy 1 máy AgentOS/);                                   // điện thoại không phải máy AgentOS nên bị bỏ qua
-  assert.equal(t.asks.length, 1); assert.match(t.asks[0].t, /ghép đôi/); assert.match(t.asks[0].t, /sudo/);
+  assert.equal(t.sent.length, 0, 'không có tin giới thiệu thừa');
+  assert.equal(t.asks.length, 1, 'điện thoại không phải máy AgentOS nên chỉ 1 thẻ');
+  assert.match(t.asks[0].t, /Ghép đôi/); assert.match(t.asks[0].t, /sudo/); assert.ok(t.asks[0].t.split('\n').length <= 2, 'thẻ ngắn');
   assert.equal(h.load().machines.length, 0, 'chưa bấm thì chưa ghép'); assert.equal(c.keys.length, 0);
-  assert.match(await t.k.answer(t.asks[0].b[0][0].data, 1, () => true), /Đã cho phép/);
-  await wait(() => t.sent.length > 1);
+  assert.match(await t.k.answer(t.asks[0].b[0][0].data, 1, () => true), /Đang kết nối/);
+  await wait(() => t.edits.length > 1);
   assert.equal(h.load().machines.length, 1); assert.equal(h.load().machines[0].name, 'May van phong'); assert.equal(h.load().machines[0].key, KEY);
   assert.deepEqual(c.keys, [PUB]);                                                       // chỉ khóa CÔNG KHAI
-  const r = t.sent[1];
-  assert.match(r, /① Đã ghép đôi/); assert.match(r, /② [^]*thành công/); assert.match(r, /③ Ứng dụng trên/); assert.match(r, /Quyền sudo không hỏi mật khẩu: đã có/);
+  const r = last(t);                                                                     // kết quả ghi thẳng vào thẻ
+  assert.match(r, /Đã ghép đôi/); assert.match(r, /SSH bằng khóa vào được: agentos-remote@127\.0\.0\.1 \(có sudo\)/); assert.match(r, /Ứng dụng: 5\/5 sẵn sàng/);
+  assert.equal(t.sent.length, 0, 'không gửi thêm tin mới');
   assert.ok(t.runs.some((a) => a.includes('agentos-remote@127.0.0.1')));
   assert.equal(t.k.pendingCount(), 0);
   assert.match(await t.k.answer(t.asks[0].b[0][0].data, 1, () => true), /hết hạn|trả lời/, 'bấm lại không làm lần hai');
@@ -63,7 +67,7 @@ test('ketnoi: /ketnoi tự dò máy cùng tài khoản Tailscale, MỘT thẻ du
 
 test('ketnoi: máy KHÔNG cùng tài khoản Tailscale không ghép đôi được; Tailscale chưa chạy / không có máy khác / chưa có máy con đều báo rõ', async () => {
   const c = await child({ sameOwner: async () => false }), h = head();
-  let t = kn(h, { agentPort: c.port, tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'laxx', os: 'linux' }] }) });
+  const t = kn(h, { agentPort: c.port, tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'laxx', os: 'linux' }] }) });
   assert.match(await t.k.request('1', ''), /chưa máy nào chạy máy con AgentOS/);
   await assert.rejects(h.pairWith(c.url), /cùng tài khoản Tailscale/);
   assert.equal(h.load().machines.length, 0);
@@ -79,7 +83,7 @@ test('ketnoi: /ketnoi <tên> cho máy đã trong Đội máy; Bỏ qua / ngườ
   const c = await child(), h = head(); h.addMachine({ name: 'May van phong', url: c.url, key: KEY });
   let t = kn(h);
   assert.match(await t.k.request('1', 'Máy lạ'), /Không có máy/);
-  assert.equal(await t.k.request('1', 'May van phong'), null); assert.match(t.asks[0].t, /đã trong Đội máy/);
+  assert.equal(await t.k.request('1', 'May van phong'), null); assert.match(t.asks[0].t, /Kết nối SSH/);
   assert.match(await t.k.answer(t.asks[0].b[0][0].data, 2, () => false), /quản trị/);
   assert.match(await t.k.answer(t.asks[0].b[0][1].data, 1, () => true), /Đã bỏ qua/);
   assert.equal(c.keys.length, 0);
@@ -89,17 +93,17 @@ test('ketnoi: /ketnoi <tên> cho máy đã trong Đội máy; Bỏ qua / ngườ
   await c.agent.close();
 });
 
-test('ketnoi: máy chưa nhận khóa (Windows chưa cài) thì ghép đôi xong vẫn báo rõ bước ②, bỏ qua bước ③', async () => {
+test('ketnoi: máy chưa nhận khóa (Windows chưa cài) thì ghép đôi xong vẫn báo rõ lý do, không cài ứng dụng', async () => {
   const c = await child({ platform: 'windows', sshKey: async () => { throw new Error('Chủ máy Windows chưa bật "cho phép nhận khóa SSH"'); } }), h = head();
-  const t = kn(h, { agentPort: c.port, tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'w', os: 'windows' }] }) });
-  await t.k.request('1', ''); assert.match(t.asks[0].t, /Windows/); assert.ok(!/agentos-remote/.test(t.asks[0].t));
-  await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.sent.length > 1);
-  assert.match(t.sent[1], /① Đã ghép đôi/); assert.match(t.sent[1], /② [^]*chưa bật/); assert.ok(!/③/.test(t.sent[1]));
+  const t = kn(h, one(c));
+  await t.k.request('1', ''); assert.match(t.asks[0].t, /Windows/);
+  await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.edits.length > 1);
+  assert.match(last(t), /Đã ghép đôi/); assert.match(last(t), /chưa bật/); assert.match(last(t), /thử lại/); assert.ok(!/Ứng dụng:/.test(last(t)));
   assert.equal(h.load().machines.length, 1);
   await c.agent.close();
 });
 
-test('ketnoi: máy Windows dùng winget (RustDesk, Tailscale, Node) với lệnh cố định; cái đã có bỏ qua, cài lỗi báo nguyên nhân', async () => {
+test('ketnoi: máy Windows dùng winget (RustDesk, Tailscale, Node) với lệnh cố định; chỉ liệt kê cái vừa cài hoặc lỗi, kèm nguyên nhân', async () => {
   const c = await child({ platform: 'windows', sshKey: async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }) }), h = head();
   const cmds = [], have = new Set();
   const run = async (bin, args) => {
@@ -110,10 +114,10 @@ test('ketnoi: máy Windows dùng winget (RustDesk, Tailscale, Node) với lệnh
     if (/winget list/.test(x)) return { ok: have.has(id), out: '', err: '' };
     return { ok: false, out: '', err: '' };
   };
-  const t = kn(h, { run, agentPort: c.port, tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'w', os: 'windows' }] }) });
-  await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.sent.length > 1);
-  const r = t.sent[1];
-  assert.match(r, /RustDesk[^\n]*đã cài/); assert.match(r, /Tailscale[^\n]*không cài được — Failed 0x8a150056/); assert.match(r, /Node\.js[^\n]*đã có/);
+  const t = kn(h, Object.assign({ run }, one(c)));
+  await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.edits.length > 1);
+  const r = last(t);
+  assert.match(r, /RustDesk[^\n]*vừa cài/); assert.match(r, /Tailscale[^\n]*không cài được — Failed 0x8a150056/); assert.match(r, /Ứng dụng: 2\/3 sẵn sàng/); assert.ok(!/Node\.js/.test(r), 'cái đã có không liệt kê');
   assert.ok(cmds.some((x) => /^powershell -NoProfile -NonInteractive -Command "winget install --id RustDesk\.RustDesk -e --silent/.test(x)));
   await assert.rejects(kn(h).k.provision('May van phong'), /chạy \/ketnoi/, 'chưa SSH được thì không cài');
   await c.agent.close();
@@ -129,9 +133,9 @@ test('ketnoi: máy Linux — cài rsync/curl/jq nếu thiếu, RustDesk thiếu 
     if (/command -v rustdesk/.test(x)) return { ok: false, out: '', err: '' };
     return { ok: true, out: 'agentos-ssh-ok', err: '' };
   };
-  const t = kn(h, { run, agentPort: c.port, tsPeers: async () => ({ running: true, peers: [{ ip: '127.0.0.1', host: 'l', os: 'linux' }] }) });
-  await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.sent.length > 1);
-  assert.match(t.sent[1], /rsync, curl, jq: đã cài/); assert.match(t.sent[1], /RustDesk[^\n]*chưa có/); assert.ok(cmds.some((x) => /sudo -n sh -c/.test(x)));
+  const t = kn(h, Object.assign({ run }, one(c)));
+  await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.edits.length > 1);
+  assert.match(last(t), /rsync, curl, jq: vừa cài/); assert.match(last(t), /RustDesk[^\n]*chưa có/); assert.match(last(t), /Ứng dụng: 4\/5 sẵn sàng/); assert.ok(cmds.some((x) => /sudo -n sh -c/.test(x)));
   const keyDir = tmp(), calls = [];
   const t2 = kn(h, { keyDir, run: async (bin, args) => { calls.push([bin].concat(args)); fs.writeFileSync(path.join(keyDir, 'id_ed25519.pub'), PUB + '\n'); return { ok: true, out: '', err: '' }; } });
   fs.rmSync(path.join(keyDir, 'id_ed25519.pub'), { force: true });
@@ -144,6 +148,21 @@ test('ketnoi: máy Linux — cài rsync/curl/jq nếu thiếu, RustDesk thiếu 
   assert.equal(await bot.handle({ from: { id: 1 }, chat: { id: 1, type: 'private' }, text: '/ketnoi May van phong' }), null);
   assert.equal(t.asks.length, asksBefore + 1);
   assert.match(await bot.handleCallback({ from: { id: 1 }, data: t.asks[asksBefore].b[0][1].data }), /Đã bỏ qua/);
+  await c.agent.close();
+});
+
+test('ketnoi: tự báo khi thấy máy MỚI cùng tài khoản Tailscale — mỗi máy hỏi một lần (nhớ qua khởi động lại); máy đã trong Đội máy không hỏi', async () => {
+  const c = await child(), h = head(), file = path.join(tmp(), 'offered.json');
+  let t = kn(h, Object.assign({ offeredFile: file }, one(c)));
+  assert.equal(await t.k.offerNew('1'), 1); assert.equal(t.asks.length, 1);
+  assert.equal(await t.k.offerNew('1'), 0, 'lần sau không hỏi lại'); assert.equal(t.asks.length, 1);
+  t = kn(h, Object.assign({ offeredFile: file }, one(c)));
+  assert.equal(await t.k.offerNew('1'), 0, 'khởi động lại vẫn nhớ'); assert.equal(t.asks.length, 0);
+  assert.equal(h.load().machines.length, 0, 'chưa bấm thì chưa ghép');
+  h.addMachine({ name: 'May van phong', url: c.url, key: KEY });
+  t = kn(h, Object.assign({ offeredFile: path.join(tmp(), 'o2.json') }, one(c)));
+  assert.equal(await t.k.offerNew('1'), 0, 'đã trong Đội máy');
+  assert.equal(await kn(h, { tsPeers: async () => ({ running: false, peers: [] }) }).k.offerNew('1'), 0);
   await c.agent.close();
 });
 

@@ -68,12 +68,8 @@ function createKetNoi(o) {
     pending.set(id, p);
     p.timer = setTimeout(() => finish(id, false, '⏱ Hết thời gian chờ, đã tự hủy.'), timeoutMs);
     if (p.timer.unref) p.timer.unref();
-    const apps = (APPS[p.platform] || APPS.linux).map((a) => '   · ' + a.label).join('\n');
-    const text = '🔗 Máy "' + c.name + '" (' + (OSNAME[p.platform] || 'Linux') + ', ' + (c.ip || new URL(c.url).hostname) + ') cùng tài khoản Tailscale với máy này.\n' +
-      'Bấm Kết nối để máy này làm một mạch:\n' +
-      (c.inFleet ? '   ① (đã trong Đội máy)\n' : '   ① ghép đôi vào Đội máy (không cần nhập khóa)\n') +
-      '   ② chép khóa SSH công khai sang máy đó' + (p.platform === 'windows' ? '' : ' (tài khoản agentos-remote, có sudo không hỏi mật khẩu)') + '\n' +
-      '   ③ cài/kiểm các ứng dụng cần thiết:\n' + apps + '\nKhóa riêng không rời máy này.';
+    const text = '🔗 Máy "' + c.name + '" (' + (OSNAME[p.platform] || 'Linux') + ' · ' + (c.ip || new URL(c.url).hostname) + ') cùng tài khoản Tailscale.' + '\n' +
+      (c.inFleet ? 'Kết nối SSH + kiểm ứng dụng?' : 'Ghép đôi + SSH có sudo + cài ứng dụng cần thiết?');
     try { p.msgId = await ask(chatId, text, [[{ text: '✅ Kết nối', data: 'kn:' + id + ':y' }, { text: '❌ Bỏ qua', data: 'kn:' + id + ':n' }]]); } catch (e) { pending.delete(id); clearTimeout(p.timer); throw new Error('Không gửi được thẻ xin duyệt: ' + e.message); }
   }
 
@@ -82,20 +78,36 @@ function createKetNoi(o) {
     const ts = await tsPeers();
     if (!ts.running) return '⚠️ Máy này chưa kết nối Tailscale. Gõ /tailscale ketnoi, đăng nhập CÙNG tài khoản với các máy kia rồi gõ lại /ketnoi.';
     if (!ts.peers.length) return 'Chưa thấy máy nào khác cùng tài khoản Tailscale đang bật. Bật máy kia, đăng nhập Tailscale cùng tài khoản rồi gõ lại /ketnoi.';
-    const known = fleet.load().machines;
-    const found = [], other = [];
-    await Promise.all(ts.peers.map(async (pr) => {
-      const url = 'http://' + pr.ip + ':' + agentPort;
-      try { const h = await fleet.hello(url, 3000); found.push({ name: h.name || pr.host, url, ip: pr.ip, platform: h.platform === 'windows' ? 'windows' : 'linux', inFleet: known.some((m) => m.url === url) }); } catch (e) { other.push(pr); }
-    }));
+    const found = await discover(ts);
     if (!found.length) {
       return 'Thấy ' + ts.peers.length + ' máy cùng tài khoản Tailscale (' + ts.peers.map((x) => x.host + (x.os ? ' · ' + x.os : '')).join(', ') + ') nhưng chưa máy nào chạy máy con AgentOS.\n' +
         '• Máy AgentOS (Linux): cập nhật lên bản mới nhất (/capnhat co) và đảm bảo đã đăng nhập Tailscale.\n• Máy Windows: chạy cai-dat-may-con.ps1 một lần (Run as administrator).';
     }
-    found.sort((a, b) => a.name.localeCompare(b.name));
-    await send(chatId, '🔍 Tìm thấy ' + found.length + ' máy AgentOS cùng tài khoản Tailscale: ' + found.map((f) => f.name).join(', ') + '. Bấm nút ở từng thẻ bên dưới.');
     for (const c of found) await card(chatId, c);
     return null;
+  }
+
+  // Máy cùng tài khoản Tailscale đang chạy máy con AgentOS (hỏi thăm từng máy, không cần khóa)
+  async function discover(ts) {
+    const known = fleet.load().machines, found = [];
+    await Promise.all(ts.peers.map(async (pr) => {
+      const url = 'http://' + pr.ip + ':' + agentPort;
+      try { const h = await fleet.hello(url, 3000); found.push({ name: h.name || pr.host, url, ip: pr.ip, platform: h.platform === 'windows' ? 'windows' : 'linux', inFleet: known.some((m) => m.url === url) }); } catch (e) { /* không phải máy AgentOS */ }
+    }));
+    return found.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Tự báo khi thấy máy MỚI cùng tài khoản Tailscale (chưa trong Đội máy, chưa từng hỏi): gửi thẻ Kết nối, mỗi máy hỏi một lần. Không làm gì khi chưa bấm.
+  const offeredFile = o.offeredFile || null;
+  const offered = new Set((() => { try { return JSON.parse(fs.readFileSync(offeredFile, 'utf8')); } catch (e) { return []; } })());
+  async function offerNew(chatId) {
+    const ts = await tsPeers(); if (!ts.running || !ts.peers.length) return 0;
+    const fresh = (await discover(ts)).filter((c) => !c.inFleet && !offered.has(c.url));
+    for (const c of fresh) {
+      offered.add(c.url); if (offeredFile) { try { fs.writeFileSync(offeredFile, JSON.stringify([...offered])); } catch (e) { /* không ghi được: lần sau hỏi lại */ } }
+      try { await card(chatId, c); } catch (e) { offered.delete(c.url); throw e; }
+    }
+    return fresh.length;
   }
 
   // /ketnoi <tên>: máy đã có trong Đội máy.
@@ -122,24 +134,26 @@ function createKetNoi(o) {
     if (isAdmin && !isAdmin(String(userId))) return 'Chỉ quản trị viên được duyệt việc này.';
     if (m[2] === 'n') { await finish(m[1], false, '❌ Đã bỏ qua.'); logf('ketnoi: chủ máy bỏ qua ' + p.name); return 'Đã bỏ qua.'; }
     pending.delete(m[1]); clearTimeout(p.timer);          // đã duyệt: không cho bấm lần nữa
-    if (p.msgId && edit) edit(p.chatId, p.msgId, '🔗 Kết nối "' + p.name + '"\n\n⏳ Đã cho phép, đang làm...').catch(() => {});
+    if (p.msgId && edit) edit(p.chatId, p.msgId, '🔗 "' + p.name + '"\n⏳ Đang kết nối...').catch(() => {});
     logf('ketnoi: chủ máy cho phép kết nối ' + p.name + (p.inFleet ? '' : ' (ghép đôi mới)'));
-    setup(p).then((t) => send(p.chatId, t), (e) => send(p.chatId, '⚠️ ' + e.message)).catch(() => {});
-    return 'Đã cho phép, đang làm.';
+    // Kết quả ghi thẳng vào thẻ vừa bấm (ít tin nhắn hơn); không sửa được thẻ thì gửi tin mới
+    const show = (t) => (p.msgId && edit ? edit(p.chatId, p.msgId, t).catch(() => send(p.chatId, t)) : send(p.chatId, t));
+    setup(p).then((t) => show('🔗 "' + p.name + '"\n' + t), (e) => show('🔗 "' + p.name + '"\n⚠️ ' + e.message)).catch(() => {});
+    return 'Đang kết nối...';
   }
 
   // Làm một mạch: ghép đôi → chép khóa + thử SSH → cài ứng dụng. Mỗi bước lỗi được báo rõ, không làm hỏng bước đã xong.
   async function setup(p) {
     const out = []; let name = p.name;
     if (!p.inFleet) {
-      try { const r = await fleet.pairWith(p.url); name = r.name; out.push('✅ ① Đã ghép đôi: máy "' + name + '" đã vào Đội máy.'); }
-      catch (e) { throw new Error('Ghép đôi với "' + p.name + '" không được: ' + e.message + '\n(Máy đó phải cùng tài khoản Tailscale và đang chạy máy con AgentOS.)'); }
-    } else out.push('✅ ① "' + name + '" đã trong Đội máy.');
+      try { const r = await fleet.pairWith(p.url); name = r.name; out.push('✅ Đã ghép đôi, vào Đội máy'); }
+      catch (e) { throw new Error('Ghép đôi không được: ' + e.message + '\n(Máy đó phải cùng tài khoản Tailscale và đang chạy máy con AgentOS.)'); }
+    } else out.push('✅ Đã trong Đội máy');
     let c;
-    try { c = await connect(name); } catch (e) { out.push('⚠️ ② ' + e.message); return out.join('\n') + '\nXử lý xong thì gõ /ketnoi ' + name + ' để thử lại.'; }
-    out.push('② ' + c);
-    if (!ready.has(String(name).toLowerCase())) return out.join('\n') + '\n⏭ Bỏ qua bước ③ (cài ứng dụng) vì chưa SSH vào được.';
-    try { out.push('③ ' + await provision(name)); } catch (e) { out.push('⚠️ ③ ' + e.message); }
+    try { c = await connect(name); } catch (e) { out.push('⚠️ ' + e.message); return out.join('\n') + '\nXử lý xong gõ /ketnoi để thử lại.'; }
+    out.push(c);
+    if (!ready.has(String(name).toLowerCase())) return out.join('\n') + '\n⏭ Chưa cài ứng dụng vì chưa SSH vào được.';
+    try { out.push(await provision(name)); } catch (e) { out.push('⚠️ ' + e.message); }
     return out.join('\n');
   }
 
@@ -150,31 +164,31 @@ function createKetNoi(o) {
     let r;
     try { r = await fleet.installKey(name, pub); } catch (e) { throw new Error('Máy "' + name + '" không nhận khóa: ' + e.message); }
     const host = new URL(m.url).hostname, user = r && r.user;
-    let out = '🔑 Đã ' + (r.added ? 'chép khóa' : 'xác nhận khóa có sẵn') + ' trên "' + name + '" (tài khoản ' + (user || '?') + ').';
-    if (r.warn) out += '\n⚠️ ' + r.warn;
-    if (!user) return out;
+    let out = '';
+    if (r.warn) out += '⚠️ ' + r.warn + '\n';
+    if (!user) return out + '⚠️ Máy đó nhận khóa nhưng không báo tên tài khoản để SSH.';
     const t = await run('ssh', ['-i', path.join(keyDir, 'id_ed25519'), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + path.join(keyDir, 'known_hosts'), '-o', 'ConnectTimeout=10', user + '@' + host, 'echo agentos-ssh-ok']);
-    if (t.ok && /agentos-ssh-ok/.test(t.out)) { ready.set(String(name).toLowerCase(), { user, host }); return out + '\n✅ Thử đăng nhập bằng khóa: thành công (ssh ' + user + '@' + host + ').'; }
-    return out + '\n⚠️ Chép xong nhưng thử đăng nhập chưa được: ' + (t.err.trim().split('\n').pop() || 'không rõ lý do') + '\n(Kiểm tra: dịch vụ OpenSSH Server đang chạy, tường lửa cổng 22 cho mạng Tailscale; máy Windows: chạy lại cai-dat-may-con.ps1.)';
+    if (t.ok && /agentos-ssh-ok/.test(t.out)) { ready.set(String(name).toLowerCase(), { user, host }); return out + '✅ SSH bằng khóa vào được: ' + user + '@' + host + (user === 'agentos-remote' ? ' (có sudo)' : ''); }
+    return out + '⚠️ Đã chép khóa nhưng SSH chưa vào được: ' + (t.err.trim().split('\n').pop() || 'không rõ lý do') + '\n(Kiểm tra: dịch vụ OpenSSH Server đang chạy, tường lửa cổng 22 cho mạng Tailscale; máy Windows: chạy lại cai-dat-may-con.ps1.)';
   }
 
   const sshArgs = (r, cmd) => ['-i', path.join(keyDir, 'id_ed25519'), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + path.join(keyDir, 'known_hosts'), '-o', 'ConnectTimeout=10', r.user + '@' + r.host, cmd];
   async function provision(name) {
     const r = ready.get(String(name).toLowerCase()); if (!r) throw new Error('Chưa đăng nhập SSH được vào "' + name + '": chạy /ketnoi ' + name + ' trước.');
-    const plat = await platformOf(name), lines = [];
-    for (const a of APPS[plat]) {
+    const plat = await platformOf(name), lines = [], list = APPS[plat]; let good = 0;
+    for (const a of list) {
       let res = await run('ssh', sshArgs(r, a.check));
-      if (res.ok) { lines.push('✅ ' + a.label + ': đã có'); continue; }
+      if (res.ok) { good++; continue; }
       if (!a.install) { lines.push('⚠️ ' + a.label + ': chưa có (' + (a.hint || 'cần cài tay') + ')'); continue; }
       res = await run('ssh', sshArgs(r, a.install), { timeout: 600000 });
       const again = res.ok ? await run('ssh', sshArgs(r, a.check)) : res;
-      lines.push(again.ok ? '✅ ' + a.label + ': đã cài' : '❌ ' + a.label + ': không cài được — ' + ((res.err || res.out || 'không rõ lý do').trim().split('\n').filter(Boolean).pop() || '').slice(0, 160));
+      if (again.ok) { good++; lines.push('✅ ' + a.label + ': vừa cài'); } else lines.push('❌ ' + a.label + ': không cài được — ' + ((res.err || res.out || 'không rõ lý do').trim().split('\n').filter(Boolean).pop() || '').slice(0, 160));
     }
-    logf('ketnoi: cài ứng dụng trên ' + name + ': ' + lines.map((l) => l.slice(0, 1)).join(''));
-    return 'Ứng dụng trên "' + name + '":\n' + lines.join('\n');
+    logf('ketnoi: ứng dụng trên ' + name + ': ' + good + '/' + list.length + ' sẵn sàng');
+    return (good === list.length ? '✅' : '⚠️') + ' Ứng dụng: ' + good + '/' + list.length + ' sẵn sàng' + (lines.length ? '\n' + lines.join('\n') : '');
   }
 
-  return { request, scan, answer, connect, provision, setup, publicKey, pendingCount: () => pending.size, isCallback: (d) => ID_RE.test(String(d || '')) };
+  return { request, scan, offerNew, discover, answer, connect, provision, setup, publicKey, pendingCount: () => pending.size, isCallback: (d) => ID_RE.test(String(d || '')) };
 }
 
 // PHÍA MÁY CON Linux: nhận khóa công khai từ máy đầu não (đã qua kênh ký của Đội máy) rồi xin agentos-remote (root) tạo tài khoản SSH có sudo.

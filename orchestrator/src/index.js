@@ -316,7 +316,7 @@ async function main() {
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
   const tsowner = createTsOwner({});
   const ketnoi = createKetNoi({
-    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(),
+    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'),
     ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
     send: (chatId, text) => tg.sendMessage(chatId, text),
@@ -360,6 +360,12 @@ async function main() {
       }
     }).catch(() => {}).then(() => { if (tries < 1440) setTimeout(() => autoFleetAgent(tries + 1), 60000).unref(); });
   })(0);
+  // Thấy máy MỚI cùng tài khoản Tailscale thì tự nhắn chủ máy một thẻ "Kết nối" (mỗi máy một lần); không cần gõ /ketnoi. Chưa bấm thì không làm gì.
+  (function watchNewMachines() {
+    const admin = [...cfg.adminUserIds][0];
+    const tick = () => { if (!admin) return; ketnoi.offerNew(admin).catch((e) => log('ketnoi: dò máy mới lỗi: ' + e.message)); };
+    setTimeout(tick, 90000).unref(); setInterval(tick, 300000).unref();
+  })();
   const snap = createSnapshot({ dir: path.join(dataDir, 'snapshots') });
   // Link tạm để chuyển tệp LỚN (tới 5 GB) giữa điện thoại và máy, vượt giới hạn của Telegram (xem filelink.js)
   const links = createLinks({

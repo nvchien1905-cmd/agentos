@@ -13,14 +13,14 @@ const { spawn, execFileSync } = require('child_process');
 let createFleet; try { ({ createFleet } = require('./fleet')); } catch (e) { ({ createFleet } = require('../orchestrator/src/fleet')); }
 let createTsOwner; try { ({ createTsOwner } = require('./tsowner')); } catch (e) { ({ createTsOwner } = require('../orchestrator/src/tsowner')); }
 
-const VERSION = '2026.10.28.3-win';
+const VERSION = '2026.10.28.4-win';
 const baseDir = process.env.AGENTOS_WIN_DIR || path.join(process.env.ProgramData || os.tmpdir(), 'AgentOS');
 const fleetFile = process.env.AGENTOS_FLEET_FILE || path.join(baseDir, 'fleet.json');
 const confFile = process.env.AGENTOS_WIN_CONF || path.join(baseDir, 'windows-agent.json');
 const logFile = path.join(baseDir, 'may-con.log');
 const log = (m) => { const line = new Date().toISOString() + ' ' + m; try { fs.mkdirSync(baseDir, { recursive: true }); fs.appendFileSync(logFile, line + '\n'); } catch (e) { /* bỏ qua */ } console.log(line); };
 
-const conf = () => Object.assign({ ai: 'claude', workdir: path.join(os.homedir(), 'AgentOS-May-Con'), timeoutSec: 600 }, (() => { try { return JSON.parse(fs.readFileSync(process.env.AGENTOS_WIN_CONF || confFile, 'utf8')); } catch (e) { return {}; } })());
+const conf = () => Object.assign({ ai: 'claude', workdir: path.join(os.homedir(), 'AgentOS-May-Con'), timeoutSec: 600 }, (() => { try { return JSON.parse(fs.readFileSync(process.env.AGENTOS_WIN_CONF || confFile, 'utf8').replace(/^\uFEFF/, '')); } catch (e) { return {}; } })());
 
 // Câu lệnh chạy AI ở chế độ chỉ đọc. (Việc của máy đầu não đã có tiền tố "[VIỆC TỪ MÁY ĐẦU NÃO]".)
 function aiCommand(ai, prompt) {
@@ -34,7 +34,7 @@ function aiCommand(ai, prompt) {
 const SSH_KEY_RE = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)) [A-Za-z0-9+/]{20,800}={0,2}( [^\r\n]{0,80})?$/;
 function installSshKey(key) {
   const c = conf();
-  if (!c.allowSshKey) throw new Error('Chủ máy Windows chưa bật "cho phép nhận khóa SSH" (chạy cai-rustdesk-va-ssh.ps1 bằng Run as administrator, chọn mục C).');
+  if (!c.allowSshKey) throw new Error('Chủ máy Windows chưa bật "cho phép nhận khóa SSH" (chạy lại cai-dat-may-con.ps1 bằng Run as administrator trên máy Windows đó).');
   key = String(key || '').trim();
   if (!SSH_KEY_RE.test(key)) throw new Error('Khóa SSH không đúng dạng (cần 1 dòng khóa CÔNG KHAI, ví dụ ssh-ed25519 AAAA...).');
   const dir = c.sshDir || path.join(os.homedir(), '.ssh'), file = path.join(dir, 'authorized_keys');

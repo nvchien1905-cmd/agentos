@@ -36,6 +36,7 @@ const { createAlerts } = require('./alerts');
 const { createDoctor } = require('./doctor');
 const { createFleet } = require('./fleet');
 const { createKetNoi, createRemoteAccess } = require('./ketnoi');
+const { createTsOwner } = require('./tsowner');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
 const { createSummarizer } = require('./summarizer');
@@ -313,8 +314,9 @@ async function main() {
   const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
   // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
+  const tsowner = createTsOwner({});
   const ketnoi = createKetNoi({
-    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'),
+    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(),
     ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
     send: (chatId, text) => tg.sendMessage(chatId, text),
@@ -325,6 +327,7 @@ async function main() {
     submit: (prompt, project) => { const id = db.addJob([...cfg.adminUserIds][0], prompt, null, null, 'hook', project && projects.get(project) ? project : null); setImmediate(() => crew.wake()); return id; },   // làn hook: luôn chế độ bảo vệ
     getJob: (id) => { const j = db.getJob(id); if (!j || j.lane !== 'hook' || !String(j.prompt).startsWith('[VIỆC TỪ MÁY ĐẦU NÃO]')) return null; return { status: j.status, engine: j.engine, result: maskSecrets(j.result || '').slice(0, 20000), error: maskSecrets(j.error || '') }; },
     update: () => updates.command('co'),
+    platform: 'linux', sameOwner: (ip) => tsowner.sameOwner(ip),    // ghép đôi tự động: chỉ máy cùng tài khoản Tailscale
     sshKey: async (key) => {                                       // máy đầu não xin SSH vào (đã được chủ máy đầu não bấm Cho phép); chủ máy này tắt được bằng agent.allowSshKey=false trong fleet.json
       if (fleet.load().agent.allowSshKey === false) throw new Error('Chủ máy này đã tắt "nhận khóa SSH" (fleet.json → agent.allowSshKey = false).');
       return remoteAccess.request(key);
@@ -346,6 +349,17 @@ async function main() {
     idle: () => !crew.currentJobId() && !db.queuedCount(),
   });
   const tailscale = createTailscale();
+  // Đội máy mặc định: khi máy đã vào Tailscale thì tự bật "cho phép máy đầu não (cùng tài khoản Tailscale) điều khiển" ở ĐÚNG địa chỉ Tailscale của máy này
+  // (không mở ra mạng khác). Chủ máy đã tắt ở Cài đặt (disabledByOwner) hoặc đặt agent.autoPair=false thì không tự bật.
+  (function autoFleetAgent(tries) {
+    tailscale.info().then((i) => {
+      const a = fleet.load().agent;
+      if (i && i.state === 'Running' && i.ips && i.ips[0] && !a.enabled && !a.disabledByOwner && a.autoPair !== false) {
+        fleet.enableAgent({ host: i.ips[0] }); log('Đội máy: tự bật nhận điều khiển ở địa chỉ Tailscale ' + i.ips[0]);
+        return fleetAgent.listen().then((x) => { if (x) log('Đội máy: nghe ở ' + x.address + ':' + x.port); }).catch((e) => log('Đội máy: chưa mở được cổng (' + e.code + ')'));
+      }
+    }).catch(() => {}).then(() => { if (tries < 1440) setTimeout(() => autoFleetAgent(tries + 1), 60000).unref(); });
+  })(0);
   const snap = createSnapshot({ dir: path.join(dataDir, 'snapshots') });
   // Link tạm để chuyển tệp LỚN (tới 5 GB) giữa điện thoại và máy, vượt giới hạn của Telegram (xem filelink.js)
   const links = createLinks({

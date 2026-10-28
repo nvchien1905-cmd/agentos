@@ -3,7 +3,7 @@
 # Lam: copy chuong trinh vao %ProgramData%\AgentOS, tao khoa bi mat, mo cong 8433 CHI cho mang Tailscale (100.64.0.0/10),
 #      tao tac vu tu chay khi dang nhap Windows. In ra DIA CHI + KHOA de nhap vao may dau nao (Cai dat -> Doi may, hoac /may them ...).
 # Go bo: powershell -ExecutionPolicy Bypass -File cai-dat-may-con.ps1 -GoBo
-param([string]$Ten = $env:COMPUTERNAME, [int]$Cong = 8433, [switch]$GoBo, [switch]$ChoPhepDoiKhoa)
+param([string]$Ten = $env:COMPUTERNAME, [int]$Cong = 8433, [switch]$GoBo, [switch]$ChoPhepDoiKhoa, [switch]$KhongSSH)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dest = Join-Path $env:ProgramData 'AgentOS'
@@ -26,6 +26,8 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item (Join-Path $here 'may-con-windows.js') $dest -Force
 Copy-Item (Join-Path $here '..\orchestrator\src\fleet.js') $dest -Force -ErrorAction SilentlyContinue
 if (-not (Test-Path (Join-Path $dest 'fleet.js'))) { Copy-Item (Join-Path $here 'fleet.js') $dest -Force }
+Copy-Item (Join-Path $here '..\orchestrator\src\tsowner.js') $dest -Force -ErrorAction SilentlyContinue
+if (-not (Test-Path (Join-Path $dest 'tsowner.js'))) { Copy-Item (Join-Path $here 'tsowner.js') $dest -Force }
 
 # dia chi Tailscale (neu da cai) de chi nghe tren mang Tailscale
 $ts = $null; $tsExe = (Get-Command tailscale -ErrorAction SilentlyContinue).Source
@@ -43,6 +45,30 @@ $confFile = Join-Path $dest 'windows-agent.json'
 if (-not (Test-Path $confFile)) {
   $ai = 'none'; if (Get-Command claude -ErrorAction SilentlyContinue) { $ai = 'claude' } elseif (Get-Command codex -ErrorAction SilentlyContinue) { $ai = 'codex' }
   (@{ ai = $ai; workdir = (Join-Path $env:USERPROFILE 'AgentOS-May-Con'); timeoutSec = 600 } | ConvertTo-Json) | Set-Content -Encoding UTF8 $confFile
+}
+
+# Cho may dau nao (cung tai khoan Tailscale) SSH vao: bat OpenSSH Server (chi mang Tailscale) va nhan khoa SSH cong khai tu may dau nao (lenh /ketnoi tren Telegram).
+if (-not $KhongSSH) {
+  $c = Get-Content $confFile -Raw | ConvertFrom-Json
+  $c | Add-Member -NotePropertyName allowSshKey -NotePropertyValue $true -Force
+  ($c | ConvertTo-Json) | Set-Content -Encoding UTF8 $confFile
+  if (-not (Get-Service sshd -ErrorAction SilentlyContinue)) { Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Out-Null }
+  Set-Service -Name sshd -StartupType Automatic; Start-Service sshd
+  Get-NetFirewallRule -Name 'sshd' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+  Get-NetFirewallRule -DisplayName 'AgentOS SSH (Tailscale)' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+  New-NetFirewallRule -DisplayName 'AgentOS SSH (Tailscale)' -Direction Inbound -Protocol TCP -LocalPort 22 -RemoteAddress '100.64.0.0/10' -Action Allow | Out-Null
+  # sshd mac dinh doc khoa tai khoan quan tri o ProgramData\ssh\administrators_authorized_keys: doi sang thu muc nguoi dung nhu tai khoan thuong
+  $cfg = Join-Path $env:ProgramData 'ssh\sshd_config'
+  if (Test-Path $cfg) {
+    $t = Get-Content $cfg -Raw
+    if ($t -match '(?m)^\s*Match\s+Group\s+administrators') {
+      Copy-Item $cfg ($cfg + '.agentos-bak') -Force
+      $t = [regex]::Replace($t, '(?m)^(\s*)(Match\s+Group\s+administrators)', '$1#$2')
+      $t = [regex]::Replace($t, '(?m)^(\s*)(AuthorizedKeysFile\s+__PROGRAMDATA__/ssh/administrators_authorized_keys)', '$1#$2')
+      Set-Content -Path $cfg -Value $t -Encoding ASCII
+      Restart-Service sshd
+    }
+  }
 }
 
 # tuong lua: chi mang Tailscale duoc vao cong may con
@@ -63,5 +89,6 @@ Write-Host '=== XONG. Nhap vao MAY DAU NAO (Cai dat -> Doi may -> Them may, hoac
 Write-Host ('Ten  : ' + $Ten)
 Write-Host ('Dia chi: http://' + $addr + ':' + $Cong)
 Write-Host ('Khoa : ' + $key)
-Write-Host ('Telegram: /may them "' + $Ten + '" http://' + $addr + ':' + $Cong + ' ' + $key)
+Write-Host 'CACH DON GIAN: may AgentOS dang nhap Tailscale CUNG TAI KHOAN roi go /ketnoi tren Telegram, bam Ket noi. Khong can nhap khoa.' -ForegroundColor Green
+Write-Host ('(Cach thu cong neu can: /may them "' + $Ten + '" http://' + $addr + ':' + $Cong + ' <khoa trong ' + (Join-Path $dest 'fleet.json') + '>)')
 Write-Host 'AI chay tren may nay (chi doc): xem ' $confFile

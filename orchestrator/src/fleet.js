@@ -29,9 +29,9 @@ function createFleet(o) {
     if (opt.port !== undefined) { const p = Number(opt.port); if (!(p >= 1024 && p <= 65535)) throw new Error('Cổng từ 1024 đến 65535.'); c.agent.port = p; }
     if (opt.host !== undefined) c.agent.host = String(opt.host || '');
     if (opt.regenerate || !c.agent.key) c.agent.key = crypto.randomBytes(24).toString('hex');
-    c.agent.enabled = true; save(c); return c.agent;
+    c.agent.enabled = true; delete c.agent.disabledByOwner; save(c); return c.agent;
   }
-  const disableAgent = () => { const c = load(); c.agent.enabled = false; save(c); };
+  const disableAgent = () => { const c = load(); c.agent.enabled = false; c.agent.disabledByOwner = true; save(c); };
 
   // ---------- máy đầu não: danh sách máy con ----------
   function addMachine(m) {
@@ -65,13 +65,44 @@ function createFleet(o) {
   // Chép KHÓA CÔNG KHAI SSH của máy đầu não sang máy con (máy con phải được chủ máy đó bật riêng "cho phép nhận khóa SSH")
   async function installKey(name, pubkey) { const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".'); return call(m, 'POST', '/fleet/sshkey', { key: String(pubkey) }, 15000); }
 
+  // Hỏi thăm máy con (không cần khóa): trả { agentos, name, platform, version } nếu máy đó là máy AgentOS cùng tài khoản Tailscale
+  async function hello(url, timeoutMs) {
+    const r = await doFetch(String(url).replace(/\/$/, '') + '/fleet/hello', { signal: AbortSignal.timeout(timeoutMs || 2500) });
+    const j = await r.json().catch(() => null); if (!r.ok || !j || !j.agentos) throw new Error((j && j.error) || 'không phải máy AgentOS');
+    return j;
+  }
+  // Ghép đôi: máy con (nếu thấy mình cùng tài khoản Tailscale) đưa khóa ký; thêm vào danh sách máy. Trả { name, url, platform }.
+  async function pairWith(url, nameOverride) {
+    const base = String(url).replace(/\/$/, '');
+    const r = await doFetch(base + '/fleet/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(8000) });
+    const j = await r.json().catch(() => null); if (!r.ok || !j || !j.key) throw new Error((j && j.error) || 'máy trả lời lỗi ' + r.status);
+    let name = String(nameOverride || j.name || '').replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 30) || 'May';
+    const c = load(), taken = (n) => c.machines.some((x) => x.name.toLowerCase() === n.toLowerCase());
+    const old = c.machines.find((x) => x.url === new URL(base).origin);
+    if (old) { old.key = j.key; save(c); return { name: old.name, url: old.url, platform: j.platform || '' }; }      // đã có máy này (có thể khóa đã đổi): cập nhật khóa
+    for (let i = 2; taken(name); i++) name = (String(j.name || 'May').slice(0, 26) + ' ' + i);
+    addMachine({ name, url: base, key: j.key });
+    return { name, url: new URL(base).origin, platform: j.platform || '' };
+  }
+
   // ---------- máy con: dịch vụ nhận yêu cầu ----------
   // deps: { submit(prompt, project) -> jobId, getJob(id) -> {status,result,error}|null, update() -> Promise<string>, stats() -> {...}, version }
   function createAgent(deps) {
     const seen = new Map();                                              // chữ ký đã dùng (chống phát lại)
-    async function handle(method, urlStr, headers, rawBody) {
+    async function handle(method, urlStr, headers, rawBody, remote) {
       const c = load().agent; if (!c.enabled || !c.key) return { status: 403, body: { error: 'máy này chưa cho phép điều khiển từ xa' } };
-      const u = new URL(urlStr, 'http://x'), ts = Number(headers['x-fleet-ts']), sig = String(headers['x-fleet-sig'] || '');
+      const u = new URL(urlStr, 'http://x');
+      // Hai đường KHÔNG cần khóa, chỉ cho máy CÙNG TÀI KHOẢN Tailscale (deps.sameOwner kiểm bằng tailscale whois); không có deps.sameOwner thì tắt hẳn.
+      if ((u.pathname === '/fleet/hello' && method === 'GET') || (u.pathname === '/fleet/pair' && method === 'POST')) {
+        if (c.autoPair === false) return { status: 403, body: { error: 'máy này đã tắt ghép đôi tự động' } };
+        let same = false; try { same = !!(deps.sameOwner && await deps.sameOwner(String(remote || '').replace(/^::ffff:/, ''))); } catch (e) { same = false; }
+        if (!same) return { status: 403, body: { error: 'chỉ máy cùng tài khoản Tailscale được ghép đôi' } };
+        const info = { agentos: true, name: c.name, platform: deps.platform || '', version: deps.version ? deps.version() : '' };
+        if (u.pathname === '/fleet/hello') return { status: 200, body: info };
+        log('đội máy: ghép đôi với máy cùng tài khoản Tailscale ' + String(remote || '').replace(/^::ffff:/, ''));
+        return { status: 200, body: Object.assign({ key: c.key }, info) };
+      }
+      const ts = Number(headers['x-fleet-ts']), sig = String(headers['x-fleet-sig'] || '');
       if (!ts || Math.abs(now() - ts) > MAX_SKEW_MS) return { status: 401, body: { error: 'giờ lệch quá 60 giây (kiểm tra đồng hồ hai máy)' } };
       if (!safeEq(sig, sign(c.key, method, u.pathname + u.search, ts, rawBody))) return { status: 401, body: { error: 'chữ ký sai (khóa không khớp?)' } };
       for (const [k, t] of seen) if (now() - t > 2 * MAX_SKEW_MS) seen.delete(k);
@@ -79,7 +110,7 @@ function createFleet(o) {
       seen.set(sig, now());
       let body = {}; try { body = rawBody ? JSON.parse(rawBody) : {}; } catch (e) { return { status: 400, body: { error: 'nội dung không phải JSON' } }; }
       try {
-        if (method === 'GET' && u.pathname === '/fleet/status') return { status: 200, body: Object.assign({ name: c.name, version: deps.version ? deps.version() : '', time: now() }, deps.stats ? deps.stats() : {}) };
+        if (method === 'GET' && u.pathname === '/fleet/status') return { status: 200, body: Object.assign({ name: c.name, version: deps.version ? deps.version() : '', time: now(), platform: deps.platform || '' }, deps.stats ? deps.stats() : {}) };
         if (method === 'POST' && u.pathname === '/fleet/task') {
           const p = String(body.prompt || '').trim(); if (p.length < 2 || p.length > 8000) return { status: 400, body: { error: 'việc dài 2–8000 ký tự' } };
           const id = deps.submit('[VIỆC TỪ MÁY ĐẦU NÃO] ' + p, body.project ? String(body.project) : null); log('đội máy: nhận việc #' + id + ' từ máy đầu não'); return { status: 200, body: { jobId: id } };
@@ -100,7 +131,7 @@ function createFleet(o) {
         server = http.createServer((req, res) => {
           let raw = '', over = false;
           req.on('data', (d) => { raw += d; if (raw.length > MAX_BODY) { over = true; req.destroy(); } });
-          req.on('end', async () => { if (over) return; const r = await handle(req.method, req.url, req.headers, raw); res.writeHead(r.status, { 'content-type': 'application/json' }); res.end(JSON.stringify(r.body)); });
+          req.on('end', async () => { if (over) return; const r = await handle(req.method, req.url, req.headers, raw, req.socket.remoteAddress); res.writeHead(r.status, { 'content-type': 'application/json' }); res.end(JSON.stringify(r.body)); });
         });
         server.once('error', reject);
         server.listen(c.port, c.host || '0.0.0.0', () => resolve(server.address()));
@@ -109,7 +140,7 @@ function createFleet(o) {
     return { handle, listen, close: () => new Promise((r) => (server ? server.close(() => r()) : r())) };
   }
 
-  return { load, save, enableAgent, disableAgent, addMachine, removeMachine, findMachine, call, statusAll, sendTask, jobResult, updateMachine, installKey, createAgent, sign };
+  return { load, save, enableAgent, disableAgent, addMachine, removeMachine, findMachine, call, statusAll, sendTask, jobResult, updateMachine, installKey, hello, pairWith, createAgent, sign };
 }
 
 module.exports = { createFleet, sign, NAME_RE };

@@ -11,8 +11,9 @@ const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 // fleet.js nằm cạnh tệp này sau khi cài (cai-dat-may-con.ps1 chép vào); chạy từ kho mã thì lấy ở orchestrator/src
 let createFleet; try { ({ createFleet } = require('./fleet')); } catch (e) { ({ createFleet } = require('../orchestrator/src/fleet')); }
+let createTsOwner; try { ({ createTsOwner } = require('./tsowner')); } catch (e) { ({ createTsOwner } = require('../orchestrator/src/tsowner')); }
 
-const VERSION = '2026.10.28.2-win';
+const VERSION = '2026.10.28.3-win';
 const baseDir = process.env.AGENTOS_WIN_DIR || path.join(process.env.ProgramData || os.tmpdir(), 'AgentOS');
 const fleetFile = process.env.AGENTOS_FLEET_FILE || path.join(baseDir, 'fleet.json');
 const confFile = process.env.AGENTOS_WIN_CONF || path.join(baseDir, 'windows-agent.json');
@@ -81,6 +82,8 @@ function create(opts) {
     version: () => VERSION,
     submit: (prompt) => { const id = nextId++; jobs.set(id, { status: 'queued', prompt, result: '', error: '' }); queue.push(id); setImmediate(startNext); return id; },
     getJob: (id) => { const j = jobs.get(id); return j ? { status: j.status, result: j.result, error: j.error, engine: conf().ai } : null; },
+    platform: 'windows',
+    sameOwner: (opts.sameOwner || createTsOwner({}).sameOwner),       // ghép đôi tự động: chỉ máy cùng tài khoản Tailscale (tailscale whois)
     sshKey: async (k) => installSshKey(k),
     update: async () => 'Máy Windows: cập nhật thủ công (chạy lại cai-dat.ps1 với bản mới).',
     stats: () => ({ queued: queue.length, running, diskFreeMb: diskFreeMb(), uptimeSec: Math.round(process.uptime()), platform: 'windows', host: os.hostname() }),

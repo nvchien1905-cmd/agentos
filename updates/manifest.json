@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.2",
-  "file": "agentos-update-2026.10.28.2.tar.gz",
-  "size": 296630,
-  "sha256": "65e466732a9f0eade72dc3184b84e3bc2fe8e3cac1e1096ebde389d113520e4e",
-  "date": "2026-10-27",
-  "notes": "Máy đầu não SSH được vào máy con có sudo (tài khoản agentos-remote, chỉ khóa, sau khi anh bấm Cho phép) và cài ứng dụng cần thiết qua SSH có duyệt: /ketnoi <máy>. Máy Windows nhận khi chủ máy bật (mục C)."
+  "version": "2026.10.28.3",
+  "file": "agentos-update-2026.10.28.3.tar.gz",
+  "size": 299636,
+  "sha256": "75eba9ddd5fef38284bcddadc1400707570a24b9ceacdcf1107cb35d029c97c9",
+  "date": "2026-10-28",
+  "notes": "Kết nối máy chỉ một lệnh /ketnoi: các máy cùng tài khoản Tailscale tự ghép đôi (không nhập khóa), máy đầu não SSH vào có sudo và cài ứng dụng cần thiết, chỉ sau khi anh bấm Kết nối trên Telegram."
 }

@@ -18,25 +18,57 @@ const ID_RE = /^kn:([a-z0-9]{6,12}):([yn])$/;
 const PS = (c) => 'powershell -NoProfile -NonInteractive -Command "' + c + '"';
 const PSF = (p) => PS("if (Test-Path '" + p + "') { exit 0 } else { exit 1 }");          // kiểm tệp (nhanh, đáng tin hơn winget qua SSH)
 // Cài RustDesk bằng cách tải thẳng bản mới nhất từ GitHub (không dùng winget: winget hay không chạy được trong phiên SSH), đặt mật khẩu cố định NGẪU NHIÊN, lưu ID + mật khẩu vào rustdesk.json
-const RD_INSTALL = String.raw`$ErrorActionPreference = 'Stop'
-$rd = 'C:\Program Files\RustDesk\rustdesk.exe'
-if (-not (Test-Path $rd)) {
-  $r = Invoke-RestMethod 'https://api.github.com/repos/rustdesk/rustdesk/releases/latest' -UseBasicParsing
-  $a = $r.assets | Where-Object { $_.name -match 'x86_64\.exe$' } | Select-Object -First 1
-  $f = Join-Path $env:TEMP $a.name
-  Invoke-WebRequest $a.browser_download_url -OutFile $f -UseBasicParsing
-  Start-Process $f -ArgumentList '--silent-install' -Wait
-  Start-Sleep 8
+const RD_INSTALL = String.raw`$ProgressPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Stop'
+$d = 'C:\ProgramData\AgentOS'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+$log = Join-Path $d 'rustdesk-install.log'
+function L($m) { Add-Content -Path $log -Value ((Get-Date -Format s) + ' ' + $m); Write-Output $m }
+# Chay chuong trinh ngoai, lay ca stdout lan stderr thanh chu (stderr cua chuong trinh ngoai KHONG duoc lam script dung)
+function Run-Native($exe, $argList) {
+  $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { return ((& $exe @argList 2>&1 | ForEach-Object { $_.ToString() }) -join ' ').Trim() } finally { $ErrorActionPreference = $old }
 }
-$d = 'C:\ProgramData\AgentOS'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $info = Join-Path $d 'rustdesk.json'
-if ((Test-Path $rd) -and -not (Test-Path $info)) {
-  $pw = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object { [char]$_ })
-  & $rd --password $pw | Out-Null
-  $id = (& $rd --get-id | Out-String).Trim()
-  [IO.File]::WriteAllText($info, (@{ id = $id; password = $pw } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
-}
+try {
+  $me = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $adm = (New-Object Security.Principal.WindowsPrincipal($me)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  L ('user=' + $me.Name + ' quan tri=' + $adm)
+  $rd = 'C:\Program Files\RustDesk\rustdesk.exe'
+  if (-not (Test-Path $rd)) {
+    if (-not $adm) { throw 'Phien SSH khong co quyen quan tri nen khong cai duoc chuong trinh. Chay cai-dat-may-con.ps1 bang Run as administrator mot lan tren may do.' }
+    $r = Invoke-RestMethod 'https://api.github.com/repos/rustdesk/rustdesk/releases/latest' -UseBasicParsing
+    $a = $r.assets | Where-Object { $_.name -match 'x86_64\.exe$' } | Select-Object -First 1
+    if (-not $a) { throw 'Khong thay ban cai RustDesk x86_64 tren GitHub.' }
+    $f = Join-Path $env:TEMP $a.name
+    L ('tai ' + $a.name)
+    Invoke-WebRequest $a.browser_download_url -OutFile $f -UseBasicParsing
+    $p = Start-Process $f -ArgumentList '--silent-install' -PassThru
+    if (-not $p.WaitForExit(240000)) { L 'bo cai chay qua 4 phut, tiep tuc kiem tra' } else { L ('cai xong, ma thoat ' + $p.ExitCode) }
+    for ($i = 0; $i -lt 30 -and -not (Test-Path $rd); $i++) { Start-Sleep 2 }
+    if (-not (Test-Path $rd)) { throw 'Chay bo cai xong nhung khong thay rustdesk.exe.' }
+  }
+  $info = Join-Path $d 'rustdesk.json'
+  if (-not (Test-Path $info)) {
+    if (-not $adm) { throw 'Da co RustDesk nhung dat mat khau can quyen quan tri (phien SSH khong co). Chay cai-dat-may-con.ps1 bang Run as administrator mot lan.' }
+    for ($i = 0; $i -lt 30; $i++) { $s = Get-Service -Name RustDesk -ErrorAction SilentlyContinue; if ($s -and $s.Status -eq 'Running') { break }; if ($s -and $s.Status -ne 'Running') { try { Start-Service RustDesk } catch {} }; Start-Sleep 2 }
+    $s = Get-Service -Name RustDesk -ErrorAction SilentlyContinue; L ('dich vu RustDesk: ' + $(if ($s) { $s.Status } else { 'khong co' }))
+    $pw = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object { [char]$_ })
+    $o = Run-Native $rd @('--password', $pw); L ('dat mat khau: ' + $o)
+    $id = ''
+    for ($i = 0; $i -lt 10 -and $id -notmatch '^\d{6,12}$'; $i++) {
+      $o = Run-Native $rd @('--get-id'); $m = [regex]::Match($o, '\b\d{6,12}\b'); $id = if ($m.Success) { $m.Value } else { '' }
+      if ($id -eq '') { L ('lay ID lan ' + ($i + 1) + ': ' + $o); Start-Sleep 3 }
+    }
+    if ($id -eq '') { throw 'Da cai RustDesk nhung chua lay duoc ID.' }
+    [IO.File]::WriteAllText($info, (@{ id = $id; password = $pw } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+    L ('RustDesk ID ' + $id)
+  }
+  L 'XONG'
+} catch { L ('LOI: ' + $_.Exception.Message); exit 1 }
 `;
-const PSE = (script) => 'powershell -NoProfile -NonInteractive -EncodedCommand ' + Buffer.from(script, 'utf16le').toString('base64');
+// Kịch bản dài KHÔNG đưa vào dòng lệnh (Windows giới hạn 8191 ký tự: "The command line is too long"). Ghi thành tệp bằng MỘT dòng qua stdin (base64), rồi chạy bằng -File.
+const RD_FILE = 'C:\\ProgramData\\AgentOS\\rd-install.ps1';
+const RD_WRITE = (script) => '[IO.File]::WriteAllText(' + "'" + RD_FILE + "'" + ', [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(' + "'" + Buffer.from(script, 'utf8').toString('base64') + "'" + ')))';
+const RD_RUN = 'powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + RD_FILE;
 const APPS = {
   linux: [
     { label: 'Quyền sudo không hỏi mật khẩu', check: 'sudo -n true' },
@@ -46,17 +78,26 @@ const APPS = {
     { label: 'Bộ điều phối AgentOS đang chạy', check: 'systemctl is-active --quiet agentos-orchestrator' },
   ],
   windows: [
-    { label: 'RustDesk (điều khiển màn hình)', check: PSF('C:\\Program Files\\RustDesk\\rustdesk.exe'), install: PSE(RD_INSTALL), hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó', rustdesk: true },
+    { label: 'RustDesk (điều khiển màn hình)', check: PSF('C:\\Program Files\\RustDesk\\rustdesk.exe'), script: RD_INSTALL, hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó', rustdesk: true },
     { label: 'Tailscale', check: PSF('C:\\Program Files\\Tailscale\\tailscale.exe'), hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó' },
     { label: 'Node.js (chạy máy con AgentOS)', check: 'node --version', hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó' },
   ],
 };
+// Lấy lý do lỗi dễ đọc từ kết quả lệnh: ưu tiên dòng LOI: của kịch bản; bỏ XML tiến trình (CLIXML) của PowerShell; nếu có XML lỗi thì giải mã.
+function reason(res) {
+  const txt = [res.out, res.err, res.msg].map((x) => String(x || '')).join('\n');
+  const own = txt.split('\n').map((l) => l.trim()).filter((l) => /^LOI: /.test(l)).pop(); if (own) return own.slice(5).slice(0, 220);
+  const xml = [...txt.matchAll(/<S S="Error">([\s\S]*?)<\/S>/g)].map((m) => m[1].replace(/_x000D__x000A_/g, ' ').replace(/_x000A_/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim()).filter(Boolean);
+  if (xml.length) return xml.join(' ').slice(0, 220);
+  const lines = txt.split('\n').map((l) => l.trim()).filter((l) => l && !/^#< CLIXML/.test(l) && !/^<Objs /.test(l) && !/^Command failed:/.test(l));
+  return (lines.pop() || 'không rõ lý do').slice(0, 220);
+}
 const OSNAME = { linux: 'Linux', windows: 'Windows' };
 
 function createKetNoi(o) {
   const { fleet, ask, edit, send, log } = o;
   const keyDir = o.keyDir || process.env.AGENTOS_SSH_DIR || '/var/lib/agentos/.ssh';
-  const run = o.run || ((bin, args, opt) => new Promise((resolve) => execFile(bin, args, { timeout: (opt && opt.timeout) || 30000 }, (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || ''), msg: String((err && err.message) || '') }))));
+  const run = o.run || ((bin, args, opt) => new Promise((resolve) => { const c = execFile(bin, args, { timeout: (opt && opt.timeout) || 30000 }, (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || ''), msg: String((err && err.message) || '') })); if (opt && opt.input != null && c.stdin) c.stdin.end(opt.input); }));
   const tsPeers = o.tsPeers || (async () => ({ running: false, peers: [] }));      // () -> { running, self, peers: [{ ip, host, os }] } (máy khác cùng tài khoản Tailscale đang bật)
   const agentPort = o.agentPort || 8433;
   const credsFile = o.credsFile || null;                    // nơi lưu ID + mật khẩu RustDesk của các máy con (0600)
@@ -194,17 +235,27 @@ function createKetNoi(o) {
   }
 
   const sshArgs = (r, cmd) => ['-i', path.join(keyDir, 'id_ed25519'), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + path.join(keyDir, 'known_hosts'), '-o', 'ConnectTimeout=10', r.user + '@' + r.host, cmd];
+  // Cài một ứng dụng: lệnh ngắn chạy thẳng; kịch bản dài ghi thành tệp (stdin, một dòng) rồi chạy -File
+  async function installApp(r, a, timeout) {
+    if (a.install) return run('ssh', sshArgs(r, a.install), { timeout });
+    const w = await run('ssh', sshArgs(r, 'powershell -NoProfile -NonInteractive -Command -'), { input: RD_WRITE(a.script) + '\r\n', timeout: 60000 });
+    if (!w.ok) return w;
+    return run('ssh', sshArgs(r, RD_RUN), { timeout });
+  }
   async function provision(name) {
     const r = ready.get(String(name).toLowerCase()); if (!r) throw new Error('Chưa đăng nhập SSH được vào "' + name + '": chạy /ketnoi ' + name + ' trước.');
     const plat = await platformOf(name), lines = [], list = APPS[plat]; let good = 0, rdId = '';
     for (const a of list) {
       let res = await run('ssh', sshArgs(r, a.check));
-      if (res.ok && a.rustdesk) rdId = await rustdeskCreds(name, r);
+      if (res.ok && a.rustdesk) {                    // đã có RustDesk: vẫn cần ID + mật khẩu; chưa có thì chạy phần đặt mật khẩu của kịch bản
+        rdId = await rustdeskCreds(name, r);
+        if (!rdId && (a.install || a.script)) { const ins = await installApp(r, a, 300000); if (ins.ok) rdId = await rustdeskCreds(name, r); else lines.push('⚠️ ' + a.label + ': đã cài nhưng chưa đặt được mật khẩu/ID — ' + reason(ins)); }
+      }
       if (res.ok) { good++; continue; }
-      if (!a.install) { lines.push('⚠️ ' + a.label + ': chưa có (' + (a.hint || 'cần cài tay') + ')'); continue; }
-      res = await run('ssh', sshArgs(r, a.install), { timeout: 600000 });
+      if (!a.install && !a.script) { lines.push('⚠️ ' + a.label + ': chưa có (' + (a.hint || 'cần cài tay') + ')'); continue; }
+      res = await installApp(r, a, 600000);
       const again = res.ok ? await run('ssh', sshArgs(r, a.check)) : res;
-      if (again.ok) { good++; lines.push('✅ ' + a.label + ': vừa cài'); if (a.rustdesk) rdId = await rustdeskCreds(name, r); } else lines.push('❌ ' + a.label + ': không cài được — ' + ((res.err || res.out || res.msg || 'không rõ lý do').trim().split('\n').filter(Boolean).pop() || '').slice(0, 160));
+      if (again.ok) { good++; lines.push('✅ ' + a.label + ': vừa cài'); if (a.rustdesk) rdId = await rustdeskCreds(name, r); } else lines.push('❌ ' + a.label + ': không cài được — ' + reason(res));
     }
     logf('ketnoi: ứng dụng trên ' + name + ': ' + good + '/' + list.length + ' sẵn sàng');
     return (good === list.length ? '✅' : '⚠️') + ' Ứng dụng: ' + good + '/' + list.length + ' sẵn sàng' + (lines.length ? '\n' + lines.join('\n') : '') + (rdId ? '\n🖥 RustDesk ID: ' + rdId + ' (mật khẩu đã lưu ở máy này)' : '');

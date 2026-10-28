@@ -13,7 +13,7 @@ const { spawn, execFileSync } = require('child_process');
 let createFleet; try { ({ createFleet } = require('./fleet')); } catch (e) { ({ createFleet } = require('../orchestrator/src/fleet')); }
 let createTsOwner; try { ({ createTsOwner } = require('./tsowner')); } catch (e) { ({ createTsOwner } = require('../orchestrator/src/tsowner')); }
 
-const VERSION = '2026.10.28.5-win';
+const VERSION = '2026.10.28.6-win';
 const baseDir = process.env.AGENTOS_WIN_DIR || path.join(process.env.ProgramData || os.tmpdir(), 'AgentOS');
 const fleetFile = process.env.AGENTOS_FLEET_FILE || path.join(baseDir, 'fleet.json');
 const confFile = process.env.AGENTOS_WIN_CONF || path.join(baseDir, 'windows-agent.json');

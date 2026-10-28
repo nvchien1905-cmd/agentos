@@ -105,11 +105,12 @@ test('ketnoi: máy chưa nhận khóa (Windows chưa cài) thì ghép đôi xong
 
 test('ketnoi: máy Windows — RustDesk thiếu thì máy đầu não tự cài bằng kịch bản mã hóa (không winget), lưu ID + mật khẩu (0600); Tailscale/Node thiếu chỉ báo cách xử lý; chỉ liệt kê cái vừa cài hoặc lỗi', async () => {
   const c = await child({ platform: 'windows', sshKey: async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }) }), h = head();
-  const cmds = []; let rdInstalled = false;
-  const run = async (bin, args) => {
-    const x = args[args.length - 1]; cmds.push(x);
+  const cmds = [], inputs = []; let rdInstalled = false;
+  const run = async (bin, args, opt) => {
+    const x = args[args.length - 1]; cmds.push(x); if (opt && opt.input) inputs.push(opt.input);
     if (x === 'echo agentos-ssh-ok') return { ok: true, out: 'agentos-ssh-ok', err: '' };
-    if (/-EncodedCommand/.test(x)) { rdInstalled = true; return { ok: true, out: '', err: '' }; }
+    if (x === 'powershell -NoProfile -NonInteractive -Command -') return { ok: true, out: '', err: '' };                      // ghi tệp kịch bản
+    if (/rd-install.ps1/.test(x)) { rdInstalled = true; return { ok: true, out: '', err: '' }; }
     if (/rustdesk\.exe/.test(x)) return { ok: rdInstalled, out: '', err: '' };
     if (/rustdesk\.json/.test(x)) return { ok: true, out: '﻿{"id":"123456789","password":"MatKhauNgauNhien1"}', err: '' };
     if (x === 'node --version') return { ok: false, out: '', err: '' };
@@ -121,7 +122,9 @@ test('ketnoi: máy Windows — RustDesk thiếu thì máy đầu não tự cài 
   const r = last(t);
   assert.match(r, /RustDesk[^\n]*vừa cài/); assert.match(r, /Tailscale[^\n]*chưa có \(chạy lại cai-dat-may-con\.ps1/); assert.match(r, /Node\.js[^\n]*chưa có/); assert.match(r, /Ứng dụng: 0\/3 sẵn sàng|Ứng dụng: 1\/3 sẵn sàng/);
   assert.match(r, /RustDesk ID: 123456789/); assert.ok(!/MatKhauNgauNhien1/.test(r), 'mật khẩu không hiện trong chat');
-  const enc = cmds.find((x) => /-EncodedCommand/.test(x)); const script = Buffer.from(enc.split(' ').pop(), 'base64').toString('utf16le');
+  assert.equal(inputs.length, 1, 'kịch bản truyền qua stdin MỘT dòng'); assert.equal(inputs[0].trim().split('\n').length, 1, 'một dòng duy nhất');
+  assert.ok(cmds.every((x) => x.length < 1000), 'không dòng lệnh nào dài (Windows giới hạn 8191 ký tự)');
+  const b64 = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(inputs[0])[1]; const script = Buffer.from(b64, 'base64').toString('utf8');
   assert.match(script, /--silent-install/); assert.match(script, /api\.github\.com\/repos\/rustdesk\/rustdesk/); assert.ok(!/winget/.test(script));
   assert.ok(!cmds.some((x) => /winget/.test(x)), 'không dùng winget qua SSH');
   const saved = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
@@ -136,7 +139,8 @@ test('ketnoi: cài lỗi thì báo đúng lý do (stderr hoặc kết quả lệ
   const run = async (bin, args) => {
     const x = args[args.length - 1];
     if (x === 'echo agentos-ssh-ok') return { ok: true, out: 'agentos-ssh-ok', err: '' };
-    if (/-EncodedCommand/.test(x)) return { ok: false, out: 'Invoke-WebRequest : Unable to connect to the remote server\n', err: '', msg: 'Command failed: ssh -i /var/lib/agentos/.ssh/id_ed25519 -o BatchMode=yes' };
+    if (x === 'powershell -NoProfile -NonInteractive -Command -') return { ok: true, out: '', err: '' };
+    if (/rd-install.ps1/.test(x)) return { ok: false, out: 'Invoke-WebRequest : Unable to connect to the remote server\n', err: '', msg: 'Command failed: ssh -i /var/lib/agentos/.ssh/id_ed25519 -o BatchMode=yes' };
     return { ok: false, out: '', err: '', msg: 'Command failed: ssh ...' };
   };
   const t = kn(h, Object.assign({ run }, one(c)));
@@ -221,4 +225,39 @@ test('máy con Linux: createRemoteAccess chỉ ghi tệp yêu cầu cho khóa c�
   const slow = createRemoteAccess({ requestFile: req, resultFile: res, waitMs: 150, pollMs: 20 });
   await assert.rejects(slow.request(PUB), /chưa xử lý/);
   fs.rmSync(req, { force: true });
+});
+
+test('ketnoi: RustDesk đã cài sẵn nhưng chưa có ID/mật khẩu thì chạy phần đặt mật khẩu; lỗi chỉ in lý do, bỏ XML tiến trình CLIXML của PowerShell', async () => {
+  const c = await child({ platform: 'windows', sshKey: async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }) }), h = head();
+  let hasCreds = false, scripts = 0;
+  const run = async (bin, args) => {
+    const x = args[args.length - 1];
+    if (x === 'echo agentos-ssh-ok') return { ok: true, out: 'agentos-ssh-ok', err: '' };
+    if (x === 'powershell -NoProfile -NonInteractive -Command -') return { ok: true, out: '', err: '' };
+    if (/rd-install.ps1/.test(x)) { scripts++; hasCreds = true; return { ok: true, out: 'XONG\r\n', err: '' }; }
+    if (/rustdesk\.json/.test(x)) return hasCreds ? { ok: true, out: '{"id":"264372510","password":"abc123def456ghi7"}', err: '' } : { ok: false, out: '', err: 'Cannot find path' };
+    if (/rustdesk\.exe/.test(x)) return { ok: true, out: '', err: '' };                // exe đã có
+    return { ok: false, out: '', err: '' };
+  };
+  const t = kn(h, Object.assign({ run, credsFile: path.join(tmp(), 'c.json') }, one(c)));
+  await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.edits.length > 1);
+  assert.equal(scripts, 1); assert.match(last(t), /RustDesk ID: 264372510/); assert.ok(!/abc123def456ghi7/.test(last(t)));
+
+  // lỗi: kịch bản in "LOI:"; hoặc chỉ có XML lỗi; không bao giờ hiện XML tiến trình
+  const clixml = '#< CLIXML\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T></TN></Obj></Objs>';
+  const mk = (res) => { const c2 = { platform: 'windows' }; return res; };
+  const cases = [
+    [{ ok: false, out: 'user=PC\\nguye quan tri=True\r\nLOI: Khong thay ban cai RustDesk x86_64 tren GitHub.\r\n', err: clixml, msg: 'Command failed: ssh -i k' }, /không cài được — Khong thay ban cai RustDesk/],
+    [{ ok: false, out: '', err: '#< CLIXML\n<Objs Version="1.1.0.1" xmlns="x"><S S="Error">Invoke-WebRequest : Unable to connect_x000D__x000A_</S></Objs>', msg: '' }, /không cài được — Invoke-WebRequest : Unable to connect/],
+    [{ ok: false, out: '', err: clixml, msg: 'Command failed: ssh -i k' }, /không cài được — không rõ lý do/],
+  ];
+  for (const [res, re] of cases) {
+    const c3 = await child({ platform: 'windows', sshKey: async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }) }), h3 = head();
+    const run3 = async (bin, args) => { const x = args[args.length - 1]; if (x === 'echo agentos-ssh-ok') return { ok: true, out: 'ok agentos-ssh-ok', err: '' }; if (x === 'powershell -NoProfile -NonInteractive -Command -') return { ok: true, out: '', err: '' }; if (/rd-install.ps1/.test(x)) return res; return { ok: false, out: '', err: '' }; };
+    const t3 = kn(h3, Object.assign({ run: run3 }, one(c3)));
+    await t3.k.request('1', ''); await t3.k.answer(t3.asks[0].b[0][0].data, 1, () => true); await wait(() => t3.edits.length > 1);
+    assert.match(last(t3), re); assert.ok(!/Objs|CLIXML|Command failed/.test(last(t3)), 'không lộ XML hay dòng lệnh');
+    await c3.agent.close();
+  }
+  await c.agent.close();
 });

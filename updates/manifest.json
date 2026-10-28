@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.5",
-  "file": "agentos-update-2026.10.28.5.tar.gz",
-  "size": 301073,
-  "sha256": "07ec1f90ac476d45d078e02d943ad5ffefeb4f9837356d0656e2180ba3d2eec2",
+  "version": "2026.10.28.6",
+  "file": "agentos-update-2026.10.28.6.tar.gz",
+  "size": 302769,
+  "sha256": "b9ce7ea9ee8a1c70fe2088c6e1aea5352d246c45e4a82790fcd7f14323be64b2",
   "date": "2026-10-28",
-  "notes": "Máy đầu não tự cài RustDesk lên máy Windows qua SSH (không cần thao tác trên máy đó), báo đúng lý do khi lỗi."
+  "notes": "Sửa lỗi cài RustDesk lên máy Windows qua SSH (dòng lệnh quá dài, che lỗi thật). Đã test thật: SSH quản trị, đặt mật khẩu, lấy ID, kiểm ứng dụng 3/3."
 }

@@ -43,6 +43,8 @@ function createFleet(o) {
     c.machines.push({ name, url: url.origin, key }); save(c); return { name, url: url.origin };
   }
   function removeMachine(name) { const c = load(), n = c.machines.length; c.machines = c.machines.filter((x) => x.name.toLowerCase() !== String(name).toLowerCase()); save(c); return c.machines.length < n; }
+  // Ghi nhớ tài khoản SSH vào máy con (do /ketnoi thử đăng nhập được) để các tính năng khác (/dongbo) dùng lại
+  function setSsh(name, ssh) { const c = load(), m = c.machines.find((x) => x.name.toLowerCase() === String(name || '').trim().toLowerCase()); if (!m) return false; m.ssh = { user: String(ssh.user || ''), at: now() }; save(c); return true; }
   const findMachine = (name) => load().machines.find((x) => x.name.toLowerCase() === String(name || '').trim().toLowerCase()) || null;
 
   async function call(machine, method, p, body, timeoutMs) {
@@ -140,7 +142,7 @@ function createFleet(o) {
     return { handle, listen, close: () => new Promise((r) => (server ? server.close(() => r()) : r())) };
   }
 
-  return { load, save, enableAgent, disableAgent, addMachine, removeMachine, findMachine, call, statusAll, sendTask, jobResult, updateMachine, installKey, hello, pairWith, createAgent, sign };
+  return { load, save, enableAgent, disableAgent, addMachine, removeMachine, findMachine, call, statusAll, sendTask, jobResult, updateMachine, installKey, hello, pairWith, setSsh, createAgent, sign };
 }
 
 module.exports = { createFleet, sign, NAME_RE };

@@ -230,7 +230,7 @@ function createKetNoi(o) {
     if (r.warn) out += '⚠️ ' + r.warn + '\n';
     if (!user) return out + '⚠️ Máy đó nhận khóa nhưng không báo tên tài khoản để SSH.';
     const t = await run('ssh', ['-i', path.join(keyDir, 'id_ed25519'), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + path.join(keyDir, 'known_hosts'), '-o', 'ConnectTimeout=10', user + '@' + host, 'echo agentos-ssh-ok']);
-    if (t.ok && /agentos-ssh-ok/.test(t.out)) { ready.set(String(name).toLowerCase(), { user, host }); return out + '✅ SSH bằng khóa vào được: ' + user + '@' + host + (user === 'agentos-remote' ? ' (có sudo)' : ''); }
+    if (t.ok && /agentos-ssh-ok/.test(t.out)) { ready.set(String(name).toLowerCase(), { user, host }); try { fleet.setSsh(name, { user }); } catch (e) { /* không ghi được: vẫn dùng được trong lần này */ } return out + '✅ SSH bằng khóa vào được: ' + user + '@' + host + (user === 'agentos-remote' ? ' (có sudo)' : ''); }
     return out + '⚠️ Đã chép khóa nhưng SSH chưa vào được: ' + ((t.err || t.msg || '').trim().split('\n').pop() || 'không rõ lý do') + '\n(Kiểm tra: dịch vụ OpenSSH Server đang chạy, tường lửa cổng 22 cho mạng Tailscale; máy Windows: chạy lại cai-dat-may-con.ps1.)';
   }
 

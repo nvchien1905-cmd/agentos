@@ -25,6 +25,7 @@ function helpText(profiles) {
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
     '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +
+    '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
     '📊 /chiphi [tuan|thang|homnay] - thống kê dùng AI theo AI và theo dự án · /chiphi tran <AI> <số việc/tháng> - đặt trần tháng (vượt thì dồn sang AI khác)\n' +
     '💾 /saoluudia [chay] - xem/chạy ngay SAO LƯU dữ liệu ra ổ USB/HDD ngoài (phòng ổ trong máy hỏng)\n' +
@@ -57,8 +58,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'camera', 'dien']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'camera', 'dien']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -215,6 +216,11 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           }, (e) => '⚠️ ' + e.message);
         }
         case 'ai': return aiCommand(uid, String(cmd[3] || ''));
+        case 'dongbo': {                                    // sao lưu 2 chiều dữ liệu Claude/Codex giữa các máy (qua SSH, không qua AI)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /dongbo.';
+          if (!dongbo) return 'Máy này chưa có đội máy.';
+          return dongbo.command(String(cmd[3] || ''));
+        }
         case 'may': {                                         // ĐỘI MÁY: giao việc / xem tình trạng / cập nhật máy AgentOS khác (qua Tailscale)
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /may.';
           if (!fleet) return 'Máy này chưa có đội máy.';

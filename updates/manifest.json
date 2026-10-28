@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.7",
-  "file": "agentos-update-2026.10.28.7.tar.gz",
-  "size": 303920,
-  "sha256": "d5177040f4245ecdfe9101bed716b0c4ede2566b0ed3ccce20a50a32a509d36e",
+  "version": "2026.10.28.8",
+  "file": "agentos-update-2026.10.28.8.tar.gz",
+  "size": 309743,
+  "sha256": "41e21f27977a7b030beadcedfda58a8a180947390d2ebd770b54793afdb137b5",
   "date": "2026-10-28",
-  "notes": "Lệnh /ai và câu nói \"chuyển sang dùng codex\": đổi AI ưu tiên ngay, không sửa tệp, không khởi động lại."
+  "notes": "Lệnh /dongbo: sao lưu 2 chiều dữ liệu Claude/Codex giữa máy đầu não và các máy con qua SSH (tự chạy, giữ nhiều bản, không chép token)."
 }

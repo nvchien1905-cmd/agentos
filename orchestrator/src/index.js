@@ -37,6 +37,7 @@ const { createDoctor } = require('./doctor');
 const { createFleet } = require('./fleet');
 const { createKetNoi, createRemoteAccess } = require('./ketnoi');
 const { createTsOwner } = require('./tsowner');
+const { createDongBo } = require('./dongbo');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
 const { createSummarizer } = require('./summarizer');
@@ -323,6 +324,13 @@ async function main() {
   };
   { const saved = db.kvGet('engine_primary'); if (saved && origEngineOrder.includes(saved)) engineCtl.setPrimary(saved); }
   const tsowner = createTsOwner({});
+  // Sao lưu 2 chiều dữ liệu Claude/Codex giữa máy này và máy con (/dongbo). Tự chạy mỗi 10 phút kiểm; máy nào bật tự động và quá hạn thì sao lưu.
+  const dongbo = createDongBo({
+    fleet, log, file: path.join(dataDir, 'dongbo.json'), keyDir: path.join(dataDir, '..', '.ssh'), baseDir: path.join(dataDir, '..', 'saoluu-may'),
+    ensureSsh: (name) => ketnoi.connect(name),
+    notify: async (text) => { const a = [...cfg.adminUserIds][0]; if (a) await tg.sendMessage(a, text); },
+  });
+  setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();
   const ketnoi = createKetNoi({
     fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'), credsFile: path.join(dataDir, 'rustdesk-may-con.json'),
     ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
@@ -412,7 +420,7 @@ async function main() {
   chungtu.start();
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    fleet, iot, ketnoi, engineCtl,
+    fleet, iot, ketnoi, engineCtl, dongbo,
     diagnose: async () => {
       const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');
       const report = selftest.format(res, '🩺 Tự chẩn đoán đầy đủ'), nbad = res.filter((r) => r.status === 'fail').length;

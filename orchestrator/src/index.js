@@ -314,6 +314,14 @@ async function main() {
   const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
   // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
+  // Đổi AI ưu tiên ngay bằng /ai (hoặc câu nói "chuyển sang dùng codex"): sắp lại chính mảng cfg.engineOrder tại chỗ (bộ xếp việc dùng chung mảng này) và nhớ ở db để lần khởi động sau vẫn giữ.
+  const origEngineOrder = cfg.engineOrder.slice();
+  const engineCtl = {
+    order: () => cfg.engineOrder.slice(), original: () => origEngineOrder.slice(),
+    setPrimary(e) { if (!origEngineOrder.includes(e)) return false; cfg.engineOrder.splice(0, cfg.engineOrder.length, e, ...origEngineOrder.filter((x) => x !== e)); db.kvSet('engine_primary', e); log('AI ưu tiên đổi thành ' + e + ' (/ai)'); return true; },
+    reset() { cfg.engineOrder.splice(0, cfg.engineOrder.length, ...origEngineOrder); db.kvDel('engine_primary'); log('AI ưu tiên về mặc định (/ai tudong)'); },
+  };
+  { const saved = db.kvGet('engine_primary'); if (saved && origEngineOrder.includes(saved)) engineCtl.setPrimary(saved); }
   const tsowner = createTsOwner({});
   const ketnoi = createKetNoi({
     fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'), credsFile: path.join(dataDir, 'rustdesk-may-con.json'),
@@ -404,7 +412,7 @@ async function main() {
   chungtu.start();
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    fleet, iot, ketnoi,
+    fleet, iot, ketnoi, engineCtl,
     diagnose: async () => {
       const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');
       const report = selftest.format(res, '🩺 Tự chẩn đoán đầy đủ'), nbad = res.filter((r) => r.status === 'fail').length;

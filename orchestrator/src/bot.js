@@ -25,6 +25,7 @@ function helpText(profiles) {
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
     '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +
+    '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
     '📊 /chiphi [tuan|thang|homnay] - thống kê dùng AI theo AI và theo dự án · /chiphi tran <AI> <số việc/tháng> - đặt trần tháng (vượt thì dồn sang AI khác)\n' +
     '💾 /saoluudia [chay] - xem/chạy ngay SAO LƯU dữ liệu ra ổ USB/HDD ngoài (phòng ổ trong máy hỏng)\n' +
     '/capnhat [co|tudong bat|tudong tat] - cập nhật phần mềm AgentOS khi có bản mới (không cần boot lại)\n' +
@@ -56,8 +57,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'camera', 'dien']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'camera', 'dien']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -76,6 +77,32 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     setImmediate(() => worker.wake());
     if (quietAck) return ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó). Gõ /huy để hủy.' : null;        // việc làm ngay: bot hiện "đang gõ" + tin trạng thái thay cho tin báo nhận
     return ahead > 0 ? 'Đã nhận việc #' + id + ' (còn ' + ahead + ' việc trước đó).' : 'Đã nhận việc #' + id + ', đang làm...';
+  }
+
+  // Đổi AI ưu tiên ngay (không sửa tệp, không khởi động lại, nhớ qua lần khởi động sau). Hết hạn mức thì vẫn tự chuyển sang AI kế.
+  const noAcc = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
+  const AI_ALIAS = { claude: 'claude', codex: 'codex', gemini: 'gemini', deepseek: 'deepseekapi', deepseekapi: 'deepseekapi' };
+  function naturalAi(text) {
+    const t = noAcc(text).trim().replace(/[.!?]+$/, '');
+    if (t.length > 70) return null;
+    const m = /^(em |bot )?(chuyen|doi|dung|chon|bat)( han| luon)?( sang| qua)?( dung| xai)? (claude|codex|gemini|deepseek(?:api)?)( cho anh| cho toi)?( nhe| nha| di| thoi| luon| ngay)?$/.exec(t);
+    return m ? m[6] : null;
+  }
+  function aiCommand(uid, arg) {
+    if (!isAdmin(uid)) return 'Chỉ chủ máy đổi được AI.';
+    if (!engineCtl) return 'Máy này chưa hỗ trợ đổi AI.';
+    const a = noAcc(arg).trim();
+    const label = (e) => { const x = worker.engineStatus ? worker.engineStatus().find((y) => y.name === e) : null; return x ? x.label : e; };
+    if (!a) {
+      const cur = engineCtl.order();
+      return '🤖 AI đang ưu tiên: ' + cur.map(label).join(' → ') + '\nĐổi: /ai ' + engineCtl.original().map((e) => (e === 'deepseekapi' ? 'deepseek' : e)).join(' | /ai ') + ' · về thứ tự mặc định: /ai tudong\n(Hết hạn mức thì bot tự chuyển sang AI kế. Ép riêng một việc: /codex <việc>.)';
+    }
+    if (/^(tu ?dong|mac ?dinh|reset)$/.test(a)) { engineCtl.reset(); return '✅ Về thứ tự mặc định: ' + engineCtl.order().map(label).join(' → '); }
+    const e = AI_ALIAS[a];
+    if (!e) return 'Không biết AI "' + String(arg).trim() + '". Dùng: /ai claude, /ai codex, /ai gemini, /ai deepseek hoặc /ai tudong.';
+    if (!engineCtl.original().includes(e)) return 'AI ' + a + ' chưa được bật trên máy này.';
+    engineCtl.setPrimary(e);
+    return '✅ Từ giờ dùng ' + label(e) + ' trước: ' + engineCtl.order().map(label).join(' → ') + '. Việc đang chạy giữ nguyên, việc mới theo thứ tự này. Hết hạn mức thì tự chuyển sang AI kế.';
   }
 
   function handle(msg) {
@@ -187,6 +214,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
             return { text: '📷 ' + cam.name + ' lúc ' + hm + (ack ? '\n' + ack : ' — đang nhờ AI xem ảnh...'), files: [{ path: s.file, name: 'camera.jpg', kind: 'photo', temp: false }] };
           }, (e) => '⚠️ ' + e.message);
         }
+        case 'ai': return aiCommand(uid, String(cmd[3] || ''));
         case 'may': {                                         // ĐỘI MÁY: giao việc / xem tình trạng / cập nhật máy AgentOS khác (qua Tailscale)
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /may.';
           if (!fleet) return 'Máy này chưa có đội máy.';
@@ -327,6 +355,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         return quietAck ? (ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó).' : null) : 'Đang tra giúp bạn...';
       }, (e) => '⚠️ Chưa tra được: ' + e.message);
     }
+    const nl = engineCtl && isAdmin(uid) ? naturalAi(text) : null;                  // "chuyển sang dùng codex" -> như /ai codex (không qua AI, không bị chặn)
+    if (nl) return aiCommand(uid, nl);
     if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo: gõ /doanhso hoặc /ton <sản phẩm>.';
     return submit(chatId, text, null);
   }

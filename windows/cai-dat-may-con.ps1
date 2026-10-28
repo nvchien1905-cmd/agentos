@@ -71,6 +71,27 @@ if (-not $KhongSSH) {
   }
 }
 
+# Ung dung may dau nao can de dieu khien man hinh: RustDesk (cai ngay luc nay vi script dang chay bang quyen quan tri; qua SSH winget khong dang tin).
+# Dat mat khau co dinh NGAU NHIEN va luu cung ID vao rustdesk.json (chi quan tri + nguoi dung nay doc duoc); may dau nao tu doc qua SSH, khong ai phai go.
+$rd = 'C:\Program Files\RustDesk\rustdesk.exe'
+if (-not (Test-Path $rd)) { try { winget install --id RustDesk.RustDesk -e --silent --accept-package-agreements --accept-source-agreements | Out-Null } catch { Write-Host ('Khong cai duoc RustDesk: ' + $_.Exception.Message) -ForegroundColor Yellow } }
+if (Test-Path $rd) {
+  $info = Join-Path $dest 'rustdesk.json'
+  if (-not (Test-Path $info)) {
+    try {
+      $pw = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object { [char]$_ })
+      Start-Process $rd -ArgumentList '--install-service' -Wait -ErrorAction SilentlyContinue
+      Start-Sleep 6
+      & $rd --password $pw | Out-Null
+      $id = (& $rd --get-id | Out-String).Trim()
+      if ($id -match '^\d{6,12}$') {
+        [IO.File]::WriteAllText($info, (@{ id = $id; password = $pw } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+        icacls $info /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F' /grant ($env:USERNAME + ':R') | Out-Null
+      } else { Write-Host 'RustDesk da cai nhung chua lay duoc ID (mo RustDesk mot lan roi chay lai script).' -ForegroundColor Yellow }
+    } catch { Write-Host ('RustDesk: ' + $_.Exception.Message) -ForegroundColor Yellow }
+  }
+}
+
 # tuong lua: chi mang Tailscale duoc vao cong may con
 Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName $rule -Direction Inbound -Protocol TCP -LocalPort $Cong -RemoteAddress '100.64.0.0/10' -Action Allow | Out-Null

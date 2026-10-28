@@ -16,7 +16,27 @@ const ID_RE = /^kn:([a-z0-9]{6,12}):([yn])$/;
 
 // Ứng dụng cần để máy đầu não kiểm soát máy con. Lệnh CỐ ĐỊNH (không ghép dữ liệu người dùng vào lệnh).
 const PS = (c) => 'powershell -NoProfile -NonInteractive -Command "' + c + '"';
-const WG = (id) => 'winget install --id ' + id + ' -e --silent --accept-package-agreements --accept-source-agreements';
+const PSF = (p) => PS("if (Test-Path '" + p + "') { exit 0 } else { exit 1 }");          // kiểm tệp (nhanh, đáng tin hơn winget qua SSH)
+// Cài RustDesk bằng cách tải thẳng bản mới nhất từ GitHub (không dùng winget: winget hay không chạy được trong phiên SSH), đặt mật khẩu cố định NGẪU NHIÊN, lưu ID + mật khẩu vào rustdesk.json
+const RD_INSTALL = String.raw`$ErrorActionPreference = 'Stop'
+$rd = 'C:\Program Files\RustDesk\rustdesk.exe'
+if (-not (Test-Path $rd)) {
+  $r = Invoke-RestMethod 'https://api.github.com/repos/rustdesk/rustdesk/releases/latest' -UseBasicParsing
+  $a = $r.assets | Where-Object { $_.name -match 'x86_64\.exe$' } | Select-Object -First 1
+  $f = Join-Path $env:TEMP $a.name
+  Invoke-WebRequest $a.browser_download_url -OutFile $f -UseBasicParsing
+  Start-Process $f -ArgumentList '--silent-install' -Wait
+  Start-Sleep 8
+}
+$d = 'C:\ProgramData\AgentOS'; New-Item -ItemType Directory -Force -Path $d | Out-Null; $info = Join-Path $d 'rustdesk.json'
+if ((Test-Path $rd) -and -not (Test-Path $info)) {
+  $pw = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | ForEach-Object { [char]$_ })
+  & $rd --password $pw | Out-Null
+  $id = (& $rd --get-id | Out-String).Trim()
+  [IO.File]::WriteAllText($info, (@{ id = $id; password = $pw } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+}
+`;
+const PSE = (script) => 'powershell -NoProfile -NonInteractive -EncodedCommand ' + Buffer.from(script, 'utf16le').toString('base64');
 const APPS = {
   linux: [
     { label: 'Quyền sudo không hỏi mật khẩu', check: 'sudo -n true' },
@@ -26,9 +46,9 @@ const APPS = {
     { label: 'Bộ điều phối AgentOS đang chạy', check: 'systemctl is-active --quiet agentos-orchestrator' },
   ],
   windows: [
-    { label: 'RustDesk (điều khiển màn hình)', check: PS('winget list --id RustDesk.RustDesk -e --accept-source-agreements | Out-Null; exit $LASTEXITCODE'), install: PS(WG('RustDesk.RustDesk')) },
-    { label: 'Tailscale', check: PS('winget list --id Tailscale.Tailscale -e --accept-source-agreements | Out-Null; exit $LASTEXITCODE'), install: PS(WG('Tailscale.Tailscale')) },
-    { label: 'Node.js (chạy máy con AgentOS)', check: 'node --version', install: PS(WG('OpenJS.NodeJS.LTS')) },
+    { label: 'RustDesk (điều khiển màn hình)', check: PSF('C:\\Program Files\\RustDesk\\rustdesk.exe'), install: PSE(RD_INSTALL), hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó', rustdesk: true },
+    { label: 'Tailscale', check: PSF('C:\\Program Files\\Tailscale\\tailscale.exe'), hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó' },
+    { label: 'Node.js (chạy máy con AgentOS)', check: 'node --version', hint: 'chạy lại cai-dat-may-con.ps1 (Run as administrator) trên máy đó' },
   ],
 };
 const OSNAME = { linux: 'Linux', windows: 'Windows' };
@@ -36,9 +56,10 @@ const OSNAME = { linux: 'Linux', windows: 'Windows' };
 function createKetNoi(o) {
   const { fleet, ask, edit, send, log } = o;
   const keyDir = o.keyDir || process.env.AGENTOS_SSH_DIR || '/var/lib/agentos/.ssh';
-  const run = o.run || ((bin, args, opt) => new Promise((resolve) => execFile(bin, args, { timeout: (opt && opt.timeout) || 30000 }, (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || (err && err.message) || '') }))));
+  const run = o.run || ((bin, args, opt) => new Promise((resolve) => execFile(bin, args, { timeout: (opt && opt.timeout) || 30000 }, (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || ''), msg: String((err && err.message) || '') }))));
   const tsPeers = o.tsPeers || (async () => ({ running: false, peers: [] }));      // () -> { running, self, peers: [{ ip, host, os }] } (máy khác cùng tài khoản Tailscale đang bật)
   const agentPort = o.agentPort || 8433;
+  const credsFile = o.credsFile || null;                    // nơi lưu ID + mật khẩu RustDesk của các máy con (0600)
   const timeoutMs = o.timeoutMs || 300000;
   const pending = new Map();
   const ready = new Map();                                  // máy đã đăng nhập SSH bằng khóa được: tên (thường) -> { user, host }
@@ -169,23 +190,39 @@ function createKetNoi(o) {
     if (!user) return out + '⚠️ Máy đó nhận khóa nhưng không báo tên tài khoản để SSH.';
     const t = await run('ssh', ['-i', path.join(keyDir, 'id_ed25519'), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + path.join(keyDir, 'known_hosts'), '-o', 'ConnectTimeout=10', user + '@' + host, 'echo agentos-ssh-ok']);
     if (t.ok && /agentos-ssh-ok/.test(t.out)) { ready.set(String(name).toLowerCase(), { user, host }); return out + '✅ SSH bằng khóa vào được: ' + user + '@' + host + (user === 'agentos-remote' ? ' (có sudo)' : ''); }
-    return out + '⚠️ Đã chép khóa nhưng SSH chưa vào được: ' + (t.err.trim().split('\n').pop() || 'không rõ lý do') + '\n(Kiểm tra: dịch vụ OpenSSH Server đang chạy, tường lửa cổng 22 cho mạng Tailscale; máy Windows: chạy lại cai-dat-may-con.ps1.)';
+    return out + '⚠️ Đã chép khóa nhưng SSH chưa vào được: ' + ((t.err || t.msg || '').trim().split('\n').pop() || 'không rõ lý do') + '\n(Kiểm tra: dịch vụ OpenSSH Server đang chạy, tường lửa cổng 22 cho mạng Tailscale; máy Windows: chạy lại cai-dat-may-con.ps1.)';
   }
 
   const sshArgs = (r, cmd) => ['-i', path.join(keyDir, 'id_ed25519'), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + path.join(keyDir, 'known_hosts'), '-o', 'ConnectTimeout=10', r.user + '@' + r.host, cmd];
   async function provision(name) {
     const r = ready.get(String(name).toLowerCase()); if (!r) throw new Error('Chưa đăng nhập SSH được vào "' + name + '": chạy /ketnoi ' + name + ' trước.');
-    const plat = await platformOf(name), lines = [], list = APPS[plat]; let good = 0;
+    const plat = await platformOf(name), lines = [], list = APPS[plat]; let good = 0, rdId = '';
     for (const a of list) {
       let res = await run('ssh', sshArgs(r, a.check));
+      if (res.ok && a.rustdesk) rdId = await rustdeskCreds(name, r);
       if (res.ok) { good++; continue; }
       if (!a.install) { lines.push('⚠️ ' + a.label + ': chưa có (' + (a.hint || 'cần cài tay') + ')'); continue; }
       res = await run('ssh', sshArgs(r, a.install), { timeout: 600000 });
       const again = res.ok ? await run('ssh', sshArgs(r, a.check)) : res;
-      if (again.ok) { good++; lines.push('✅ ' + a.label + ': vừa cài'); } else lines.push('❌ ' + a.label + ': không cài được — ' + ((res.err || res.out || 'không rõ lý do').trim().split('\n').filter(Boolean).pop() || '').slice(0, 160));
+      if (again.ok) { good++; lines.push('✅ ' + a.label + ': vừa cài'); if (a.rustdesk) rdId = await rustdeskCreds(name, r); } else lines.push('❌ ' + a.label + ': không cài được — ' + ((res.err || res.out || res.msg || 'không rõ lý do').trim().split('\n').filter(Boolean).pop() || '').slice(0, 160));
     }
     logf('ketnoi: ứng dụng trên ' + name + ': ' + good + '/' + list.length + ' sẵn sàng');
-    return (good === list.length ? '✅' : '⚠️') + ' Ứng dụng: ' + good + '/' + list.length + ' sẵn sàng' + (lines.length ? '\n' + lines.join('\n') : '');
+    return (good === list.length ? '✅' : '⚠️') + ' Ứng dụng: ' + good + '/' + list.length + ' sẵn sàng' + (lines.length ? '\n' + lines.join('\n') : '') + (rdId ? '\n🖥 RustDesk ID: ' + rdId + ' (mật khẩu đã lưu ở máy này)' : '');
+  }
+
+  // RustDesk trên máy Windows: script cài đặt đã đặt mật khẩu ngẫu nhiên và ghi rustdesk.json; máy này đọc qua SSH, lưu lại (0600) để mình tự vào được, không ai phải gõ gì.
+  async function rustdeskCreds(name, r) {
+    try {
+      const q = await run('ssh', sshArgs(r, PS("Get-Content 'C:\\ProgramData\\AgentOS\\rustdesk.json' -Raw")));
+      const j = q.ok ? JSON.parse(q.out.replace(/^\uFEFF/, '')) : null;
+      if (!j || !/^\d{6,12}$/.test(String(j.id)) || !j.password) return '';
+      if (credsFile) {
+        let all = {}; try { all = JSON.parse(fs.readFileSync(credsFile, 'utf8')); } catch (e) { /* tệp mới */ }
+        all[name] = { id: String(j.id), password: String(j.password), at: new Date().toISOString() };
+        fs.writeFileSync(credsFile, JSON.stringify(all, null, 1), { mode: 0o600 });
+      }
+      return String(j.id);
+    } catch (e) { return ''; }
   }
 
   return { request, scan, offerNew, discover, answer, connect, provision, setup, publicKey, pendingCount: () => pending.size, isCallback: (d) => ID_RE.test(String(d || '')) };

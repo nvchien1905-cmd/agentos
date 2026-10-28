@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.4",
-  "file": "agentos-update-2026.10.28.4.tar.gz",
-  "size": 299957,
-  "sha256": "9c2bc3e9f00d22fea998054e792f36b4973c388ab6a60f0a5b872b0783727834",
+  "version": "2026.10.28.5",
+  "file": "agentos-update-2026.10.28.5.tar.gz",
+  "size": 301073,
+  "sha256": "07ec1f90ac476d45d078e02d943ad5ffefeb4f9837356d0656e2180ba3d2eec2",
   "date": "2026-10-28",
-  "notes": "Gọn hơn: máy đầu não tự báo khi thấy máy mới cùng tài khoản Tailscale (một thẻ Kết nối, kết quả ghi vào thẻ). Sửa lỗi máy Windows báo chưa bật nhận khóa SSH."
+  "notes": "Máy đầu não tự cài RustDesk lên máy Windows qua SSH (không cần thao tác trên máy đó), báo đúng lý do khi lỗi."
 }

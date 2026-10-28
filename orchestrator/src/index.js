@@ -316,7 +316,7 @@ async function main() {
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
   const tsowner = createTsOwner({});
   const ketnoi = createKetNoi({
-    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'),
+    fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'), credsFile: path.join(dataDir, 'rustdesk-may-con.json'),
     ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
     send: (chatId, text) => tg.sendMessage(chatId, text),

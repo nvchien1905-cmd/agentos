@@ -103,23 +103,45 @@ test('ketnoi: máy chưa nhận khóa (Windows chưa cài) thì ghép đôi xong
   await c.agent.close();
 });
 
-test('ketnoi: máy Windows dùng winget (RustDesk, Tailscale, Node) với lệnh cố định; chỉ liệt kê cái vừa cài hoặc lỗi, kèm nguyên nhân', async () => {
+test('ketnoi: máy Windows — RustDesk thiếu thì máy đầu não tự cài bằng kịch bản mã hóa (không winget), lưu ID + mật khẩu (0600); Tailscale/Node thiếu chỉ báo cách xử lý; chỉ liệt kê cái vừa cài hoặc lỗi', async () => {
   const c = await child({ platform: 'windows', sshKey: async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }) }), h = head();
-  const cmds = [], have = new Set();
+  const cmds = []; let rdInstalled = false;
   const run = async (bin, args) => {
     const x = args[args.length - 1]; cmds.push(x);
-    if (x === 'echo agentos-ssh-ok' || x === 'node --version') return { ok: true, out: 'agentos-ssh-ok', err: '' };
-    const id = (/--id (\S+)/.exec(x) || [])[1];
-    if (/winget install/.test(x)) { if (id === 'Tailscale.Tailscale') return { ok: false, out: '', err: 'Failed 0x8a150056' }; have.add(id); return { ok: true, out: '', err: '' }; }
-    if (/winget list/.test(x)) return { ok: have.has(id), out: '', err: '' };
+    if (x === 'echo agentos-ssh-ok') return { ok: true, out: 'agentos-ssh-ok', err: '' };
+    if (/-EncodedCommand/.test(x)) { rdInstalled = true; return { ok: true, out: '', err: '' }; }
+    if (/rustdesk\.exe/.test(x)) return { ok: rdInstalled, out: '', err: '' };
+    if (/rustdesk\.json/.test(x)) return { ok: true, out: '﻿{"id":"123456789","password":"MatKhauNgauNhien1"}', err: '' };
+    if (x === 'node --version') return { ok: false, out: '', err: '' };
     return { ok: false, out: '', err: '' };
+  };
+  const credsFile = path.join(tmp(), 'rd.json');
+  const t = kn(h, Object.assign({ run, credsFile }, one(c)));
+  await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.edits.length > 1);
+  const r = last(t);
+  assert.match(r, /RustDesk[^\n]*vừa cài/); assert.match(r, /Tailscale[^\n]*chưa có \(chạy lại cai-dat-may-con\.ps1/); assert.match(r, /Node\.js[^\n]*chưa có/); assert.match(r, /Ứng dụng: 0\/3 sẵn sàng|Ứng dụng: 1\/3 sẵn sàng/);
+  assert.match(r, /RustDesk ID: 123456789/); assert.ok(!/MatKhauNgauNhien1/.test(r), 'mật khẩu không hiện trong chat');
+  const enc = cmds.find((x) => /-EncodedCommand/.test(x)); const script = Buffer.from(enc.split(' ').pop(), 'base64').toString('utf16le');
+  assert.match(script, /--silent-install/); assert.match(script, /api\.github\.com\/repos\/rustdesk\/rustdesk/); assert.ok(!/winget/.test(script));
+  assert.ok(!cmds.some((x) => /winget/.test(x)), 'không dùng winget qua SSH');
+  const saved = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
+  assert.equal(saved['May van phong'].id, '123456789'); assert.equal(saved['May van phong'].password, 'MatKhauNgauNhien1');
+  if (process.platform !== 'win32') assert.equal(fs.statSync(credsFile).mode & 0o777, 0o600);
+  await assert.rejects(kn(h).k.provision('May van phong'), /chạy \/ketnoi/, 'chưa SSH được thì không cài');
+  await c.agent.close();
+});
+
+test('ketnoi: cài lỗi thì báo đúng lý do (stderr hoặc kết quả lệnh), không chỉ in cả dòng lệnh ssh', async () => {
+  const c = await child({ platform: 'windows', sshKey: async () => ({ ok: true, added: true, user: 'nguye', host: 'PC' }) }), h = head();
+  const run = async (bin, args) => {
+    const x = args[args.length - 1];
+    if (x === 'echo agentos-ssh-ok') return { ok: true, out: 'agentos-ssh-ok', err: '' };
+    if (/-EncodedCommand/.test(x)) return { ok: false, out: 'Invoke-WebRequest : Unable to connect to the remote server\n', err: '', msg: 'Command failed: ssh -i /var/lib/agentos/.ssh/id_ed25519 -o BatchMode=yes' };
+    return { ok: false, out: '', err: '', msg: 'Command failed: ssh ...' };
   };
   const t = kn(h, Object.assign({ run }, one(c)));
   await t.k.request('1', ''); await t.k.answer(t.asks[0].b[0][0].data, 1, () => true); await wait(() => t.edits.length > 1);
-  const r = last(t);
-  assert.match(r, /RustDesk[^\n]*vừa cài/); assert.match(r, /Tailscale[^\n]*không cài được — Failed 0x8a150056/); assert.match(r, /Ứng dụng: 2\/3 sẵn sàng/); assert.ok(!/Node\.js/.test(r), 'cái đã có không liệt kê');
-  assert.ok(cmds.some((x) => /^powershell -NoProfile -NonInteractive -Command "winget install --id RustDesk\.RustDesk -e --silent/.test(x)));
-  await assert.rejects(kn(h).k.provision('May van phong'), /chạy \/ketnoi/, 'chưa SSH được thì không cài');
+  assert.match(last(t), /RustDesk[^\n]*không cài được — Invoke-WebRequest : Unable to connect/); assert.ok(!/Command failed/.test(last(t)));
   await c.agent.close();
 });
 

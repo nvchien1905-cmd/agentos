@@ -142,8 +142,13 @@ test('codex: thành công (stdin, sandbox, resume), chạm giới hạn, lỗi',
   assert.equal(r.ok, true); assert.equal(r.sessionId, 'thr-1');
   assert.match(r.text, /^codex:chào\|args=.*exec --json --skip-git-repo-check --sandbox read-only -$/);
   const rs = await runCodex('tiếp', { resumeId: 'thr-0' }).done;
-  assert.match(rs.text, /\|resume=thr-0\|args=.*exec resume thr-0 --json --skip-git-repo-check -$/);
-  assert.doesNotMatch(rs.text, /--sandbox/);
+  assert.match(rs.text, /\|resume=thr-0\|args=.*exec resume thr-0 --json --skip-git-repo-check -c sandbox_mode="read-only" -$/);
+  assert.doesNotMatch(rs.text, /--sandbox/, '`codex exec resume` không có --sandbox: phải truyền qua -c sandbox_mode');
+  // Toàn quyền: phiên TIẾP TỤC vẫn phải full quyền (lỗi cũ: bỏ sandbox khi resume nên rơi về chế độ chỉ đọc + chặn mạng)
+  const full = await runCodex('tiếp', { resumeId: 'thr-0', sandbox: 'danger-full-access' }).done;
+  assert.match(full.text, /exec resume thr-0 --json --skip-git-repo-check -c sandbox_mode="danger-full-access" -$/);
+  const fullNew = await runCodex('mới', { sandbox: 'danger-full-access' }).done;
+  assert.match(fullNew.text, /exec --json --skip-git-repo-check --sandbox danger-full-access -$/);
   const lim = await runCodex('LIMIT').done;
   assert.equal(lim.ok, false); assert.equal(lim.limit, true);
   assert.ok(Math.abs(lim.resetAt - (Date.now() + 2 * 3600000)) < 60000);

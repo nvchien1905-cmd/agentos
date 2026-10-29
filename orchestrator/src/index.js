@@ -278,7 +278,7 @@ async function main() {
     meta = meta || {};
     const bits = [];
     if (meta.secs >= 5 || meta.steps > 0) { bits.push(meta.secs + ' giây'); if (meta.steps > 0) bits.push(meta.steps + ' bước'); }
-    if (meta.engine && meta.primary && meta.engine !== meta.primary) bits.push('qua ' + (meta.name || meta.engine));
+    if (meta.engine) bits.push(meta.primary && meta.engine !== meta.primary ? 'qua ' + (meta.name || meta.engine) : (meta.name || meta.engine));   // luôn ghi AI nào đã làm (để biết khi có lỗi)
     const head = job.lane === 'bg' ? '🧵 Việc nền #' + job.id + ' xong:\n\n' : job.lane === 'event' ? '⚡ Sự kiện tự kích hoạt — việc #' + job.id + ':\n\n' : job.lane === 'hook' ? '🔔 Webhook — việc #' + job.id + ':\n\n' : '';
     await tg.sendRich(job.chat_id, head + String(text) + (bits.length ? '\n\n_— ' + bits.join(' · ') + '_' : ''));
   };

@@ -26,7 +26,10 @@ function startCodex(opts) {
   args.push('--json', '--skip-git-repo-check');
   if (opts.extraArgs) args.push(...opts.extraArgs); // ví dụ -c mcp_servers... (chưa kiểm với Codex thật)
   for (const im of opts.images || []) args.push('-i', im);          // ảnh đính kèm (một cờ -i cho mỗi ảnh)
-  if (!opts.resumeId && opts.sandbox) args.push('--sandbox', opts.sandbox);
+  // Sandbox: `codex exec` có -s/--sandbox, nhưng `codex exec resume` KHÔNG có (chỉ nhận -c và --dangerously-bypass...). Trước đây bỏ qua khi tiếp tục phiên nên mọi phiên
+  // Codex được tiếp tục chạy với sandbox MẶC ĐỊNH của Codex (chỉ đọc, chặn mạng) dù chủ máy bật Toàn quyền -> AI báo "chặn mạng, không ghi được tệp".
+  // Đã thử với Codex thật 0.164: resume + -c sandbox_mode="danger-full-access" ghi được tệp và có mạng.
+  if (opts.sandbox) { if (opts.resumeId) args.push('-c', 'sandbox_mode="' + opts.sandbox + '"'); else args.push('--sandbox', opts.sandbox); }
   if (opts.images && opts.images.length) args.push('--');           // sau -i, dấu '--' để '-' (prompt từ stdin) không bị coi là tên ảnh
   args.push('-'); // đọc prompt từ stdin
 

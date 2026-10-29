@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.8",
-  "file": "agentos-update-2026.10.28.8.tar.gz",
-  "size": 309743,
-  "sha256": "41e21f27977a7b030beadcedfda58a8a180947390d2ebd770b54793afdb137b5",
-  "date": "2026-10-28",
-  "notes": "Lệnh /dongbo: sao lưu 2 chiều dữ liệu Claude/Codex giữa máy đầu não và các máy con qua SSH (tự chạy, giữ nhiều bản, không chép token)."
+  "version": "2026.10.28.10",
+  "file": "agentos-update-2026.10.28.10.tar.gz",
+  "size": 314722,
+  "sha256": "f14707e7150aae59bfe6c79309c40720956f67aba6bc26a3192f8a1f795962cd",
+  "date": "2026-10-29",
+  "notes": "Sửa lỗi 'Toàn quyền' chỉ bật trong bot nên AI vẫn bị chặn sudo/ghi/SSH: lệnh /toanquyen co cấp đủ quyền cho hệ điều hành (chỉ chủ máy, AI không tự gọi được); /baove thu hồi."
 }

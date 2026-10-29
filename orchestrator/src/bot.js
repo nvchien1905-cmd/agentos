@@ -279,9 +279,12 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'trangthai': {
           const cur = worker.currentJobId();
           const eng = worker.engineStatus().map((e) => e.label + ': ' + (e.until ? 'hết hạn mức, hồi khoảng ' + fmtTime(e.until) : 'sẵn sàng')).join('\n');
-          return (fullAccess ? 'Chế độ: ' + (fullAccess.get() ? '⚡ TOÀN QUYỀN (không hỏi, có sudo)' : '🛡️ bảo vệ (có hỏi duyệt)') + '\n' : '') +
-            'Đang chạy: ' + (cur ? '#' + cur : 'không có') + '\nĐang chờ: ' + db.queuedCount() +
+          const rest = 'Đang chạy: ' + (cur ? '#' + cur : 'không có') + '\nĐang chờ: ' + db.queuedCount() +
             ' việc' + (db.waitingCount() ? ' (trong đó ' + db.waitingCount() + ' chờ hạn mức hồi)' : '') + '\n' + eng;
+          if (!fullAccess) return rest;
+          if (!fullAccess.get()) return 'Chế độ: 🛡️ bảo vệ (có hỏi duyệt)\n' + rest;
+          if (!fullAccess.os) return 'Chế độ: ⚡ TOÀN QUYỀN (không hỏi, có sudo)\n' + rest;
+          return fullAccess.os().then((st) => (st.ok ? 'Chế độ: ⚡ TOÀN QUYỀN (không hỏi, ĐÃ có sudo)\n' : 'Chế độ: ⚠️ TOÀN QUYỀN trong bot nhưng hệ điều hành CHƯA cấp sudo (' + st.why + '). Gõ /toanquyen co để cấp đủ.\n') + rest);
         }
         case 'viec': {
           const rows = db.recentJobs(chatId, 5);
@@ -304,10 +307,24 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           if (!fullAccess) return 'Máy này chưa hỗ trợ chế độ toàn quyền.';
           if (!isAdmin(uid)) return 'Chỉ quản trị viên được đổi chế độ.';
           const on = name === 'toanquyen';
+          const confirmed = /^(co|yes|ok|dong y)$/i.test(noAcc(cmd[3]).trim());
           fullAccess.set(on);
-          return on
-            ? '⚡ ĐÃ BẬT chế độ TOÀN QUYỀN. AI tự làm một mạch, không hỏi xin phép, được dùng sudo trên máy này. Gõ /baove để quay về chế độ có hỏi.'
-            : '🛡️ ĐÃ BẬT chế độ bảo vệ: AI hỏi bạn trước khi ghi file hoặc chạy lệnh, chạy trong hộp cô lập. Gõ /toanquyen để bật lại toàn quyền.';
+          const plainOn = '⚡ ĐÃ BẬT chế độ TOÀN QUYỀN. AI tự làm một mạch, không hỏi xin phép, được dùng sudo trên máy này. Gõ /baove để quay về chế độ có hỏi.';
+          const plainOff = '🛡️ ĐÃ BẬT chế độ bảo vệ: AI hỏi bạn trước khi ghi file hoặc chạy lệnh, chạy trong hộp cô lập. Gõ /toanquyen để bật lại toàn quyền.';
+          if (!fullAccess.os || !fullAccess.grant) return on ? plainOn : plainOff;
+          // Cờ trong bot CHƯA đủ: dịch vụ bot bị systemd khóa (NoNewPrivileges/ProtectSystem) thì AI vẫn không sudo/ghi hệ thống/SSH được. Phải cấp ở mức hệ điều hành.
+          return (async () => {
+            const st = await fullAccess.os();
+            if (on) {
+              if (st.ok) return '⚡ ĐÃ BẬT chế độ TOÀN QUYỀN. AI tự làm một mạch, không hỏi xin phép, ĐÃ có sudo trên máy này. Gõ /baove để quay về chế độ có hỏi.';
+              if (!confirmed) return '⚡ Đã bật cờ Toàn quyền trong bot, NHƯNG hệ điều hành chưa cấp sudo: ' + st.why + '. Vì vậy AI vẫn bị chặn (không sudo, không ghi ngoài thư mục bot, không SSH).\n\n👉 Gõ /toanquyen co để cấp đủ quyền cho AI (sudo không mật khẩu + gỡ khóa của dịch vụ bot). Bot tự khởi động lại khoảng 10 giây, việc đang chạy sẽ bị ngắt. Chỉ bạn (quản trị viên Telegram) ra lệnh này được; AI không tự gọi được.';
+              const r = await fullAccess.grant(true);
+              return r && r.ok ? '⚡ Đang cấp TOÀN QUYỀN cho hệ điều hành: sudo không mật khẩu + gỡ khóa dịch vụ. Bot khởi động lại sau ~5 giây rồi nhắn lại; từ đó AI dùng được sudo, ghi mọi nơi, SSH sang máy khác. Gõ /baove để thu hồi.' : '⚠️ Chưa cấp được quyền hệ điều hành: ' + ((r && r.error) || 'không rõ lý do');
+            }
+            if (!st.ok) return plainOff;
+            const r = await fullAccess.grant(false);
+            return '🛡️ ĐÃ BẬT chế độ bảo vệ' + (r && r.ok ? ' và THU HỒI sudo của AI (bot khởi động lại sau ~5 giây)' : ' (chưa thu hồi được sudo: ' + ((r && r.error) || 'không rõ') + ')') + '. AI hỏi bạn trước khi ghi file/chạy lệnh. Gõ /toanquyen để bật lại.';
+          })();
         }
         case 'nen': {                                       // việc nền: chạy SONG SONG với hàng đợi chính
           if (roles && !roles.canAsk(uid)) return 'Vai của bạn chỉ xem được báo cáo.';

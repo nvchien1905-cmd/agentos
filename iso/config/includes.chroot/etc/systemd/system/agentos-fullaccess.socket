@@ -1,0 +1,11 @@
+[Unit]
+Description=AgentOS - cong cap/thu hoi Toan quyen (chi tien trinh chinh cua bo dieu phoi duoc goi)
+
+[Socket]
+ListenStream=/run/agentos-fullaccess.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=agentos
+
+[Install]
+WantedBy=sockets.target

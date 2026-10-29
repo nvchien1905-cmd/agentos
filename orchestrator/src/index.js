@@ -38,6 +38,7 @@ const { createFleet } = require('./fleet');
 const { createKetNoi, createRemoteAccess } = require('./ketnoi');
 const { createTsOwner } = require('./tsowner');
 const { createDongBo } = require('./dongbo');
+const { createFullAccessCtl } = require('./fullaccessctl');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
 const { createSummarizer } = require('./summarizer');
@@ -323,6 +324,7 @@ async function main() {
     reset() { cfg.engineOrder.splice(0, cfg.engineOrder.length, ...origEngineOrder); db.kvDel('engine_primary'); log('AI ưu tiên về mặc định (/ai tudong)'); },
   };
   { const saved = db.kvGet('engine_primary'); if (saved && origEngineOrder.includes(saved)) engineCtl.setPrimary(saved); }
+  const faCtl = createFullAccessCtl({});
   const tsowner = createTsOwner({});
   // Sao lưu 2 chiều dữ liệu Claude/Codex giữa máy này và máy con (/dongbo). Tự chạy mỗi 10 phút kiểm; máy nào bật tự động và quá hạn thì sao lưu.
   const dongbo = createDongBo({
@@ -435,7 +437,11 @@ async function main() {
     },
     quick: createQuick({ guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
-    fullAccess: { get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); } },
+    fullAccess: {
+      get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); },
+      os: () => faCtl.osState(),                                             // hệ điều hành đã thật sự cho AI dùng sudo chưa
+      grant: async (on) => { log('xin cấp/thu hồi Toàn quyền cho hệ điều hành: ' + (on ? 'on' : 'off')); return faCtl.request(on ? 'on' : 'off'); },
+    },
   });
   log('Chế độ: ' + (isFull() ? 'TOÀN QUYỀN (không hỏi xin phép, không sandbox, có sudo)' : 'bảo vệ (hỏi duyệt + sandbox)'));
 
@@ -477,6 +483,7 @@ async function main() {
     const lines = ['✅ AgentOS đã khởi động (' + new Date().toLocaleString('vi-VN') + '). Chế độ: ' + (isFull() ? '⚡ TOÀN QUYỀN (gõ /baove để bật hỏi duyệt)' : '🛡️ bảo vệ (gõ /toanquyen để AI tự làm không hỏi)') + '.'];
     if (interrupted.length) lines.push('Việc bị ngắt: ' + interrupted.map((j) => '#' + j.id).join(', ') + '. Gõ /tieptuc để làm tiếp phần còn dở.');
     if (free !== Infinity && free < cfg.minFreeMb * 3) lines.push('⚠️ Ổ đĩa còn ' + free + ' MB.');
+    if (isFull()) { try { const st = await faCtl.osState(); if (!st.ok) lines.push('⚠️ Toàn quyền mới bật trong bot, hệ điều hành CHƯA cấp sudo (' + st.why + '): AI vẫn bị chặn. Gõ /toanquyen co để cấp đủ.'); } catch (e) { /* bỏ qua */ } }
     for (const a of cfg.adminUserIds) notify(a, lines.concat(notices).join('\n')).catch((e) => log('không gửi được thông báo khởi động: ' + e.message));
   } else if (notices.length) {
     for (const a of cfg.adminUserIds) notify(a, notices.join('\n')).catch(() => {});

@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+# CẤP / THU HỒI "TOÀN QUYỀN" cho hệ điều hành theo lệnh của CHỦ MÁY từ Telegram (/toanquyen co, /baove). Chạy bằng ROOT, do systemd mở theo kết nối
+# (agentos-fullaccess.socket -> agentos-fullaccess.service): có kết nối tới thì systemd chạy tập lệnh này, nó nhận một kết nối rồi thoát
+# (không dùng Accept=yes vì unit mẫu "xxx@.service" bị bộ cập nhật OTA từ chối tên tệp có "@").
+#
+# KIỂM TRA NGƯỜI GỌI bằng SO_PEERCRED (hạt nhân báo pid/uid thật của tiến trình đầu bên kia, không giả mạo được):
+#   chỉ nhận khi pid == MainPID của dịch vụ agentos-orchestrator (tiến trình CHÍNH của bot). AI, trình duyệt, MCP... là tiến trình CON/CHÁU của bot
+#   nên có pid khác -> bị từ chối, dù cùng người dùng `agentos` và mở được socket. Bot chỉ gọi khi quản trị viên Telegram gõ lệnh.
+# Việc thật do wizard/lib/fullaccess-cli.js làm (dùng lại đúng mã của nút "Toàn quyền" trong Cài đặt: sudoers kiểm bằng visudo, drop-in systemd,
+# FULL_ACCESS trong orchestrator.env, rồi khởi động lại bộ điều phối sau vài giây).
+# Lệnh nhận: on | off | status.
+import os
+import pwd
+import socket
+import struct
+import subprocess
+import sys
+
+UNIT = os.environ.get('AGENTOS_FA_UNIT', 'agentos-orchestrator')
+USER = os.environ.get('AGENTOS_FA_USER', 'agentos')
+CLI = os.environ.get('AGENTOS_FA_CLI', '/opt/agentos/wizard/lib/fullaccess-cli.js')
+NODE = os.environ.get('AGENTOS_FA_NODE', '/usr/bin/node')
+
+
+def log(msg):
+    try:
+        subprocess.run(['logger', '-t', 'agentos-fullaccess', msg], timeout=5)
+    except Exception:
+        pass
+
+
+def main():
+    if os.environ.get('LISTEN_FDS') == '1' and os.environ.get('LISTEN_PID') == str(os.getpid()):
+        lsock = socket.socket(fileno=3)             # systemd (Accept=no) đưa SOCKET ĐANG NGHE ở fd 3: nhận đúng một kết nối rồi thoát
+        lsock.settimeout(30)
+        conn, _ = lsock.accept()
+    else:
+        conn = socket.socket(fileno=0)              # chạy tay/thử nghiệm: kết nối nằm sẵn ở fd 0
+    conn.settimeout(10)
+
+    def reply(text):
+        try:
+            conn.sendall((text + '\n').encode('utf-8'))
+        except Exception:
+            pass
+
+    pid, uid, _gid = struct.unpack('3i', conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+    try:                                              # đọc lệnh TRƯỚC khi trả lời (kể cả khi từ chối) để người gọi không gặp EPIPE
+        cmd = conn.recv(32).decode('utf-8', 'ignore').strip().lower()
+    except Exception:
+        cmd = ''
+    try:
+        want_uid = pwd.getpwnam(USER).pw_uid
+    except KeyError:
+        reply('{"ok":false,"error":"không có người dùng %s"}' % USER)
+        return 1
+    try:
+        # AGENTOS_FA_MAINPID chỉ để thử nghiệm: dịch vụ systemd do root chạy không có biến này, người thường không đặt được môi trường của dịch vụ root.
+        main_pid = int(os.environ.get('AGENTOS_FA_MAINPID') or subprocess.run(['systemctl', 'show', '-p', 'MainPID', '--value', UNIT], capture_output=True, text=True, timeout=10).stdout.strip() or 0)
+    except Exception:
+        main_pid = 0
+    if uid != want_uid or main_pid <= 0 or pid != main_pid:
+        log('TỪ CHỐI: pid=%d uid=%d (cần pid chính %d của %s, uid %d)' % (pid, uid, main_pid, UNIT, want_uid))
+        reply('{"ok":false,"error":"chỉ tiến trình chính của bộ điều phối được gọi"}')
+        return 2
+    if cmd not in ('on', 'off', 'status'):
+        reply('{"ok":false,"error":"lệnh không hợp lệ"}')
+        return 3
+    log('chủ máy yêu cầu: %s (từ bộ điều phối pid %d)' % (cmd, pid))
+    try:
+        r = subprocess.run([NODE, CLI, cmd], capture_output=True, text=True, timeout=120)
+    except Exception as e:
+        reply('{"ok":false,"error":"%s"}' % str(e).replace('"', "'")[:200])
+        return 4
+    if r.returncode != 0:
+        log('LỖI %s: %s' % (cmd, (r.stderr or '').strip()[:300]))
+        reply('{"ok":false,"error":"%s"}' % (r.stderr or 'lỗi').strip().replace('"', "'").replace('\n', ' ')[:300])
+        return 5
+    out = (r.stdout or '').strip().splitlines()[-1:] or ['{}']
+    reply('{"ok":true,"result":%s}' % out[0])
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

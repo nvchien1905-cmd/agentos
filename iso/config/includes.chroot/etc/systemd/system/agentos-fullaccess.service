@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - cap/thu hoi Toan quyen (chay bang root khi co ket noi toi agentos-fullaccess.socket, xu ly mot ket noi roi thoat)
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/agentos-fullaccess
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=150

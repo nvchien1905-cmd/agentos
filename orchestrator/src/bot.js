@@ -25,6 +25,8 @@ function helpText(profiles) {
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
     '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +
+    '📘 /fanpage - AI trả lời tin nhắn FANPAGE qua API chính thức (nháp có nút ✅/❌ hoặc tự động) · /fanpage ketnoi nhờ AI tự lấy khóa · /fanpage tudong · /fanpage chidan <nội dung>\n' +
+    '👤 /facebook bat - AI vào Chrome đọc tin nhắn Facebook CÁ NHÂN, soạn nháp, chỉ gửi khi anh bấm ✅ · /facebook tat · /fb tra <số> <nội dung>\n' +
     '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
     '📊 /chiphi [tuan|thang|homnay] - thống kê dùng AI theo AI và theo dự án · /chiphi tran <AI> <số việc/tháng> - đặt trần tháng (vượt thì dồn sang AI khác)\n' +
@@ -58,8 +60,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'camera', 'dien']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage }) {
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
   profiles = profiles || [];
@@ -216,6 +218,23 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           }, (e) => '⚠️ ' + e.message);
         }
         case 'ai': return aiCommand(uid, String(cmd[3] || ''));
+        case 'fanpage': {                                   // AI trả lời tin nhắn fanpage qua API chính thức của Meta (nháp có nút duyệt hoặc tự động)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /fanpage.';
+          if (!fanpage) return 'Máy này chưa có tính năng fanpage.';
+          const a = String(cmd[3] || '').trim();
+          if (/^(ketnoi|ket noi|laykhoa|lay khoa|lay api)$/.test(noAcc(a))) { return submit(chatId, fanpage.connectPrompt(), null, 'web') || '🔗 Đang nhờ AI vào Chrome lấy khóa truy cập fanpage...'; }
+          return fanpage.command(a).then((r) => { if (/^them\s/i.test(noAcc(a)) && deleteMessage && msg.message_id) Promise.resolve(deleteMessage(chatId, msg.message_id)).catch(() => {}); return r; }, (e) => '⚠️ ' + e.message);
+        }
+        case 'facebook': {                                  // Facebook cá nhân qua Chrome đã đăng nhập: AI đọc tin, soạn nháp, gửi sau khi chủ máy duyệt
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /facebook.';
+          if (!facebook) return 'Máy này chưa có tính năng Facebook.';
+          return facebook.command(String(cmd[3] || ''));
+        }
+        case 'fb': {
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /fb.';
+          if (!facebook) return 'Máy này chưa có tính năng Facebook.';
+          return facebook.fbCommand(String(cmd[3] || ''));
+        }
         case 'dongbo': {                                    // sao lưu 2 chiều dữ liệu Claude/Codex giữa các máy (qua SSH, không qua AI)
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /dongbo.';
           if (!dongbo) return 'Máy này chưa có đội máy.';
@@ -388,6 +407,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     if (!cq || !cq.from) return null;
     if (!allowed.has(String(cq.from.id))) return null;           // người lạ bấm nút: bỏ qua
     if (ketnoi && ketnoi.isCallback(cq.data)) return ketnoi.answer(cq.data, cq.from.id, isAdmin);
+    if (fanpage && fanpage.isCallback(cq.data)) return isAdmin(String(cq.from.id)) ? fanpage.answerCallback(cq.data) : 'Chỉ chủ máy duyệt được.';
+    if (facebook && facebook.isCallback(cq.data)) return isAdmin(String(cq.from.id)) ? facebook.answerCallback(cq.data) : 'Chỉ chủ máy duyệt được.';
     if (!approvals) return null;
     if (!/^ap:/.test(String(cq.data || ''))) return null;
     const r = await approvals.answer(cq.data, cq.from.id);

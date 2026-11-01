@@ -38,6 +38,9 @@ const { createFleet } = require('./fleet');
 const { createKetNoi, createRemoteAccess } = require('./ketnoi');
 const { createTsOwner } = require('./tsowner');
 const { createDongBo } = require('./dongbo');
+const { createFanpage } = require('./fanpage');
+const { isSysJob, isQuietJob, skipAnswer, isFacebookCheck } = require('./quiet');
+const { createFacebook } = require('./facebook');
 const { createFullAccessCtl } = require('./fullaccessctl');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
@@ -271,11 +274,17 @@ async function main() {
   const engines = {};
   for (const e of cfg.engineOrder) engines[e] = { start: factories[e] };
 
-  const notify = (chatId, text) => tg.sendMessage(chatId, text);
+  // Việc "hệ thống" chạy ngầm (chat_id bắt đầu bằng "sys:", ví dụ soạn trả lời khách fanpage): không nhắn Telegram, không hiện tin trạng thái; kết quả đọc thẳng từ cơ sở dữ liệu.
+  // Việc "yên lặng" (câu lệnh bắt đầu bằng [YÊN LẶNG], ví dụ kiểm tin nhắn Facebook định kỳ): không hiện "Đang làm…", và nếu AI trả "KHÔNG CÓ TIN MỚI" thì không nhắn gì.
+  const notify = (chatId, text) => (String(chatId).startsWith('sys:') ? Promise.resolve() : tg.sendMessage(chatId, text));
+  const fbHook = { onResult: null };                    // facebook.js đăng ký sau khi được tạo
   // Tin trạng thái trực tiếp + câu trả lời định dạng đẹp (Markdown -> Telegram) kèm chân trang "— N giây · N bước · AI"
-  const live = createLive({ tg, log });
+  const live0 = createLive({ tg, log });
+  const live = { begin: (job) => (isQuietJob(job) ? undefined : live0.begin(job)), step: (job, ev) => (isQuietJob(job) ? undefined : live0.step(job, ev)), end: async (job) => (isQuietJob(job) ? { secs: 0, steps: 0 } : live0.end(job)) };
   const answer = async (job, text, meta) => {
     meta = meta || {};
+    if (skipAnswer(job, text)) return;
+    if (fbHook.onResult && isFacebookCheck(job)) { try { if (await fbHook.onResult(job, String(text))) return; } catch (e) { log('facebook: xử lý kết quả lỗi: ' + e.message); } }
     const bits = [];
     if (meta.secs >= 5 || meta.steps > 0) { bits.push(meta.secs + ' giây'); if (meta.steps > 0) bits.push(meta.steps + ' bước'); }
     if (meta.engine) bits.push(meta.primary && meta.engine !== meta.primary ? 'qua ' + (meta.name || meta.engine) : (meta.name || meta.engine));   // luôn ghi AI nào đã làm (để biết khi có lỗi)
@@ -332,6 +341,33 @@ async function main() {
     ensureSsh: (name) => ketnoi.connect(name),
     notify: async (text) => { const a = [...cfg.adminUserIds][0]; if (a) await tg.sendMessage(a, text); },
   });
+  // FANPAGE (API chính thức của Meta) + FACEBOOK CÁ NHÂN (Chrome đã đăng nhập): AI soạn trả lời, chủ máy duyệt bằng nút (xem fanpage.js, facebook.js)
+  const adminChat = () => [...cfg.adminUserIds][0];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const runSysAI = async (chatKey, prompt) => {          // việc NGẦM (chat_id "sys:..."): không nhắn Telegram; chờ kết quả trong cơ sở dữ liệu
+    const id = db.addJob(chatKey, prompt, null, null, 'event'); setImmediate(() => crew.wake());
+    for (let i = 0; i < 200; i++) {
+      await sleep(i < 20 ? 1500 : 3000);
+      const j = db.getJob(id);
+      if (j && j.status === 'done') return { ok: true, text: j.result };
+      if (j && ['error', 'cancelled', 'interrupted'].includes(j.status)) return { ok: false, error: j.error || j.status };
+    }
+    return { ok: false, error: 'AI chưa trả lời kịp (quá 8 phút)' };
+  };
+  const fanpage = createFanpage({
+    file: path.join(dataDir, 'fanpage.json'), log, admin: adminChat, runAI: runSysAI,
+    notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons), edit: (chat, mid, text) => tg.editMessage(chat, mid, text),
+  });
+  const facebook = createFacebook({
+    file: path.join(dataDir, 'facebook.json'), log, admin: adminChat,
+    notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons), edit: (chat, mid, text) => tg.editMessage(chat, mid, text),
+    // kiểm tin: việc "event" (luôn ở chế độ BẢO VỆ dù đang Toàn quyền: nội dung tin nhắn là của người lạ) dùng bộ công cụ web, ưu tiên Claude; gửi: việc nền sau khi chủ máy bấm ✅
+    submit: (prompt, kind) => { const claude = cfg.engineOrder.includes('claude') ? 'claude' : null; const id = db.addJob(adminChat(), prompt, kind === 'check' ? claude : null, 'web', kind === 'check' ? 'event' : 'bg'); setImmediate(() => crew.wake()); return id; },
+    getJob: (id) => db.getJob(id),
+  });
+  fbHook.onResult = (job, text) => facebook.onResult(job, text);
+  fanpage.start(); facebook.start();
+  setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();
   const ketnoi = createKetNoi({
     fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'), credsFile: path.join(dataDir, 'rustdesk-may-con.json'),
@@ -422,7 +458,7 @@ async function main() {
   chungtu.start();
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    fleet, iot, ketnoi, engineCtl, dongbo,
+    fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage: (c, m) => tg.deleteMessage(c, m),
     diagnose: async () => {
       const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');
       const report = selftest.format(res, '🩺 Tự chẩn đoán đầy đủ'), nbad = res.filter((r) => r.status === 'fail').length;

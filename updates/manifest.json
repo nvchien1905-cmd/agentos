@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.11",
-  "file": "agentos-update-2026.10.28.11.tar.gz",
-  "size": 314979,
-  "sha256": "df95a09cda31cc4f1a846663903f008207dcd8ec3994e8f4476d200a265dc1eb",
-  "date": "2026-10-29",
-  "notes": "Sửa lỗi gốc: Codex tiếp tục phiên cũ bị sandbox chỉ-đọc/chặn mạng dù đã Toàn quyền (AI báo 'chặn mạng, không ghi được tệp'). Tin trả lời luôn ghi AI đã làm."
+  "version": "2026.10.28.13",
+  "file": "agentos-update-2026.10.28.13.tar.gz",
+  "size": 327225,
+  "sha256": "ceb1eecb2526634845af8380824d03660213bbb2ceb220370c4d12bfa7ed118b",
+  "date": "2026-11-01",
+  "notes": "AI trả lời tin nhắn Fanpage qua API chính thức (nháp có nút duyệt hoặc tự động, /fanpage) và đọc tin nhắn Facebook cá nhân trên Chrome, soạn nháp, gửi sau khi anh duyệt (/facebook)."
 }

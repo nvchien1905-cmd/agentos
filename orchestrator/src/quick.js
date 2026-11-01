@@ -37,7 +37,10 @@ function createQuick(o) {
         }
         case 'mo': case 'dong': {
           if (!arg) return 'Cách dùng: /' + name + ' <ứng dụng>. Ứng dụng: zalo, kiotviet, deepseek, chrome, rustdesk' + (name === 'mo' ? ', claude, codex, gemini' : '') + '.';
-          const r = await desk.call({ cmd: name === 'mo' ? 'open' : 'close', app: appKey(arg) });
+          const key = appKey(arg);
+          if (key === 'fbbot' && name === 'mo' && o.onFbOpen) await o.onFbOpen(true).catch(() => {});        // trợ lý Facebook nhả hồ sơ trình duyệt để cửa sổ đăng nhập dùng
+          const r = await desk.call({ cmd: name === 'mo' ? 'open' : 'close', app: key });
+          if (key === 'fbbot' && name === 'dong' && o.onFbOpen) await o.onFbOpen(false).catch(() => {});      // đóng cửa sổ: trợ lý Facebook kiểm lại ngay
           if (!r.ok) return '⚠️ ' + r.error;
           if (name === 'mo') return '✅ Đã mở ' + r.app + ' trên màn hình máy. Gõ /manhinh để xem.';
           return r.closed ? '✅ Đã đóng ' + r.app + '.' : r.app + ' đang không mở.';

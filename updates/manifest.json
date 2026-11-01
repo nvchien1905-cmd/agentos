@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.15",
-  "file": "agentos-update-2026.10.28.15.tar.gz",
-  "size": 331451,
-  "sha256": "37a539171cad0c7467269794fb930d530b44f3e9b2ad5ba69855259473a31f18",
+  "version": "2026.10.28.16",
+  "file": "agentos-update-2026.10.28.16.tar.gz",
+  "size": 335681,
+  "sha256": "a7a3e6c45e53a2e30f26a195c37205e8831cb1d710199a38f4f4d767af76e1d3",
   "date": "2026-11-01",
-  "notes": "Trợ lý trực Messenger cá nhân: AI tự trả lời tin đơn giản (theo danh sách hoặc mọi người), tin nhạy cảm vẫn chờ anh duyệt, có chữ ký báo trợ lý AI; /facebook dangnhap + /mo fbbot để đăng nhập Facebook một lần."
+  "notes": "Trợ lý trực Facebook kiểm tin mỗi 30 giây không dùng AI (giữ tab Messenger, đọc tiêu đề), tin gửi đi không nhắc tới AI, trần tin mỗi giờ, sửa lỗi treo khi không vào được trang"
 }

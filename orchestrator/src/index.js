@@ -41,6 +41,7 @@ const { createDongBo } = require('./dongbo');
 const { createFanpage } = require('./fanpage');
 const { isSysJob, isQuietJob, skipAnswer, isFacebookCheck } = require('./quiet');
 const { createFacebook } = require('./facebook');
+const { createProbe } = require('./fbprobe');
 const { createFullAccessCtl } = require('./fullaccessctl');
 const { createDevices } = require('./devices');
 const { mask: maskSecrets } = require('./auditlog');
@@ -273,7 +274,9 @@ async function main() {
     },
   };
   const engines = {};
-  for (const e of cfg.engineOrder) engines[e] = { start: factories[e] };
+  // Trợ lý Facebook giữ MỘT tab Messenger mở sẵn (khóa hồ sơ trình duyệt của bot): trước khi BẤT KỲ AI nào bắt đầu việc phải nhả ra để trình duyệt của AI không bị "hồ sơ đang được dùng".
+  const fbRelease = { fn: null };
+  for (const e of cfg.engineOrder) engines[e] = { start: (a) => { if (fbRelease.fn) fbRelease.fn(); return factories[e](a); } };
 
   // Việc "hệ thống" chạy ngầm (chat_id bắt đầu bằng "sys:", ví dụ soạn trả lời khách fanpage): không nhắn Telegram, không hiện tin trạng thái; kết quả đọc thẳng từ cơ sở dữ liệu.
   // Việc "yên lặng" (câu lệnh bắt đầu bằng [YÊN LẶNG], ví dụ kiểm tin nhắn Facebook định kỳ): không hiện "Đang làm…", và nếu AI trả "KHÔNG CÓ TIN MỚI" thì không nhắn gì.
@@ -361,6 +364,8 @@ async function main() {
   });
   const facebook = createFacebook({
     file: path.join(dataDir, 'facebook.json'), log, admin: adminChat,
+    probe: createProbe({ profileDir: browserProfile, display: ':99' }),              // giữ tab Messenger mở, đọc số tin chưa đọc mỗi 30 giây, không dùng AI (fbprobe.js)
+    isBusy: () => !!crew.currentJobId(),                                             // đang có việc AI: không giữ hồ sơ trình duyệt
     notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons), edit: (chat, mid, text) => tg.editMessage(chat, mid, text),
     // kiểm tin: việc "event" (luôn ở chế độ BẢO VỆ dù đang Toàn quyền: nội dung tin nhắn là của người lạ) dùng bộ công cụ web, ưu tiên Claude; gửi: việc nền sau khi chủ máy bấm ✅
     // Cả kiểm tin lẫn gửi đều là việc "event" = LUÔN chế độ bảo vệ (không sudo) và CHỈ Claude (đi qua cổng duyệt; Codex/Gemini không qua cổng nên không dùng trình duyệt ở đây).
@@ -369,6 +374,7 @@ async function main() {
   });
   fbHook.onResult = (job, text) => facebook.onResult(job, text);
   fbAllow.fn = (job, tool, input) => facebook.allowInteract(job, tool, input);
+  fbRelease.fn = () => facebook.release().catch(() => {});
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();
@@ -474,7 +480,7 @@ async function main() {
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
       else if (reply) await tg.sendMessage(chat, reply);
     },
-    quick: createQuick({ guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
+    quick: createQuick({ onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: {
       get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); },

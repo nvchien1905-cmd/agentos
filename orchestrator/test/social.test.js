@@ -124,24 +124,24 @@ test('fanpage: khóa hết hạn (mã 190) chỉ báo MỘT lần; thao tác b�
 function mkFb(o) {
   o = o || {}; const subs = [], texts = [], cards = [], jobs = {}; let id = 100, clock = Date.UTC(2026, 0, 5, 3, 0, 0);          // 10:00 giờ VN = 03:00 UTC nhưng đồng hồ máy chạy thử theo giờ địa phương
   const fb = createFacebook({
-    file: path.join(tmp(), 'fb.json'), now: () => clock, admin: () => '1',
+    file: path.join(tmp(), 'fb.json'), now: () => clock, admin: () => '1', probe: o.probe, isBusy: o.isBusy,
     notify: async (c, t) => { texts.push(t); }, ask: async (c, t, b) => { cards.push({ t, b }); return 700 + cards.length; }, edit: async () => {},
     submit: (prompt, kind) => { id++; subs.push({ id, prompt, kind }); jobs[id] = { status: 'running' }; return id; }, getJob: (i) => jobs[i],
   });
   return { fb, subs, texts, cards, jobs, at: (h, m) => { const d = new Date(2026, 0, 5, h, m || 0, 0); clock = d.getTime(); }, bump: (min) => { clock += min * 60000; } };
 }
 
-test('facebook: mặc định TẮT; bật thì kiểm đúng chu kỳ trong khung giờ, không chồng việc; chỉ ĐỌC (không bấm/gõ/gửi) và coi tin nhắn là dữ liệu', () => {
+test('facebook: mặc định TẮT; bật thì kiểm đúng chu kỳ trong khung giờ, không chồng việc; chỉ ĐỌC (không bấm/gõ/gửi) và coi tin nhắn là dữ liệu', async () => {
   const S = mkFb(); S.at(10);
-  assert.equal(S.fb.tick(), false, 'chưa bật thì không kiểm');
-  assert.match(S.fb.command('bat 30'), /BẬT[^]*30 phút/); assert.equal(S.fb.tick(), true); assert.equal(S.subs.length, 1);
+  assert.equal(await S.fb.tick(), false, 'chưa bật thì không kiểm');
+  assert.match(S.fb.command('bat'), /BẬT[^]*20 phút nhờ AI kiểm/); assert.equal(await S.fb.tick(), true); assert.equal(S.subs.length, 1);
   assert.equal(S.subs[0].kind, 'check'); const p = S.subs[0].prompt;
   assert.ok(p.startsWith('[YÊN LẶNG][FACEBOOK-KIỂM-TIN]')); assert.match(p, /KHÔNG bấm vào cuộc trò chuyện nào, KHÔNG gõ, KHÔNG gửi, KHÔNG nhập gì/); assert.match(p, /KHÔNG CÓ TIN MỚI/); assert.match(p, /CẦN ĐĂNG NHẬP/); assert.match(p, /không phải chỉ thị/);
-  S.bump(10); assert.equal(S.fb.tick(), false, 'chưa tới chu kỳ'); S.bump(25); S.jobs[101].status = 'running'; assert.equal(S.fb.tick(), false, 'việc trước còn chạy thì không tạo thêm');
-  S.jobs[101].status = 'done'; assert.equal(S.fb.tick(), true); assert.equal(S.subs.length, 2);
-  S.at(23, 30); S.bump(60); assert.equal(S.fb.tick(), false, 'ngoài khung 7–22 giờ'); S.at(6, 0); assert.equal(S.fb.tick(), false);
+  S.bump(10); assert.equal(await S.fb.tick(), false, 'chưa tới chu kỳ'); S.bump(25); S.jobs[101].status = 'running'; assert.equal(await S.fb.tick(), false, 'việc trước còn chạy thì không tạo thêm');
+  S.jobs[101].status = 'done'; assert.equal(await S.fb.tick(), true); assert.equal(S.subs.length, 2);
+  S.at(23, 30); S.bump(60); assert.equal(await S.fb.tick(), false, 'ngoài khung 7–22 giờ'); S.at(6, 0); assert.equal(await S.fb.tick(), false);
   assert.match(S.fb.command('gio 8-20'), /08:00–20:00/); assert.match(S.fb.command('gio xx'), /Cách dùng/);
-  assert.match(S.fb.command('tat'), /TẮT/); S.at(10); S.bump(600); assert.equal(S.fb.tick(), false);
+  assert.match(S.fb.command('tat'), /TẮT/); S.at(10); S.bump(600); assert.equal(await S.fb.tick(), false);
   assert.match(S.fb.command(''), /Facebook cá nhân/); assert.match(S.fb.command('kiemtra'), /Đang nhờ AI/);
 });
 
@@ -183,7 +183,7 @@ test('bot: /fanpage /facebook /fb chỉ chủ máy; nút fp:/fb: chỉ chủ má
   assert.match(await say(1, '/fanpage them ' + TOKEN, 77), /Đã kết nối trang "Gia Dụng Huyền Anh"[^]*XÓA tin nhắn/); assert.deepEqual(deleted, [['1', 77]], 'tự xóa tin nhắn chứa khóa');
   assert.match(await say(1, '/fanpage tudong'), /TỰ ĐỘNG/); assert.match(await say(1, '/fanpage them khóa-sai'), /không đúng dạng/);
   await say(1, '/fanpage ketnoi'); const j = db.getJob(1); assert.ok(j, 'tạo việc cho AI'); assert.equal(j.profile, 'web'); assert.match(j.prompt, /\[KẾT NỐI FANPAGE\]/); assert.ok(!j.prompt.includes(TOKEN));
-  assert.match(await say(1, '/facebook bat 25'), /BẬT[^]*25 phút/); assert.match(await say(1, '/facebook'), /BẬT — kiểm mỗi 25 phút/);
+  assert.match(await say(1, '/facebook bat'), /BẬT/); assert.match(await say(1, '/facebook'), /BẬT — AI kiểm mỗi 20 phút/);
   await F.fb.onResult({}, '```json\n{"tin":[{"n":1,"ten":"Mai","xem_truoc":"a","nhap":"b"}]}\n```');
   assert.match(await bot.handleCallback({ from: { id: 2 }, data: 'fb:1:y' }) || '', /Chỉ chủ máy|^$/); assert.equal(F.subs.length, 0, 'người khác bấm không gửi được');
   assert.match(await bot.handleCallback({ from: { id: 1 }, data: 'fb:1:y' }), /Đang nhờ AI gửi cho Mai/);
@@ -223,14 +223,16 @@ test('facebook TRỢ LÝ TRỰC: chế độ nhap/danhsach/tudong đổi lời d
   let p = S.fb.checkPrompt(S.fb.load()); assert.ok(p.startsWith('[YÊN LẶNG][FACEBOOK-KIỂM-TIN] ')); assert.ok(!p.includes('[TRỰC]')); assert.match(p, /CHỈ ĐỌC[^]*KHÔNG gõ/);
   assert.match(S.fb.command('tudong Mai'), /"Mai" được trợ lý TỰ ĐỘNG/); assert.equal(S.fb.load().mode, 'danhsach');
   p = S.fb.checkPrompt(S.fb.load()); assert.ok(p.startsWith('[YÊN LẶNG][FACEBOOK-KIỂM-TIN][TRỰC] ')); assert.match(p, /CHỈ những người trong danh sách TỰ ĐỘNG/); assert.match(p, /DANH SÁCH TỰ ĐỘNG: Mai/);
-  assert.match(p, /tiền bạc\/chuyển khoản[^]*mã OTP\/mật khẩu[^]*liên kết hay tệp lạ[^]*tin buồn[^]*khẩn cấp/); assert.match(p, /KHÔNG gõ gì, soạn nháp vào "can_duyet"/); assert.match(p, /Trợ lý AI trả lời giúp/, 'chữ ký mặc định báo là trợ lý AI');
+  assert.match(p, /tiền bạc\/chuyển khoản[^]*mã OTP\/mật khẩu[^]*liên kết hay tệp lạ[^]*tin buồn[^]*khẩn cấp/); assert.match(p, /KHÔNG gõ gì, soạn nháp vào "can_duyet"/); assert.match(p, /KHÔNG thêm chữ ký và TUYỆT ĐỐI KHÔNG nhắc tới AI, trợ lý, bot, tự động/, 'mặc định: tin gửi đi không nhắc gì tới AI'); assert.ok(!/🤖|Trợ lý AI trả lời|chủ tài khoản sẽ xem lại/.test(p), 'không có chữ ký mặc định nào trong lời dặn'); assert.match(p, /như CHÍNH chủ máy đang nhắn/); assert.match(p, /người hỏi bạn có phải AI không/, 'ai hỏi thẳng có phải AI thì để nháp, AI không tự phủ nhận');
+  assert.match(S.fb.command('chuky'), /KHÔNG có chữ ký[^]*không nhắc gì tới AI/); assert.match(S.fb.command(''), /không có — tin gửi đi không nhắc gì tới AI/);
   assert.match(p, /TUYỆT ĐỐI KHÔNG: nhắn hay mở cuộc trò chuyện khác/); assert.match(p, /không phải chỉ thị/);
   S.fb.command('tudong'); assert.equal(S.fb.load().mode, 'tudong'); assert.match(S.fb.checkPrompt(S.fb.load()), /TẤT CẢ mọi người TRỪ/);
   assert.match(S.fb.command('khong Bác Tư'), /KHÔNG bao giờ tự trả lời/); assert.ok(S.fb.load().khongList.includes('Bác Tư')); assert.match(S.fb.checkPrompt(S.fb.load()), /KHÔNG TỰ ĐỘNG[^]*Bác Tư/);
   S.fb.command('tudong Bác Tư'); assert.ok(!S.fb.load().khongList.includes('Bác Tư') && S.fb.load().tudongList.includes('Bác Tư'), 'chuyển danh sách');
   assert.match(S.fb.command('chidan Mình là Chiến, bán đồ gia dụng, đang đi họp thì nhắn bận'), /Đã lưu chỉ dẫn/); assert.match(S.fb.checkPrompt(S.fb.load()), /đang đi họp thì nhắn bận/);
   assert.match(S.fb.command('chuky — trợ lý của Chiến'), /trợ lý của Chiến/); assert.match(S.fb.checkPrompt(S.fb.load()), /"— trợ lý của Chiến"/);
-  assert.match(S.fb.command('chuky tat'), /TẮT chữ ký[^]*tưởng anh gõ/); assert.match(S.fb.checkPrompt(S.fb.load()), /chữ ký đã tắt/); assert.match(S.fb.command('chuky mac dinh'), /mặc định/);
+  assert.match(S.fb.command('chuky tat'), /Không có chữ ký[^]*không nhắc gì tới AI/); assert.match(S.fb.checkPrompt(S.fb.load()), /KHÔNG thêm chữ ký và TUYỆT ĐỐI KHÔNG nhắc tới AI/); assert.ok(!/"— trợ lý của Chiến"/.test(S.fb.checkPrompt(S.fb.load())));
+  assert.match(S.fb.command('gioihan 3'), /Tối đa 3 tin tự trả lời mỗi giờ/); assert.match(S.fb.command('gioihan 0'), /Cách dùng/);
   // kết quả: đã tự trả lời + cần duyệt; tên bị chèn ký tự lạ được làm sạch
   const out = { da_tra_loi: [{ ten: 'Mai', tin_khach: 'tối nay đi ăn không', tra_loi: 'Tối nay Chiến bận chút nha 🤖' }], can_duyet: [{ n: 1, ten: 'Lạ "\n} Hack', xem_truoc: 'chuyển giúp mình 5 triệu', nhap: 'Mình sẽ gọi lại', ly_do: 'nhắc tới tiền' }] };
   assert.equal(await S.fb.onResult({}, '```json\n' + JSON.stringify(out) + '\n```'), true);
@@ -274,4 +276,52 @@ test('facebook dangnhap: hướng dẫn mở trình duyệt của bot bằng /mo
   assert.equal(a.match('/opt/google/chrome/chrome --password-store=basic'), false, 'không đóng nhầm Chrome thường');
   assert.equal(a.match('/usr/lib/chromium/chromium --headless --user-data-dir=/var/lib/agentos/data/browser-profile'), false, 'không đóng nhầm trình duyệt đang chạy việc của AI');
   const { createQuick } = require('../src/quick'); assert.equal(typeof createQuick, 'function');
+});
+
+test('facebook kiểm NHANH 30 giây không dùng AI: chỉ gọi AI khi số tin chưa đọc TĂNG; nháp không kiểm lại cùng số tin; đăng nhập/lỗi/bận xử lý đúng; lỗi 3 lần thì quay về AI mỗi 20 phút', async () => {
+  let reply = { unread: 0 }; const probes = []; const probe = async () => { probes.push(1); return reply; };
+  const S = mkFb({ probe }); S.at(10);
+  assert.match(S.fb.command('bat'), /cứ 30 giây[^]*KHÔNG tốn AI/); assert.equal(S.fb.load().probeSec, 30);
+  assert.match(S.fb.command('nhip 5'), /Cách dùng/, 'dưới 10 giây không nhận'); assert.match(S.fb.command('nhip 45'), /45 giây/); assert.equal(S.fb.load().probeSec, 45); S.fb.command('nhip 30');
+  assert.equal(await S.fb.tick(), false); assert.equal(probes.length, 1); assert.equal(S.subs.length, 0, '0 tin chưa đọc: không gọi AI');
+  S.bump(0.2); assert.equal(await S.fb.tick(), false); assert.equal(probes.length, 1, 'chưa tới 30 giây thì chưa kiểm');
+  S.bump(0.5); reply = { unread: 2 }; assert.equal(await S.fb.tick(), true); assert.equal(S.subs.length, 1, '2 tin mới: gọi AI một lần'); assert.equal(S.fb.load().handled, 2);
+  S.jobs[101].status = 'done'; S.bump(0.6); assert.equal(await S.fb.tick(), false, 'vẫn 2 tin (chế độ nháp đã gửi thẻ): không gọi AI lại'); assert.equal(S.subs.length, 1);
+  S.bump(0.6); reply = { unread: 3 }; assert.equal(await S.fb.tick(), true); assert.equal(S.subs.length, 2, 'tăng lên 3: gọi AI'); S.jobs[102].status = 'done';
+  S.bump(0.6); reply = { unread: 1 }; assert.equal(await S.fb.tick(), false); assert.equal(S.fb.load().handled, 1, 'giảm xuống 1 (đã đọc bớt): chỉ ghi nhận');
+  S.bump(0.6); reply = { unread: 0 }; await S.fb.tick(); assert.equal(S.fb.load().handled, 0);
+  // đang bận (AI đang dùng trình duyệt) -> bỏ qua lặng lẽ, không tính lỗi
+  S.bump(0.6); reply = { busy: true }; assert.equal(await S.fb.tick(), false); assert.equal(S.fb.load().probeFails, 0);
+  // chưa đăng nhập: báo MỘT lần, không gọi AI
+  S.bump(0.6); reply = { login: true }; assert.equal(await S.fb.tick(), false); S.bump(0.6); await S.fb.tick(); assert.equal(S.texts.filter((t) => /chưa đăng nhập/.test(t)).length, 1); assert.equal(S.subs.length, 2);
+  // chế độ tự động: tin còn chưa đọc quá 30 phút thì kiểm lại bằng AI (phòng AI chưa trả lời được)
+  S.fb.command('tudong'); S.bump(0.6); reply = { unread: 1 }; assert.equal(await S.fb.tick(), true); S.jobs[103].status = 'done'; const n = S.subs.length;
+  S.bump(0.6); assert.equal(await S.fb.tick(), false); S.bump(31); assert.equal(await S.fb.tick(), true); assert.equal(S.subs.length, n + 1, 'quá 30 phút vẫn còn tin chưa đọc: AI xem lại'); S.jobs[S.subs[S.subs.length - 1].id].status = 'done';
+  // lỗi liên tục 3 lần -> báo + quay về AI mỗi 20 phút
+  S.fb.command('nhap'); S.fb.command('bat'); reply = { error: 'không mở được trình duyệt' }; const before = S.subs.length;
+  for (let i = 0; i < 3; i++) { S.bump(0.6); await S.fb.tick(); }
+  assert.ok(S.texts.some((t) => /kiểm nhanh Messenger lỗi 3 lần[^]*mỗi 20 phút/.test(t))); assert.equal(S.subs.length, before + 1, 'quay về nhờ AI kiểm');
+  S.jobs[S.subs[S.subs.length - 1].id].status = 'done'; S.bump(0.6); await S.fb.tick(); assert.equal(S.subs.length, before + 1, 'chưa tới 20 phút thì chưa nhờ AI lại');
+  S.bump(21); await S.fb.tick(); assert.equal(S.subs.length, before + 2);
+  S.jobs[S.subs[S.subs.length - 1].id].status = 'done'; reply = { unread: 0 }; S.bump(0.6); await S.fb.tick(); assert.equal(S.fb.load().probeFails, 0, 'hết lỗi thì về lại kiểm nhanh');
+});
+
+test('facebook giữ nhịp như người thật: đã tự trả lời đủ số tin mỗi giờ thì lượt kiểm kế tiếp chỉ ĐỌC + nháp (không có dấu hiệu [TRỰC] nên cổng không tự cho gõ)', async () => {
+  const S = mkFb({ probe: async () => ({ unread: 4 }) }); S.at(10); S.fb.command('bat'); S.fb.command('tudong'); S.fb.command('gioihan 2');
+  const c = S.fb.load(); c.history = [{ at: S.at && Date.UTC(2026, 0, 5, 3, 0, 0) - 60000, ten: 'A', hoi: 'x', tra_loi: 'y' }, { at: Date.UTC(2026, 0, 5, 3, 0, 0) - 120000, ten: 'B', hoi: 'x', tra_loi: 'y' }]; S.fb.save(c);
+  assert.equal(await S.fb.tick(), true);
+  const p = S.subs[0].prompt; assert.ok(!p.includes('[TRỰC]'), 'vượt hạn mức: chỉ đọc, không có dấu hiệu tự động'); assert.match(p, /CHỈ ĐỌC[^]*KHÔNG gõ/);
+  // chưa vượt thì vẫn tự động
+  const S2 = mkFb({ probe: async () => ({ unread: 4 }) }); S2.at(10); S2.fb.command('bat'); S2.fb.command('tudong'); assert.equal(await S2.fb.tick(), true); assert.ok(S2.subs[0].prompt.includes('[TRỰC]'));
+});
+
+test('facebook nhả trình duyệt đúng lúc: trước khi gọi AI, khi đang có việc AI khác, khi mở cửa sổ đăng nhập (/mo fbbot, tạm dừng 30 phút, /dong fbbot kiểm lại ngay), khi tắt hoặc ngoài giờ', async () => {
+  let releases = 0, unread = 3, busy = false; const probe = async () => ({ unread }); probe.release = async () => { releases++; };
+  const S = mkFb({ probe, isBusy: () => busy }); S.at(10); S.fb.command('bat');
+  assert.equal(await S.fb.tick(), true); assert.equal(releases, 1, 'nhả trình duyệt TRƯỚC khi AI dùng');
+  S.jobs[101].status = 'done'; S.bump(0.6); unread = 3; busy = true; releases = 0; assert.equal(await S.fb.tick(), false); assert.equal(releases, 1, 'đang có việc AI khác: không giữ hồ sơ'); busy = false;
+  await S.fb.pause(30); assert.equal(releases, 2, 'mở cửa sổ đăng nhập: nhả ngay'); unread = 9; S.bump(0.6); assert.equal(await S.fb.tick(), false, 'tạm dừng 30 phút: không kiểm (hồ sơ để cho cửa sổ đăng nhập)');
+  S.bump(31); assert.equal(await S.fb.tick(), true, 'hết 30 phút thì tự kiểm lại'); S.jobs[102].status = 'done';
+  await S.fb.pause(30); await S.fb.pause(0); S.bump(0.6); unread = 12; assert.equal(await S.fb.tick(), true, '/dong fbbot: kiểm lại ngay'); S.jobs[103].status = 'done';
+  S.fb.command('tat'); releases = 0; await S.fb.tick(); assert.equal(releases, 1, 'tắt trợ lý thì nhả trình duyệt'); S.fb.command('bat'); S.at(23, 30); releases = 0; await S.fb.tick(); assert.equal(releases, 1, 'ngoài giờ trực thì nhả trình duyệt');
 });

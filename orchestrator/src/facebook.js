@@ -10,7 +10,7 @@ const { noAccent } = require('./kiotviet');
 //     danhsach               AI TỰ TRẢ LỜI những người trong danh sách tự động (/facebook tudong <tên>); người khác chỉ soạn nháp.
 //     tudong                 AI TỰ TRẢ LỜI mọi người trừ danh sách "không" (/facebook khong <tên>).
 //   Dù ở chế độ nào, tin NHẠY CẢM (tiền, chuyển khoản, mật khẩu, mã OTP, địa chỉ nhà, liên kết lạ, khẩn cấp, buồn/tang, tình cảm, pháp lý, công việc quan trọng...)
-//   KHÔNG tự trả lời: AI để nháp cho chủ máy duyệt. Mỗi tin tự trả lời có CHỮ KÝ báo đây là trợ lý AI (đổi/tắt bằng /facebook chuky).
+//   KHÔNG tự trả lời: AI để nháp cho chủ máy duyệt. Tin gửi đi viết như CHÍNH chủ máy nhắn và KHÔNG nhắc gì tới AI (theo yêu cầu của chủ máy; muốn có chữ ký: /facebook chuky <chữ>). AI không bao giờ tự phủ nhận là AI: ai hỏi thẳng thì để nháp cho chủ máy quyết.
 // Hàng rào cứng (cổng duyệt, gate.js): chỉ khi chế độ không phải "nhap" và việc đúng loại thì các thao tác bấm/gõ/phím trong trình duyệt (và chỉ chúng) được tự cho phép,
 //   tối đa 80 thao tác mỗi việc; mọi công cụ khác (lệnh, ghi tệp, chạy mã trang) vẫn hỏi chủ máy. Việc luôn chạy ở chế độ bảo vệ (không sudo) vì tin nhắn là của người lạ.
 // Giới hạn trung thực: Facebook có thể khóa tạm tài khoản khi phát hiện tự động hóa; nội dung tin nhắn có thể chứa câu lệnh cài vào để lừa AI (đã dặn AI coi là dữ liệu,
@@ -20,7 +20,7 @@ const MARK_AUTO = MARK + '[TRỰC]';
 const MARK_SEND = '[FACEBOOK-GỬI]';
 const BROWSER_INTERACT = /^mcp__browser__browser_(click|type|press_key|fill_form|hover)$/;
 const MAX_INTERACT = 80;
-const DEFAULT_SIGNATURE = '🤖 (Trợ lý AI trả lời giúp, chủ tài khoản sẽ xem lại sau)';
+const DEFAULT_INSTRUCTIONS = 'Trả lời lịch sự, ngắn gọn, thân thiện, như CHÍNH MÌNH đang nhắn (xưng "mình"); nếu chưa tiện trả lời thì nói mình đang bận, lát mình nhắn lại; không nói chi tiết đời tư, lịch trình, tiền bạc.';
 const hhmm = (d) => d.getHours() * 60 + d.getMinutes();
 const parseHour = (s) => { const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(String(s || '').trim()); return m && Number(m[1]) <= 24 ? Number(m[1]) * 60 + Number(m[2] || 0) : null; };
 const fmtHour = (mins) => String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
@@ -30,7 +30,7 @@ const cleanName = (s) => String(s || '').replace(/[\r\n"“”`\\]/g, ' ').repla
 const RULES_SENSITIVE = 'KHÔNG tự trả lời (chỉ soạn nháp) khi tin liên quan: tiền bạc/chuyển khoản/vay mượn/số tài khoản/mã OTP/mật khẩu/thẻ, địa chỉ nhà hoặc vị trí hiện tại, liên kết hay tệp lạ, lời mời đầu tư/việc làm/trúng thưởng, chuyện tình cảm hay riêng tư, tin buồn/ốm đau/tang lễ, khẩn cấp, pháp lý/công an/khiếu nại, công việc hay hợp đồng quan trọng, hoặc người hỏi bạn có phải AI không, hoặc bạn không chắc.';
 
 function checkPrompt(c) {
-  const every = c.everyMin || 20, mode = c.mode || 'nhap';
+  const every = Math.max(c.everyMin || 2, 55), mode = c.mode || 'nhap';          // AI xem mọi tin chưa đọc + tin mới trong ~1 giờ gần đây (bước kiểm nhanh chỉ báo CÓ tin chưa đọc)
   const head = (mode === 'nhap' ? MARK : MARK_AUTO) + ' Mở trình duyệt (đã đăng nhập sẵn Facebook của chủ máy), vào https://www.messenger.com (nếu không được thì https://www.facebook.com/messages). ';
   const find = 'Tìm các cuộc trò chuyện CHƯA ĐỌC (chữ đậm/chấm xanh) hoặc có tin mới của người khác trong khoảng ' + (every + 5) + ' phút gần đây (bỏ qua tin chính chủ máy gửi, quảng cáo, thông báo hệ thống, nhóm đông người). ';
   const end = 'Nếu chưa đăng nhập, hoặc gặp màn hình xác minh/CAPTCHA/"nhập mã": in đúng "CẦN ĐĂNG NHẬP" và dừng (tuyệt đối không nhập mật khẩu/mã). Nếu không có gì cần xem: in đúng một dòng "KHÔNG CÓ TIN MỚI". ' +
@@ -44,9 +44,9 @@ function checkPrompt(c) {
   return head + 'Bạn là TRỢ LÝ TRỰC tin nhắn của chủ máy. ' + find +
     'Với mỗi cuộc (tối đa 4 cuộc mỗi lần): bấm mở ĐÚNG cuộc trò chuyện đó, đọc khoảng 10 tin gần nhất rồi quyết định.\n' +
     'TỰ TRẢ LỜI chỉ khi đủ MỌI điều kiện: (a) người này thuộc diện tự động: ' + allow + '; (b) tin là chào hỏi, hỏi thăm, hẹn gặp/giờ giấc đơn giản hoặc câu hỏi bạn trả lời được CHỈ bằng CHỈ DẪN bên dưới; (c) không dính vào quy tắc nhạy cảm. ' +
-    'Khi tự trả lời: gõ đúng một tin ngắn (tối đa 3 câu, tự nhiên đúng giọng người Việt, không bịa thông tin cá nhân, không hứa tiền bạc/lịch cụ thể ngoài chỉ dẫn) rồi thêm một dòng chữ ký "' + (c.signature === '' ? '' : (c.signature || DEFAULT_SIGNATURE)) + '"' + (c.signature === '' ? ' (chữ ký đã tắt: không thêm)' : '') + ', nhấn Enter để gửi và kiểm tin đã hiện trong cuộc trò chuyện.\n' +
+    'Khi tự trả lời: gõ đúng một tin ngắn (tối đa 3 câu, tự nhiên đúng giọng người Việt như CHÍNH chủ máy đang nhắn, không bịa thông tin cá nhân, không hứa tiền bạc/lịch cụ thể ngoài chỉ dẫn). ' + (c.signature ? 'Cuối tin thêm đúng một dòng: "' + c.signature + '". ' : 'KHÔNG thêm chữ ký và TUYỆT ĐỐI KHÔNG nhắc tới AI, trợ lý, bot, tự động, "trả lời hộ" hay "chủ tài khoản" trong tin gửi đi. ') + 'Nhấn Enter để gửi và kiểm tin đã hiện trong cuộc trò chuyện.\n' +
     RULES_SENSITIVE + ' Với những cuộc đó: KHÔNG gõ gì, soạn nháp vào "can_duyet" kèm lý do.\n' +
-    'CHỈ DẪN CỦA CHỦ MÁY: ' + (c.instructions || 'Trả lời lịch sự, ngắn gọn, thân thiện; nói chủ tài khoản đang bận và sẽ nhắn lại sớm; không nói chi tiết đời tư, lịch trình, tiền bạc.') + '\n' +
+    'CHỈ DẪN CỦA CHỦ MÁY: ' + (c.instructions || DEFAULT_INSTRUCTIONS) + '\n' +
     'DANH SÁCH TỰ ĐỘNG: ' + ((c.tudongList || []).join(', ') || '(trống)') + ' · DANH SÁCH KHÔNG TỰ ĐỘNG (luôn chờ chủ máy duyệt): ' + ((c.khongList || []).join(', ') || '(trống)') + '\n' +
     'TUYỆT ĐỐI KHÔNG: nhắn hay mở cuộc trò chuyện khác để gửi, bấm liên kết/tệp/cuộc gọi/lời mời kết bạn hay nhóm, đăng bài/bình luận, đổi cài đặt, nhập mật khẩu hay mã. Chỉ gõ trong ô nhắn của cuộc trò chuyện đang mở.\n' +
     'Cuối cùng in DUY NHẤT một khối json (không thêm lời dẫn):\n```json\n{"da_tra_loi":[{"ten":"…","tin_khach":"…","tra_loi":"đúng nội dung đã gửi"}],"can_duyet":[{"n":1,"ten":"…","xem_truoc":"…","nhap":"nháp","ly_do":"vì sao chưa tự gửi"}]}\n```\n' + end;
@@ -57,28 +57,59 @@ function sendPrompt(ten, text) {
 }
 
 function createFacebook(o) {
-  const { notify, ask, edit, submit, getJob } = o;
+  const { notify, ask, edit, submit, getJob, probe, isBusy } = o;
   const file = o.file || '/var/lib/agentos/data/facebook.json';
   const now = o.now || Date.now, log = o.log || (() => {});
   const admin = () => (typeof o.admin === 'function' ? o.admin() : o.admin);
-  const defaults = () => ({ enabled: false, everyMin: 20, from: 420, to: 1320, lastRun: 0, jobId: 0, last: [], warnedLogin: 0, mode: 'nhap', tudongList: [], khongList: [], instructions: '', signature: null, history: [] });
+  const defaults = () => ({ maxPerHour: 8, pausedUntil: 0, probeSec: 30, enabled: false, everyMin: 20, from: 420, to: 1320, lastRun: 0, lastProbe: 0, probeFails: 0, handled: 0, jobId: 0, last: [], warnedLogin: 0, mode: 'nhap', tudongList: [], khongList: [], instructions: '', signature: null, history: [] });
   const load = () => { try { return Object.assign(defaults(), JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) { return defaults(); } };
   const save = (c) => { fs.mkdirSync(path.dirname(file), { recursive: true }); const t = file + '.tmp'; fs.writeFileSync(t, JSON.stringify(c, null, 1), { mode: 0o600 }); fs.renameSync(t, file); };
   const mut = (fn) => { const c = load(); const r = fn(c); save(c); return r; };
   const tell = (text, buttons) => { const a = admin(); if (!a) return null; return buttons && ask ? ask(a, text, buttons) : notify(a, text); };
   const inHours = (c, d) => { const m = hhmm(d); return c.from <= c.to ? m >= c.from && m < c.to : m >= c.from || m < c.to; };
 
-  function tick() {
-    const c = load(); if (!c.enabled) return false;
-    const t = now(); if (!inHours(c, new Date(t))) return false;
-    if (t - c.lastRun < c.everyMin * 60000) return false;
-    if (c.jobId) { const j = getJob(c.jobId); if (j && ['queued', 'running', 'waiting'].includes(j.status)) return false; }
-    const id = submit(checkPrompt(c), 'check');
-    mut((x) => { x.lastRun = t; x.jobId = id; });
-    log('facebook: tạo việc kiểm tin #' + id + ' (chế độ ' + c.mode + ')');
-    return true;
+  let ticking = false;
+  const FALLBACK_MIN = 20, STALE_MIN = 30;
+  const releaseBrowser = async () => { if (probe && probe.release) { try { await probe.release(); } catch (e) { /* đã đóng */ } } };
+  // Tạm dừng kiểm (và NHẢ trình duyệt) trong `min` phút: dùng khi chủ máy mở cửa sổ đăng nhập (fbbot) cần chính hồ sơ này. min = 0: kiểm lại ngay.
+  async function pause(min) { mut((x) => { x.pausedUntil = min > 0 ? now() + min * 60000 : 0; }); if (min > 0) await releaseBrowser(); }
+  // Mỗi 10 giây gọi tick: (1) bước KIỂM NHANH không AI (mặc định mỗi 30 giây) đọc số tin chưa đọc ở tab Messenger giữ mở sẵn; (2) chỉ khi có tin chưa đọc MỚI mới tạo việc cho AI.
+  // Không có bước kiểm nhanh (hoặc nó hỏng liên tục) thì quay về cách cũ: nhờ AI kiểm mỗi `everyMin` (≥ 20) phút.
+  async function tick() {
+    if (ticking) return false; ticking = true;
+    try {
+      const c = load(); if (!c.enabled) { if (probe) await releaseBrowser(); return false; }
+      const t = now();
+      if (t < (c.pausedUntil || 0) || !inHours(c, new Date(t))) { if (probe) await releaseBrowser(); return false; }
+      if (c.jobId) { const j = getJob(c.jobId); if (j && ['queued', 'running', 'waiting'].includes(j.status)) return false; }
+      // Capped: đã tự trả lời đủ `maxPerHour` tin trong 1 giờ qua thì lượt này chỉ ĐỌC + soạn nháp (không tự gõ gì), giữ nhịp như người thật
+      const capped = c.mode !== 'nhap' && (c.history || []).filter((h) => t - h.at < 3600000).length >= (c.maxPerHour || 8);
+      const runAI = async (unread) => {
+        await releaseBrowser();                                                     // AI sẽ dùng hồ sơ trình duyệt: nhả ra trước
+        const id = submit(checkPrompt(capped ? Object.assign({}, c, { mode: 'nhap' }) : c), 'check'); mut((x) => { x.lastRun = t; x.jobId = id; x.handled = unread == null ? x.handled : unread; });
+        log('facebook: tạo việc kiểm tin #' + id + ' (chế độ ' + c.mode + (capped ? ', vượt hạn mức giờ → chỉ nháp' : '') + (unread != null ? ', ' + unread + ' tin chưa đọc' : '') + ')'); return true;
+      };
+      if (!probe) { if (t - c.lastRun < Math.max(c.everyMin, FALLBACK_MIN) * 60000) return false; return runAI(null); }
+      if (t - c.lastProbe < (c.probeSec || 30) * 1000) return false;
+      if (isBusy && isBusy()) { await releaseBrowser(); return false; }               // đang có việc AI khác: không giữ hồ sơ trình duyệt của bot
+      mut((x) => { x.lastProbe = t; });
+      const r = await probe();
+      if (r.busy) return false;                                                     // hồ sơ đang bị bên khác dùng (cửa sổ fbbot đang mở...): lần sau
+      if (r.login) { await releaseBrowser(); if (now() - c.warnedLogin > 6 * 3600000) { mut((x) => { x.warnedLogin = now(); }); await tell('🔐 Facebook trên trình duyệt của bot chưa đăng nhập (hoặc đang đòi xác minh). Anh đăng nhập một lần: /facebook dangnhap. Bot không bao giờ tự nhập mật khẩu.'); } return false; }
+      if (r.error || r.unread == null) {
+        const fails = c.probeFails + 1; mut((x) => { x.probeFails = fails; });
+        if (fails === 3) await tell('⚠️ Bước kiểm nhanh Messenger lỗi 3 lần (' + (r.error || 'không đọc được số tin chưa đọc') + '). Bot chuyển sang nhờ AI kiểm mỗi ' + FALLBACK_MIN + ' phút cho tới khi hết lỗi.');
+        if (fails >= 3 && t - c.lastRun >= FALLBACK_MIN * 60000) return runAI(null);
+        return false;
+      }
+      if (c.probeFails) mut((x) => { x.probeFails = 0; });
+      if (r.unread === 0) { if (c.handled) mut((x) => { x.handled = 0; }); return false; }
+      if (r.unread < c.handled) { mut((x) => { x.handled = r.unread; }); c.handled = r.unread; }          // một phần đã được đọc/trả lời
+      const fresh = r.unread > c.handled, stale = c.mode !== 'nhap' && t - c.lastRun >= STALE_MIN * 60000;   // chế độ nháp đã gửi thẻ rồi nên không kiểm lại cùng số tin
+      return fresh || stale ? runAI(r.unread) : false;
+    } finally { ticking = false; }
   }
-  function start() { const t = setInterval(() => { try { tick(); } catch (e) { log('facebook tick: ' + e.message); } }, 60000); if (t.unref) t.unref(); return t; }
+  function start() { const t = setInterval(() => { tick().catch((e) => log('facebook tick: ' + e.message)); }, 10000); if (t.unref) t.unref(); return t; }
 
   // Cổng duyệt gọi hàm này (autoAllow): được tự cho phép thao tác bấm/gõ trong trình duyệt CHỈ khi việc đúng loại và chế độ cho phép. Tối đa MAX_INTERACT thao tác mỗi việc.
   const counts = new Map();
@@ -138,10 +169,10 @@ function createFacebook(o) {
   const modeText = (c) => (c.mode === 'tudong' ? '🤖 TỰ ĐỘNG trả lời mọi người (trừ danh sách "không": ' + ((c.khongList || []).join(', ') || 'trống') + ')' : c.mode === 'danhsach' ? '🤖 TỰ ĐỘNG với: ' + ((c.tudongList || []).join(', ') || '(trống)') + ' · người khác: nháp chờ anh duyệt' : '✍️ NHÁP: chỉ đọc + soạn, anh bấm ✅ mới gửi');
   function status() {
     const c = load();
-    return '📘 Trợ lý trực Facebook cá nhân (qua Chrome của bot): ' + (c.enabled ? '🟢 BẬT — kiểm mỗi ' + c.everyMin + ' phút, ' + fmtHour(c.from) + '–' + fmtHour(c.to) : '⚪ TẮT') + '\n' +
-      'Chế độ: ' + modeText(c) + '\n' + 'Chữ ký: ' + (c.signature === '' ? '(tắt)' : c.signature || DEFAULT_SIGNATURE) + '\n' + (c.lastRun ? 'Lần kiểm gần nhất: ' + Math.max(1, Math.round((now() - c.lastRun) / 60000)) + ' phút trước\n' : '') +
+    return '📘 Trợ lý trực Facebook cá nhân (qua Chrome của bot): ' + (c.enabled ? '🟢 BẬT — ' + (probe ? 'kiểm nhanh mỗi ' + c.probeSec + ' giây (không tốn AI; AI chỉ vào khi có tin chưa đọc mới)' : 'AI kiểm mỗi ' + Math.max(c.everyMin, 20) + ' phút') + ', ' + fmtHour(c.from) + '–' + fmtHour(c.to) : '⚪ TẮT') + '\n' +
+      'Chế độ: ' + modeText(c) + '\n' + 'Chữ ký: ' + (c.signature || '(không có — tin gửi đi không nhắc gì tới AI, viết như chính anh nhắn)') + '\n' + (c.lastRun ? 'Lần kiểm gần nhất: ' + Math.max(1, Math.round((now() - c.lastRun) / 60000)) + ' phút trước\n' : '') +
       'Tin nhạy cảm (tiền, mật khẩu, OTP, liên kết lạ, tin buồn, khẩn cấp...) LUÔN chờ anh duyệt.\n' +
-      'Lệnh: /facebook dangnhap · bat [phút] · tat · kiemtra · gio 7-22 · tudong [tên] · nhap · khong <tên> · chidan <nội dung> · chuky <chữ|tat> · nhatky · /fb tra <số> [nội dung]';
+      'Lệnh: /facebook dangnhap · bat [giây] · nhip <giây> · tat · kiemtra · gio 7-22 · tudong [tên] · nhap · khong <tên> · chidan <nội dung> · chuky <chữ|tat> · gioihan <số> · nhatky · /fb tra <số> [nội dung]';
   }
   function listOp(c, key, other, name, remove) {
     const nm = cleanName(name); if (!nm) return null;
@@ -154,19 +185,27 @@ function createFacebook(o) {
   function command(arg) {
     const t = String(arg || '').trim(); const m = /^(\S+)\s*([\s\S]*)$/.exec(t); if (!m) return status();
     const sub = noAccent(m[1]), rest = m[2].trim();
-    if (sub === 'bat') { const mins = Number(rest); mut((x) => { x.enabled = true; if (mins >= 10 && mins <= 240) x.everyMin = Math.round(mins); x.lastRun = 0; }); const c = load(); return '🟢 Đã BẬT trợ lý trực Messenger mỗi ' + c.everyMin + ' phút (' + fmtHour(c.from) + '–' + fmtHour(c.to) + '), chế độ: ' + modeText(c) + '.\nMỗi lần kiểm tốn một lượt AI. Cần trình duyệt của bot đã đăng nhập Facebook.\n⚠️ Facebook không cho phép tự động hóa tài khoản cá nhân: có thể bị khóa tạm hoặc đòi xác minh; bot sẽ dừng và báo anh. Muốn AI tự trả lời: /facebook tudong (hoặc /facebook tudong <tên bạn>).'; }
+    if (sub === 'bat' || sub === 'nhip') {
+      const sec = Number(rest);
+      if (sub === 'nhip' && !(sec >= 10 && sec <= 600)) return 'Cách dùng: /facebook nhip <số giây giữa hai lần kiểm, 10–600>. Hiện: ' + load().probeSec + ' giây.';
+      mut((x) => { if (sec >= 10 && sec <= 600) x.probeSec = Math.round(sec); if (sub === 'bat') { x.enabled = true; x.lastRun = 0; x.lastProbe = 0; x.handled = 0; x.probeFails = 0; x.pausedUntil = 0; } });
+      const c = load();
+      if (sub === 'nhip') return '✅ Kiểm nhanh mỗi ' + c.probeSec + ' giây.';
+      return '🟢 Đã BẬT trợ lý trực Messenger (' + fmtHour(c.from) + '–' + fmtHour(c.to) + '), chế độ: ' + modeText(c) + '.\n' + (probe ? '⚡ Bot giữ một tab Messenger mở sẵn và cứ ' + c.probeSec + ' giây xem có tin CHƯA ĐỌC không (không tải lại trang, KHÔNG tốn AI); có tin mới thì AI vào xử lý ngay. Đổi nhịp: /facebook nhip <giây>.' : 'Mỗi ' + Math.max(c.everyMin, 20) + ' phút nhờ AI kiểm một lần (tốn một lượt AI mỗi lần).') + '\nCần trình duyệt của bot đã đăng nhập Facebook (/facebook dangnhap). Lúc đó trình duyệt của bot được giữ cho trợ lý; khi AI khác cần dùng bot tự nhả ra.\n⚠️ Facebook không cho phép tự động hóa tài khoản cá nhân: có thể bị khóa tạm hoặc đòi xác minh; bot sẽ dừng và báo anh. Muốn AI tự trả lời: /facebook tudong (hoặc /facebook tudong <tên bạn>).';
+    }
     if (sub === 'tat') { mut((x) => { x.enabled = false; }); return '⚪ Đã TẮT trợ lý trực Facebook.'; }
     if (sub === 'gio') { const g = /^(\d{1,2}(?::\d{2})?)\s*[-–]\s*(\d{1,2}(?::\d{2})?)$/.exec(rest); const a = g && parseHour(g[1]), b = g && parseHour(g[2]); if (a == null || b == null || a === b) return 'Cách dùng: /facebook gio 7-22'; mut((x) => { x.from = a; x.to = b; }); return '🕖 Khung giờ trực: ' + fmtHour(a) + '–' + fmtHour(b) + '.'; }
     if (sub === 'nhap') { mut((x) => { x.mode = 'nhap'; }); return '✍️ Chế độ NHÁP: AI chỉ đọc và soạn, anh bấm ✅ mới gửi.'; }
     if (sub === 'tudong') {
-      if (!rest) { mut((x) => { x.mode = 'tudong'; }); return '🤖 Chế độ TỰ ĐỘNG: AI tự trả lời tin đơn giản của mọi người (trừ danh sách "không"); tin nhạy cảm vẫn chờ anh duyệt. Loại trừ ai đó: /facebook khong <tên>. Quay lại nháp: /facebook nhap.\nChữ ký báo trợ lý AI được thêm vào mỗi tin (đổi: /facebook chuky).'; }
+      if (!rest) { mut((x) => { x.mode = 'tudong'; }); return '🤖 Chế độ TỰ ĐỘNG: AI tự trả lời tin đơn giản của mọi người (trừ danh sách "không"); tin nhạy cảm vẫn chờ anh duyệt. Loại trừ ai đó: /facebook khong <tên>. Quay lại nháp: /facebook nhap.\nTin gửi đi viết như chính anh nhắn, không nhắc gì tới AI (muốn có chữ ký: /facebook chuky <chữ>). Giới hạn ' + (load().maxPerHour || 8) + ' tin tự trả lời mỗi giờ (đổi: /facebook gioihan <số>).'; }
       let nm = null; mut((x) => { nm = listOp(x, 'tudongList', 'khongList', rest, false); if (x.mode === 'nhap') x.mode = 'danhsach'; });
       return nm ? '🤖 "' + nm + '" được trợ lý TỰ ĐỘNG trả lời (chế độ danh sách; người khác vẫn chờ anh duyệt). Xóa khỏi danh sách: /facebook khong ' + nm : 'Cách dùng: /facebook tudong <tên người>';
     }
     if (sub === 'khong') { let nm = null; mut((x) => { nm = listOp(x, 'khongList', 'tudongList', rest, false); }); return nm ? '🙅 "' + nm + '": KHÔNG bao giờ tự trả lời (chỉ soạn nháp cho anh duyệt).' : 'Cách dùng: /facebook khong <tên người>'; }
     if (sub === 'chidan') { if (!rest) return 'Chỉ dẫn hiện tại: ' + (load().instructions || '(mặc định: lịch sự, ngắn gọn, nói anh đang bận sẽ nhắn lại sớm)') + '\nĐặt: /facebook chidan <giọng điệu, thông tin được phép nói, lịch rảnh/bận...>'; mut((x) => { x.instructions = rest.slice(0, 2000); }); return '✅ Đã lưu chỉ dẫn cho trợ lý (' + rest.length + ' ký tự).'; }
-    if (sub === 'chuky') { if (noAccent(rest) === 'tat') { mut((x) => { x.signature = ''; }); return '⚠️ Đã TẮT chữ ký: tin tự trả lời sẽ KHÔNG nói rõ là trợ lý AI (người nhận có thể tưởng anh gõ). Bật lại: /facebook chuky mac dinh'; } if (!rest || noAccent(rest) === 'mac dinh') { mut((x) => { x.signature = null; }); return '✅ Chữ ký mặc định: ' + DEFAULT_SIGNATURE; } mut((x) => { x.signature = rest.slice(0, 160); }); return '✅ Chữ ký mỗi tin tự trả lời: ' + rest.slice(0, 160); }
+    if (sub === 'chuky') { if (!rest) return 'Chữ ký hiện tại: ' + (load().signature || '(không có)') + '\nMặc định KHÔNG có chữ ký: tin gửi đi viết như chính anh nhắn, không nhắc gì tới AI. Đặt chữ ký: /facebook chuky <chữ> · bỏ: /facebook chuky tat'; if (['tat', 'khong', 'mac dinh'].includes(noAccent(rest))) { mut((x) => { x.signature = ''; }); return '✅ Không có chữ ký: tin tự trả lời viết như chính anh nhắn, không nhắc gì tới AI hay trợ lý.'; } mut((x) => { x.signature = rest.slice(0, 160); }); return '✅ Chữ ký cuối mỗi tin tự trả lời: ' + rest.slice(0, 160); }
     if (sub === 'dangnhap') return '🔐 Đăng nhập Facebook cho trợ lý (làm MỘT lần):\n1) Gõ /mo fbbot — mở trình duyệt CỦA BOT (đúng hồ sơ mà AI dùng) trên màn hình máy, trang Messenger.\n2) Anh tự đăng nhập Facebook (xem màn hình bằng /manhinh, hoặc điều khiển bằng /tuxa nếu anh ở xa); nên chọn "Tin cậy thiết bị này" để Facebook ít đòi xác minh.\n3) Xong gõ /dong fbbot để đóng cửa sổ rồi /facebook bat.\nBot không bao giờ tự nhập mật khẩu hay mã xác minh. Nếu Facebook đòi xác minh về sau, bot dừng và báo anh.';
+    if (sub === 'gioihan') { const n = Number(rest); if (!(n >= 1 && n <= 60)) return 'Cách dùng: /facebook gioihan <số tin tự trả lời tối đa mỗi giờ, 1–60>. Hiện: ' + (load().maxPerHour || 8) + '.'; mut((x) => { x.maxPerHour = Math.round(n); }); return '✅ Tối đa ' + Math.round(n) + ' tin tự trả lời mỗi giờ; vượt thì chỉ soạn nháp chờ anh duyệt (giữ nhịp như người thật, Facebook ít nghi hơn).'; }
     if (sub === 'nhatky') { const h = load().history || []; return h.length ? '🧾 Các tin trợ lý đã tự trả lời gần đây:\n' + h.slice(-10).reverse().map((x) => '• ' + new Date(x.at).toLocaleString('vi-VN') + ' — ' + x.ten + ': "' + x.hoi + '"\n   ↪ ' + x.tra_loi).join('\n') : 'Chưa có tin nào được trợ lý tự trả lời.'; }
     if (sub === 'kiemtra') { const c = load(); const id = submit(checkPrompt(c), 'check'); mut((x) => { x.lastRun = now(); x.jobId = id; }); return '🔎 Đang nhờ AI vào Messenger kiểm tin (việc #' + id + ', chế độ ' + c.mode + ')...'; }
     return status();
@@ -177,7 +216,7 @@ function createFacebook(o) {
     return send(m[2], m[3].trim()).text;
   }
 
-  return { tick, start, onResult, allowInteract, isCallback, answerCallback, send, command, fbCommand, status, load, save, checkPrompt, sendPrompt, MARK, MARK_AUTO, MARK_SEND };
+  return { tick, start, pause, release: releaseBrowser, onResult, allowInteract, isCallback, answerCallback, send, command, fbCommand, status, load, save, checkPrompt, sendPrompt, MARK, MARK_AUTO, MARK_SEND };
 }
 
 module.exports = { createFacebook, checkPrompt, sendPrompt, MARK, MARK_AUTO, MARK_SEND, BROWSER_INTERACT, MAX_INTERACT };

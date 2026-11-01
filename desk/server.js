@@ -20,6 +20,8 @@ const APPS = {
   claudeweb: { label: 'Claude (web)', argv: ['/usr/local/bin/agentos-app', 'claudeweb'], match: (c) => /agentos-app-claudeweb/.test(c) },
   chatgpt: { label: 'ChatGPT', argv: ['/usr/local/bin/agentos-app', 'chatgpt'], match: (c) => /agentos-app-chatgpt/.test(c) },
   chrome: { label: 'Google Chrome', argv: ['/usr/bin/google-chrome-stable', '--password-store=basic'], match: (c) => /\/opt\/google\/chrome\/chrome/.test(c) && !/--app=|agentos-app-/.test(c) },
+  // Trình duyệt CỦA BOT (cùng hồ sơ mà AI dùng để vào Messenger): mở một lần để chủ máy tự đăng nhập Facebook, rồi đóng lại (/dong fbbot). Bot không bao giờ tự nhập mật khẩu.
+  fbbot: { runAs: 'agentos', label: 'Trình duyệt của bot (đăng nhập Facebook)', argv: ['/usr/bin/chromium', '--user-data-dir=/var/lib/agentos/data/browser-profile', '--password-store=basic', '--no-first-run', '--no-default-browser-check', 'https://www.facebook.com/messages'], match: (c) => /chromium/.test(c) && /data\/browser-profile/.test(c) && !/playwright|--remote-debugging|--headless/.test(c) },
   rustdesk: { label: 'RustDesk', argv: ['/usr/bin/rustdesk'], match: (c) => /\/usr\/share\/rustdesk\/rustdesk|^rustdesk|\/usr\/bin\/rustdesk/.test(c) && !/--service/.test(c) },
   claude: { label: 'Claude Code', argv: ['/usr/local/bin/agentos-ai', 'claude'], match: null },
   codex: { label: 'Codex', argv: ['/usr/local/bin/agentos-ai', 'codex'], match: null },
@@ -164,6 +166,14 @@ function createDesk(o) {
       const app = APPS[String(req.app || '').toLowerCase()];
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (app.runAs) {
+        // Ứng dụng phải chạy bằng người dùng KHÁC người ngồi máy (vd. trình duyệt của bot dùng hồ sơ thuộc `agentos`, quyền 700): cho người đó vẽ lên màn hình của người ngồi máy
+        // (xhost chỉ cho đúng tài khoản cục bộ đó, gỡ khi đóng ứng dụng) rồi chạy bằng chính người đó.
+        await run('runuser', userArgs(s, ['xhost', '+SI:localuser:' + app.runAs]), { timeoutMs: 8000 });
+        const home = (() => { try { return require('child_process').execFileSync('getent', ['passwd', app.runAs], { encoding: 'utf8' }).split(':')[5] || ''; } catch (e) { return ''; } })() || '/var/lib/' + app.runAs;
+        const pidx = detach('runuser', ['-u', app.runAs, '--', 'env', 'DISPLAY=' + s.display, 'HOME=' + home, ...app.argv], process.env);
+        return { ok: true, app: app.label, pid: pidx };
+      }
       const pid = detach('runuser', userArgs(s, app.argv), process.env);
       return { ok: true, app: app.label, pid };
     },
@@ -173,7 +183,8 @@ function createDesk(o) {
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));
       if (!app.match) return fail(app.label + ' chạy trong cửa sổ dòng lệnh, hãy tự đóng cửa sổ đó.');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
-      const hit = (await listProcs(s)).filter((p) => app.match(p.cmd));
+      const hit = (await listProcs(app.runAs ? { user: app.runAs } : s)).filter((p) => app.match(p.cmd));
+      if (app.runAs) await run('runuser', userArgs(s, ['xhost', '-SI:localuser:' + app.runAs]), { timeoutMs: 8000 }).catch(() => {});   // thu hồi quyền vẽ lên màn hình
       if (!hit.length) return { ok: true, app: app.label, closed: 0 };
       await run('kill', ['-TERM', ...hit.map((p) => String(p.pid))], { timeoutMs: 8000 });
       return { ok: true, app: app.label, closed: hit.length };

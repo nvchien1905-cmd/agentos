@@ -14,6 +14,7 @@ function make(extra) {
   const calls = [], detached = [];
   const run = async (cmd, args, opts) => {
     calls.push({ cmd, args, opts });
+    if (extra && extra.first) { const x = extra.first(cmd, args, opts); if (x) return x; }
     if (cmd === 'scrot') { fs.writeFileSync(args[args.length - 1], 'png'); return { code: 0, out: '', err: '' }; }
     if (cmd === 'ps') return { code: 0, out: '  11 /opt/google/chrome/chrome --password-store=basic\n  12 /opt/google/chrome/chrome --app=https://chat.zalo.me --user-data-dir=/home/chien/.config/agentos-app-zalo\n  13 /opt/google/chrome/chrome --type=renderer --app=https://chat.zalo.me\n  20 /usr/bin/rustdesk --service\n  21 /usr/share/rustdesk/rustdesk\n', err: '' };
     if (cmd === 'xdotool' && args[0] === 'search') return { code: 0, out: '100\n101\n', err: '' };
@@ -207,4 +208,17 @@ test('OCR nút chữ trắng trên nền xanh: chế độ rải rác bỏ sót 
   const c = make({ run: (cmd) => (cmd === 'tesseract' ? { code: 0, out: TSV, err: '' } : null) });
   assert.equal((await c.desk.handle({ cmd: 'findtext', text: 'gui' })).matches.length, 2);
   assert.equal(c.calls.filter((x) => x.cmd === 'tesseract').length, 1);
+});
+
+test('fbbot (trình duyệt của bot để đăng nhập Facebook): mở bằng đúng người dùng agentos trên màn hình của người ngồi máy sau khi cấp quyền vẽ (xhost), đóng thì thu hồi; chỉ đóng đúng tiến trình đó', async () => {
+  const { desk, calls, detached } = make({ first: (cmd, args) => (cmd === 'ps' && args.includes('agentos') ? { code: 0, out: '  500 /usr/lib/chromium/chromium --user-data-dir=/var/lib/agentos/data/browser-profile --no-first-run https://www.facebook.com/messages\n  501 /usr/lib/chromium/chromium --headless --remote-debugging-pipe --user-data-dir=/var/lib/agentos/data/browser-profile\n  502 /opt/google/chrome/chrome --password-store=basic\n', err: '' } : null) });
+  const r = await desk.handle({ cmd: 'open', app: 'fbbot' });
+  assert.equal(r.ok, true);
+  const xh = calls.find((c) => c.args.includes('xhost')); assert.ok(xh, 'cấp quyền vẽ lên màn hình'); assert.ok(xh.args.includes('+SI:localuser:agentos')); assert.equal(xh.args[xh.args.indexOf('-u') + 1], 'chien', 'xhost chạy bằng người ngồi máy (chủ màn hình)');
+  assert.equal(detached.length, 1); const [bin, args] = detached[0]; assert.equal(bin, 'runuser'); assert.deepEqual(args.slice(0, 3), ['-u', 'agentos', '--']); assert.ok(args.includes('DISPLAY=:0'));
+  assert.ok(args.includes('--user-data-dir=/var/lib/agentos/data/browser-profile') && args.includes('/usr/bin/chromium'));
+  calls.length = 0; const c = await desk.handle({ cmd: 'close', app: 'fbbot' });
+  assert.equal(c.ok, true); assert.equal(c.closed, 1, 'chỉ đóng cửa sổ có hiển thị, không đóng trình duyệt ẩn của AI hay Chrome thường');
+  const kill = calls.find((x) => x.cmd === 'kill'); assert.deepEqual(kill.args, ['-TERM', '500']);
+  assert.ok(calls.some((x) => x.args.includes('-SI:localuser:agentos')), 'thu hồi quyền vẽ khi đóng');
 });

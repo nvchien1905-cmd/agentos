@@ -168,8 +168,9 @@ async function main() {
   const usage = createUsage({ db, projects });
   const cwdOf = (job) => { if (!job.project) return cfg.workdir; const p = projects.get(job.project); if (!p) return cfg.workdir; try { projects.ensureDirs(p); } catch (e) { return cfg.workdir; } return p.dir; };
   const projectEngine = (job) => { const p = projects.get(job.project); return p && p.engine ? p.engine : null; };
+  const fbAllow = { fn: null };                       // facebook.allowInteract (trợ lý trực Messenger: bấm/gõ trong trình duyệt được tự cho phép, có hạn mức), gắn sau khi facebook được tạo
   const chungtuAllow = autoAllowFor(projects);        // dự án bật chế độ chứng từ: ghi sổ không hỏi từng lần (chungtu.js)
-  const gate = createGate({ db, approvals, workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], autoAllow: chungtuAllow, dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
+  const gate = createGate({ db, approvals, workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 
@@ -362,10 +363,12 @@ async function main() {
     file: path.join(dataDir, 'facebook.json'), log, admin: adminChat,
     notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons), edit: (chat, mid, text) => tg.editMessage(chat, mid, text),
     // kiểm tin: việc "event" (luôn ở chế độ BẢO VỆ dù đang Toàn quyền: nội dung tin nhắn là của người lạ) dùng bộ công cụ web, ưu tiên Claude; gửi: việc nền sau khi chủ máy bấm ✅
-    submit: (prompt, kind) => { const claude = cfg.engineOrder.includes('claude') ? 'claude' : null; const id = db.addJob(adminChat(), prompt, kind === 'check' ? claude : null, 'web', kind === 'check' ? 'event' : 'bg'); setImmediate(() => crew.wake()); return id; },
+    // Cả kiểm tin lẫn gửi đều là việc "event" = LUÔN chế độ bảo vệ (không sudo) và CHỈ Claude (đi qua cổng duyệt; Codex/Gemini không qua cổng nên không dùng trình duyệt ở đây).
+    submit: (prompt, kind) => { if (!cfg.engineOrder.includes('claude')) throw new Error('Trợ lý Facebook cần Claude (đi qua cổng duyệt) nhưng máy này chưa bật Claude.'); const id = db.addJob(adminChat(), prompt, 'claude', 'web', 'event'); setImmediate(() => crew.wake()); return id; },
     getJob: (id) => db.getJob(id),
   });
   fbHook.onResult = (job, text) => facebook.onResult(job, text);
+  fbAllow.fn = (job, tool, input) => facebook.allowInteract(job, tool, input);
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();

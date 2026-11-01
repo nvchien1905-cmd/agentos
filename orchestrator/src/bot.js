@@ -26,7 +26,7 @@ function helpText(profiles) {
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
     '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +
     '📘 /fanpage - AI trả lời tin nhắn FANPAGE qua API chính thức (nháp có nút ✅/❌ hoặc tự động) · /fanpage ketnoi nhờ AI tự lấy khóa · /fanpage tudong · /fanpage chidan <nội dung>\n' +
-    '👤 /facebook bat - AI vào Chrome đọc tin nhắn Facebook CÁ NHÂN, soạn nháp, chỉ gửi khi anh bấm ✅ · /facebook tat · /fb tra <số> <nội dung>\n' +
+    '👤 /facebook - TRỢ LÝ TRỰC Messenger cá nhân qua Chrome: dangnhap (một lần) · bat · nhap (chỉ soạn nháp) · tudong [tên] (AI tự trả lời tin đơn giản, nhạy cảm vẫn chờ duyệt) · khong <tên> · chidan · chuky · nhatky · /fb tra <số> <nội dung>\n' +
     '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
     '📊 /chiphi [tuan|thang|homnay] - thống kê dùng AI theo AI và theo dự án · /chiphi tran <AI> <số việc/tháng> - đặt trần tháng (vượt thì dồn sang AI khác)\n' +

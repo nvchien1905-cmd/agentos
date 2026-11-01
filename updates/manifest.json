@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.16",
-  "file": "agentos-update-2026.10.28.16.tar.gz",
-  "size": 335681,
-  "sha256": "a7a3e6c45e53a2e30f26a195c37205e8831cb1d710199a38f4f4d767af76e1d3",
+  "version": "2026.10.28.17",
+  "file": "agentos-update-2026.10.28.17.tar.gz",
+  "size": 338678,
+  "sha256": "2b18e21312b40b1d2bd6798596c064d4ba5983f078609121351dc72778731d00",
   "date": "2026-11-01",
-  "notes": "Trợ lý trực Facebook kiểm tin mỗi 30 giây không dùng AI (giữ tab Messenger, đọc tiêu đề), tin gửi đi không nhắc tới AI, trần tin mỗi giờ, sửa lỗi treo khi không vào được trang"
+  "notes": "Máy trực: /facebook may dùng Chrome thật của máy Windows để trực Messenger (kiểm nhanh bằng tiêu đề cửa sổ, AI chạy trên Chrome đã đăng nhập, nháp mặc định)"
 }

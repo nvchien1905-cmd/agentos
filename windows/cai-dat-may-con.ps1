@@ -3,11 +3,13 @@
 # Lam: copy chuong trinh vao %ProgramData%\AgentOS, tao khoa bi mat, mo cong 8433 CHI cho mang Tailscale (100.64.0.0/10),
 #      tao tac vu tu chay khi dang nhap Windows. In ra DIA CHI + KHOA de nhap vao may dau nao (Cai dat -> Doi may, hoac /may them ...).
 # Go bo: powershell -ExecutionPolicy Bypass -File cai-dat-may-con.ps1 -GoBo
-param([string]$Ten = $env:COMPUTERNAME, [int]$Cong = 8433, [switch]$GoBo, [switch]$ChoPhepDoiKhoa, [switch]$KhongSSH)
+param([string]$Ten = $env:COMPUTERNAME, [int]$Cong = 8433, [switch]$GoBo, [switch]$ChoPhepDoiKhoa, [switch]$KhongSSH, [switch]$Chrome)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dest = Join-Path $env:ProgramData 'AgentOS'
 $task = 'AgentOS May Con'
+# Chay lai de cap nhat ma ma khong gan ten: giu ten may da dat
+if (-not $PSBoundParameters.ContainsKey('Ten')) { try { $old = ((Get-Content (Join-Path $dest 'fleet.json') -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json).agent.name; if ($old) { $Ten = $old } } catch { } }
 $rule = 'AgentOS May Con (Tailscale)'
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { Write-Host 'Can chay bang Run as administrator.' -ForegroundColor Red; exit 1 }
@@ -24,6 +26,7 @@ if (-not $node) { Write-Host 'Chua co Node.js. Cai: winget install OpenJS.NodeJS
 
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item (Join-Path $here 'may-con-windows.js') $dest -Force
+Copy-Item (Join-Path $here 'mo-messenger.ps1') $dest -Force -ErrorAction SilentlyContinue
 Copy-Item (Join-Path $here '..\orchestrator\src\fleet.js') $dest -Force -ErrorAction SilentlyContinue
 if (-not (Test-Path (Join-Path $dest 'fleet.js'))) { Copy-Item (Join-Path $here 'fleet.js') $dest -Force }
 Copy-Item (Join-Path $here '..\orchestrator\src\tsowner.js') $dest -Force -ErrorAction SilentlyContinue
@@ -95,6 +98,15 @@ if (Test-Path $rd) {
 # tuong lua: chi mang Tailscale duoc vao cong may con
 Get-NetFirewallRule -DisplayName $rule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName $rule -Direction Inbound -Protocol TCP -LocalPort $Cong -RemoteAddress '100.64.0.0/10' -Action Allow | Out-Null
+
+# Tro ly truc Messenger: cho AI (Claude) dung Chrome DA DANG NHAP cua may nay qua tien ich Claude in Chrome (chi cac thao tac xem/bam/go trong trinh duyet) va tao bieu tuong 'Messenger truc'.
+if ($Chrome) {
+  $c = (Get-Content $confFile -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json
+  $c | Add-Member -NotePropertyName allowChrome -NotePropertyValue $true -Force
+  [IO.File]::WriteAllText($confFile, ($c | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+  & (Join-Path $dest 'mo-messenger.ps1') -TaoLoiTat
+  Write-Host 'Da cho phep AI dung Chrome tren may nay (allowChrome).' -ForegroundColor Green
+}
 
 # tu chay khi dang nhap Windows (an cua so)
 Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue; Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue

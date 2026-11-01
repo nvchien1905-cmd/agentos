@@ -366,6 +366,21 @@ async function main() {
     file: path.join(dataDir, 'facebook.json'), log, admin: adminChat,
     probe: createProbe({ profileDir: browserProfile, display: ':99' }),              // giữ tab Messenger mở, đọc số tin chưa đọc mỗi 30 giây, không dùng AI (fbprobe.js)
     isBusy: () => !!crew.currentJobId(),                                             // đang có việc AI: không giữ hồ sơ trình duyệt
+    // MÁY TRỰC (/facebook may <tên>): kiểm nhanh bằng tiêu đề cửa sổ Chrome của máy Windows trong Đội máy, và giao việc đọc/soạn/gửi cho AI chạy NGAY TRÊN Chrome thật của máy đó (đã đăng nhập, mạng quen)
+    remote: {
+      list: async () => (await fleet.statusAll()).filter((m) => m.online && m.platform === 'windows').map((m) => m.name),
+      probe: async (name) => { const m = fleet.findMachine(name); if (!m) throw new Error('Không có máy "' + name + '" trong Đội máy (xem /may)'); return fleet.call(m, 'GET', '/fleet/probe', undefined, 15000); },
+      run: async (name, prompt) => {
+        let r; try { r = await fleet.sendTask(name, prompt, { chrome: true }); } catch (e) { return { ok: false, error: e.message }; }
+        for (let i = 0; i < 120; i++) {                                               // chờ tối đa ~10 phút, 5 giây hỏi một lần
+          await new Promise((res) => setTimeout(res, 5000));
+          let j; try { j = await fleet.jobResult(name, r.jobId); } catch (e) { if (i > 6 && /không có việc này/.test(e.message)) return { ok: false, error: 'máy trực mất việc (khởi động lại?)' }; continue; }
+          if (j.status === 'done') return { ok: true, text: String(j.result || '') };
+          if (j.status === 'error') return { ok: false, error: String(j.error || 'lỗi không rõ') };
+        }
+        return { ok: false, error: 'quá 10 phút chưa xong' };
+      },
+    },
     notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons), edit: (chat, mid, text) => tg.editMessage(chat, mid, text),
     // kiểm tin: việc "event" (luôn ở chế độ BẢO VỆ dù đang Toàn quyền: nội dung tin nhắn là của người lạ) dùng bộ công cụ web, ưu tiên Claude; gửi: việc nền sau khi chủ máy bấm ✅
     // Cả kiểm tin lẫn gửi đều là việc "event" = LUÔN chế độ bảo vệ (không sudo) và CHỈ Claude (đi qua cổng duyệt; Codex/Gemini không qua cổng nên không dùng trình duyệt ở đây).

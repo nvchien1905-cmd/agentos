@@ -124,7 +124,7 @@ test('fanpage: khóa hết hạn (mã 190) chỉ báo MỘT lần; thao tác b�
 function mkFb(o) {
   o = o || {}; const subs = [], texts = [], cards = [], jobs = {}; let id = 100, clock = Date.UTC(2026, 0, 5, 3, 0, 0);          // 10:00 giờ VN = 03:00 UTC nhưng đồng hồ máy chạy thử theo giờ địa phương
   const fb = createFacebook({
-    file: path.join(tmp(), 'fb.json'), now: () => clock, admin: () => '1', probe: o.probe, isBusy: o.isBusy,
+    file: path.join(tmp(), 'fb.json'), now: () => clock, admin: () => '1', probe: o.probe, isBusy: o.isBusy, remote: o.remote,
     notify: async (c, t) => { texts.push(t); }, ask: async (c, t, b) => { cards.push({ t, b }); return 700 + cards.length; }, edit: async () => {},
     submit: (prompt, kind) => { id++; subs.push({ id, prompt, kind }); jobs[id] = { status: 'running' }; return id; }, getJob: (i) => jobs[i],
   });
@@ -324,4 +324,31 @@ test('facebook nhả trình duyệt đúng lúc: trước khi gọi AI, khi đan
   S.bump(31); assert.equal(await S.fb.tick(), true, 'hết 30 phút thì tự kiểm lại'); S.jobs[102].status = 'done';
   await S.fb.pause(30); await S.fb.pause(0); S.bump(0.6); unread = 12; assert.equal(await S.fb.tick(), true, '/dong fbbot: kiểm lại ngay'); S.jobs[103].status = 'done';
   S.fb.command('tat'); releases = 0; await S.fb.tick(); assert.equal(releases, 1, 'tắt trợ lý thì nhả trình duyệt'); S.fb.command('bat'); S.at(23, 30); releases = 0; await S.fb.tick(); assert.equal(releases, 1, 'ngoài giờ trực thì nhả trình duyệt');
+});
+
+test('MÁY TRỰC (/facebook may): một lệnh kiểm máy + cửa sổ Messenger + quyền Chrome rồi BẬT; kiểm nhanh qua máy từ xa; AI chạy trên máy đó với lời nhắc dùng Chrome thật; kết quả ra thẻ duyệt; lỗi báo rõ', async () => {
+  let raw = { found: true, unread: 0, chromeReady: true, title: 'Messenger' }; const ran = []; let runRes = { ok: true, text: '```json\n{"can_duyet":[{"n":1,"ten":"Mai","xem_truoc":"Shop còn nồi không?","nhap":"Dạ còn ạ","ly_do":"chờ duyệt"}]}\n```' };
+  const remote = { list: async () => ['May van phong'], probe: async (n) => { if (n !== 'May van phong') throw new Error('không có máy'); return raw; }, run: async (n, p) => { ran.push({ n, p }); return runRes; } };
+  const S = mkFb({ remote, probe: async () => { throw new Error('KHÔNG được dùng trình duyệt của bot khi đã có máy trực'); } }); S.at(10);
+  assert.match(await S.fb.command('may Máy lạ'), /Không nói chuyện được/); assert.equal(S.fb.load().machine, null);
+  const out = await S.fb.command('may'); assert.match(out, /May van phong[^]*Thấy cửa sổ Messenger[^]*AI được phép dùng Chrome[^]*AI chỉ soạn nháp/); assert.equal(S.fb.load().machine, 'May van phong'); assert.equal(S.fb.load().enabled, true);
+  assert.match(S.fb.status(), /chạy trên Chrome của máy "May van phong"/);
+  // 0 tin chưa đọc: không gọi AI; có tin MỚI: gọi AI trên máy trực (không phải submit cục bộ)
+  assert.equal(await S.fb.tick(), false); assert.equal(ran.length, 0);
+  S.bump(1); raw = { found: true, unread: 2, chromeReady: true }; assert.equal(await S.fb.tick(), true);
+  await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r));
+  assert.equal(S.subs.length, 0, 'không tạo việc cục bộ'); assert.equal(ran.length, 1); assert.equal(ran[0].n, 'May van phong');
+  assert.match(ran[0].p, /Claude in Chrome[^]*tab Messenger đang mở[^]*CHỈ ĐỌC/); assert.ok(!/AI|trợ lý ảo/i.test(S.fb.load().signature || ''), 'không chữ ký nhắc AI');
+  assert.equal(S.cards.length, 1); assert.match(S.cards[0].t, /Mai[^]*Dạ còn ạ/);
+  // bấm ✅ → gửi bằng máy trực, lời nhắc chứa đúng nội dung duyệt
+  assert.match(await S.fb.answerCallback('fb:1:y'), /Đang nhờ AI gửi cho Mai/); await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r));
+  assert.equal(ran.length, 2); assert.match(ran[1].p, /FACEBOOK-GỬI[^]*Claude in Chrome[^]*"""\nDạ còn ạ\n"""/);
+  // chưa đăng nhập / mất cửa sổ / chưa bật quyền Chrome: báo đúng, không gọi AI
+  S.bump(1); S.jobs; raw = { found: true, login: true, chromeReady: true }; await S.fb.tick(); assert.ok(S.texts.some((t) => /Cửa sổ Messenger trên máy "May van phong" đang đòi đăng nhập/.test(t)));
+  S.bump(1); raw = { found: true, unread: 5, chromeReady: false }; assert.equal(await S.fb.tick(), false); assert.ok(S.texts.some((t) => /chưa cho AI dùng Chrome[^]*-Chrome/.test(t))); assert.equal(ran.length, 2);
+  S.bump(1); raw = { found: false, chromeReady: true }; for (let i = 0; i < 3; i++) { S.bump(1); await S.fb.tick(); } assert.ok(S.texts.some((t) => /Không kiểm được Messenger trên máy "May van phong"/.test(t))); assert.equal(ran.length, 2, 'máy trực lỗi: không nhờ AI kiểm thay');
+  // máy trực làm lỗi: báo chủ máy
+  raw = { found: true, unread: 9, chromeReady: true }; runRes = { ok: false, error: 'Chủ máy Windows này chưa bật' }; S.bump(1); S.fb.command('bat'); S.fb.command('may May van phong');
+  S.bump(1); await S.fb.tick(); await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r)); assert.ok(S.texts.some((t) => /Máy trực "May van phong" không kiểm được tin: Chủ máy Windows/.test(t)));
+  assert.match(await S.fb.command('may tat'), /Đã quay về/); assert.equal(S.fb.load().machine, null);
 });

@@ -60,7 +60,7 @@ function createFleet(o) {
   }
   async function sendTask(name, prompt, opt) {
     const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".');
-    return call(m, 'POST', '/fleet/task', { prompt: String(prompt), project: opt && opt.project ? String(opt.project) : undefined });
+    return call(m, 'POST', '/fleet/task', { prompt: String(prompt), project: opt && opt.project ? String(opt.project) : undefined, chrome: opt && opt.chrome ? true : undefined });
   }
   async function jobResult(name, id) { const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".'); return call(m, 'GET', '/fleet/job?id=' + encodeURIComponent(id), undefined, 8000); }
   async function updateMachine(name) { const m = findMachine(name); if (!m) throw new Error('Không có máy "' + name + '".'); return call(m, 'POST', '/fleet/update', {}, 20000); }
@@ -112,10 +112,12 @@ function createFleet(o) {
       seen.set(sig, now());
       let body = {}; try { body = rawBody ? JSON.parse(rawBody) : {}; } catch (e) { return { status: 400, body: { error: 'nội dung không phải JSON' } }; }
       try {
+        // Kiểm nhanh số tin Messenger chưa đọc ở Chrome của máy này (không dùng AI, không tự động hóa trình duyệt): chỉ máy có deps.probe (máy Windows) mới trả lời
+        if (method === 'GET' && u.pathname === '/fleet/probe') return deps.probe ? { status: 200, body: await deps.probe() } : { status: 404, body: { error: 'máy này không hỗ trợ kiểm nhanh Messenger' } };
         if (method === 'GET' && u.pathname === '/fleet/status') return { status: 200, body: Object.assign({ name: c.name, version: deps.version ? deps.version() : '', time: now(), platform: deps.platform || '' }, deps.stats ? deps.stats() : {}) };
         if (method === 'POST' && u.pathname === '/fleet/task') {
           const p = String(body.prompt || '').trim(); if (p.length < 2 || p.length > 8000) return { status: 400, body: { error: 'việc dài 2–8000 ký tự' } };
-          const id = deps.submit('[VIỆC TỪ MÁY ĐẦU NÃO] ' + p, body.project ? String(body.project) : null); log('đội máy: nhận việc #' + id + ' từ máy đầu não'); return { status: 200, body: { jobId: id } };
+          const id = deps.submit('[VIỆC TỪ MÁY ĐẦU NÃO] ' + p, body.project ? String(body.project) : null, { chrome: body.chrome === true }); log('đội máy: nhận việc #' + id + ' từ máy đầu não'); return { status: 200, body: { jobId: id } };
         }
         if (method === 'GET' && u.pathname === '/fleet/job') { const j = deps.getJob(Number(u.searchParams.get('id'))); return j ? { status: 200, body: j } : { status: 404, body: { error: 'không có việc này' } }; }
         if (method === 'POST' && u.pathname === '/fleet/update') return { status: 200, body: { text: deps.update ? await deps.update() : 'máy này không hỗ trợ cập nhật từ xa' } };

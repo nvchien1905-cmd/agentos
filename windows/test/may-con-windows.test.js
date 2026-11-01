@@ -63,3 +63,41 @@ test('máy con Windows: đọc được windows-agent.json có BOM (PowerShell 5
   assert.equal(installSshKey(K).ok, true);
   delete process.env.AGENTOS_WIN_CONF;
 });
+
+test('máy con Windows: chế độ CHROME chỉ gồm công cụ xem/bấm/gõ trong trình duyệt (không chạy mã trang, không tải tệp, không đọc/ghi tệp, không lệnh); chỉ Claude; việc thường vẫn chỉ đọc', () => {
+  const { CHROME_TOOLS } = require('../may-con-windows');
+  const a = aiCommand('claude', 'trực tin', true); assert.equal(a.bin, 'claude'); assert.ok(a.args.includes('--chrome'));
+  const tools = a.args[a.args.indexOf('--allowedTools') + 1].split(','); assert.deepEqual(tools, CHROME_TOOLS);
+  for (const bad of ['javascript_tool', 'file_upload', 'upload_image', 'tabs_close_mcp', 'shortcuts_execute', 'gif_creator', 'read_network_requests', 'read_console_messages']) assert.ok(!tools.some((t) => t.endsWith(bad)), bad + ' không được cho phép');
+  assert.ok(!tools.some((t) => /^(Bash|Write|Edit|Read)$/i.test(t)), 'không có công cụ hệ thống tệp/lệnh');
+  assert.equal(aiCommand('codex', 'x', true), null); assert.equal(aiCommand('none', 'x', true), null);
+  assert.ok(!aiCommand('claude', 'x').args.includes('--chrome'), 'việc thường không mở Chrome');
+});
+
+test('máy con Windows: kiểm nhanh Messenger đọc TIÊU ĐỀ cửa sổ Chrome (không AI); việc Chrome bị từ chối nếu chủ máy chưa bật allowChrome; đường /fleet/probe chỉ máy đã ghép (ký) gọi được', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'winc-')); const fleetFile = path.join(dir, 'fleet.json'); const port = await freePort();
+  process.env.AGENTOS_WIN_DIR = dir; process.env.AGENTOS_WIN_CONF = path.join(dir, 'w.json');
+  const writeConf = (extra) => fs.writeFileSync(process.env.AGENTOS_WIN_CONF, JSON.stringify(Object.assign({ ai: 'claude', workdir: path.join(dir, 'work'), timeoutSec: 20 }, extra)));
+  writeConf({}); let titles = ['(3) Messenger | Facebook - Google Chrome', 'Claude'];
+  const f = createFleet({ file: fleetFile }); const a = f.enableAgent({ name: 'May Windows', port, host: '127.0.0.1' });
+  const ran = []; const runner = (prompt, c, chrome) => { ran.push({ prompt, chrome }); return { bin: process.execPath, args: ['-e', 'console.log("xong")'] }; };
+  const { agent } = create({ fleetFile, runner, windowTitles: () => titles }); await agent.listen();
+  const H = createFleet({ file: path.join(dir, 'head.json') });
+  try {
+    H.addMachine({ name: 'Win', url: 'http://127.0.0.1:' + port, key: a.key }); const m = H.findMachine('Win');
+    assert.deepEqual(await H.call(m, 'GET', '/fleet/probe', undefined, 15000), { found: true, unread: 3, title: '(3) Messenger | Facebook - Google Chrome', chromeReady: false }, 'chưa bật allowChrome → chromeReady=false');
+    writeConf({ allowChrome: true }); assert.equal((await H.call(m, 'GET', '/fleet/probe')).chromeReady, true);
+    titles = ['Messenger | Facebook - Google Chrome']; assert.equal((await H.call(m, 'GET', '/fleet/probe')).unread, 0);
+    titles = ['(12) Messenger - Google Chrome', '(2) Messenger - Google Chrome']; assert.equal((await H.call(m, 'GET', '/fleet/probe')).unread, 12, 'nhiều cửa sổ: lấy số lớn nhất');
+    titles = ['Facebook – log in or sign up - Google Chrome']; assert.equal((await H.call(m, 'GET', '/fleet/probe')).login, true);
+    titles = ['Đăng nhập Messenger']; assert.equal((await H.call(m, 'GET', '/fleet/probe')).login, true);
+    titles = ['Gmail - Google Chrome', 'Claude']; assert.deepEqual(await H.call(m, 'GET', '/fleet/probe'), { found: false, unread: null, chromeReady: true });
+    // sai khóa → bị từ chối
+    await assert.rejects(H.call({ url: 'http://127.0.0.1:' + port, key: 'sai' }, 'GET', '/fleet/probe'), /chữ ký sai/);
+    // việc Chrome: bị từ chối khi chưa bật; chạy với cờ chrome khi đã bật; việc thường không có cờ
+    const wait = async (id) => { for (let i = 0; i < 100; i++) { const j = await H.jobResult('Win', id); if (j.status === 'done' || j.status === 'error') return j; await new Promise((r) => setTimeout(r, 50)); } throw new Error('quá lâu'); };
+    writeConf({}); const e = await wait((await H.sendTask('Win', 'xem tin', { chrome: true })).jobId); assert.equal(e.status, 'error'); assert.match(e.error, /allowChrome/); assert.equal(ran.length, 0, 'chưa bật thì AI không được chạy');
+    writeConf({ allowChrome: true }); assert.equal((await wait((await H.sendTask('Win', 'xem tin', { chrome: true })).jobId)).status, 'done'); assert.equal(ran[0].chrome, true);
+    assert.equal((await wait((await H.sendTask('Win', 'đếm tệp')).jobId)).status, 'done'); assert.equal(ran[1].chrome, false);
+  } finally { await agent.close(); }
+});

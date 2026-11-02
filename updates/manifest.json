@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.25",
-  "file": "agentos-update-2026.10.28.25.tar.gz",
-  "size": 340223,
-  "sha256": "1c2bfb639d38c81414a173714f28b084dfd7bdaa9a0380d133a1f2379639d6d4",
+  "version": "2026.10.28.26",
+  "file": "agentos-update-2026.10.28.26.tar.gz",
+  "size": 340587,
+  "sha256": "02b660f65f0d47c2ced940b17f4c6a917c52535e9ab71b363be1e0bf211042b8",
   "date": "2026-11-02",
-  "notes": "Nén ngữ cảnh một lần mỗi 15 lượt"
+  "notes": "Rà soát toàn hệ thống: ưu tiên IPv6 (IPv4 mạng nhà hỏng gây fetch failed), ghi rõ mã lỗi mạng, dọn tệp khóa vân tay còn sót"
 }

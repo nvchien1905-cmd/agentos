@@ -1,4 +1,7 @@
 'use strict';
+// Mạng nhà chỉ chạy IPv6 ổn định, IPv4 hay chập chờn (đo 02/11/2026): ưu tiên IPv6 và cho mỗi lần thử kết nối đủ thời gian (mặc định 250ms quá ngắn -> 'fetch failed').
+try { require('dns').setDefaultResultOrder('ipv6first'); } catch (e) { /* Node cũ */ }
+try { if (typeof require('net').setDefaultAutoSelectFamilyAttemptTimeout === 'function') require('net').setDefaultAutoSelectFamilyAttemptTimeout(2000); } catch (e) { /* Node cũ */ }
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');

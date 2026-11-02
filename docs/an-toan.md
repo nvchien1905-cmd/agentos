@@ -357,3 +357,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.25 — Nén ngữ cảnh mỗi 15 lượt
 - Mỗi phiên AI tối đa 15 lượt (`MEMORY_ROTATE_AFTER`, trước là 10), tới lượt 15 thì nén ngữ cảnh MỘT lần rồi mở phiên mới; nén định kỳ cũng chỉ sau 15 việc (`MEMORY_SUMMARIZE_AFTER`, trước là 6).
+
+## 2026.10.28.26 — Rà soát toàn hệ thống 02/11/2026
+- Chạy toàn bộ test trên máy ảo Linux: bộ điều phối 289/289, cập nhật 11/11, trình hướng dẫn 65/65, trợ lý màn hình 18/18, máy Windows 7/7. Kiểm cú pháp mọi tệp .js / .sh / .ps1: không lỗi.
+- Phát hiện máy đầu não (mạng nhà) IPv4 không ra Internet (ping 1.1.1.1, github, anthropic qua IPv4 đều lỗi), chỉ IPv6 chạy → gây "fetch failed" tới Telegram. Bộ điều phối giờ ưu tiên IPv6 (`dns.setDefaultResultOrder('ipv6first')`), cho mỗi lần thử kết nối 2 giây (mặc định 250ms), và lỗi Telegram ghi rõ mã nguyên nhân (ENETUNREACH, ETIMEDOUT…). Nguyên nhân gốc nằm ở router/nhà mạng (xem hướng dẫn gửi chủ máy).
+- `apply.sh` xóa `unlock.js` còn sót trên máy đã cài (bản cập nhật không tự xóa tệp).

@@ -39,12 +39,10 @@ function createTelegram(token, fetchImpl, opts) {
 
   async function callOnce(method, params, signal) {
     const guard = signal || AbortSignal.timeout(40000);                      // getUpdates tự đặt giới hạn riêng; lệnh khác quá 40 giây coi như treo
-    const r = await f(base + method, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(params || {}),
-      signal: guard,
-    });
+    let r;
+    try {
+      r = await f(base + method, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params || {}), signal: guard });
+    } catch (e) { if (e && e.cause && e.cause.code && !String(e.message).includes(e.cause.code)) e.message += ' (' + e.cause.code + ')'; throw e; }   // ghi rõ nguyên nhân mạng (ENETUNREACH, ETIMEDOUT...) để dễ chẩn đoán
     return parse(r, method);
   }
   // Mạng chập chờn ("fetch failed") làm câu trả lời bị mất định dạng đẹp hoặc không tới nơi: lệnh GỬI/SỬA tin được thử lại vài lần (1,5s, 4s, 9s, 20s) trước khi báo lỗi.

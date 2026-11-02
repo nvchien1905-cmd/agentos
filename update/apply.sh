@@ -2,6 +2,8 @@
 # Chạy bằng root sau khi tệp của bản cập nhật đã được ghi (nằm trong phần được ký).
 # Bản này: bộ gõ tiếng Việt, giải nén tệp, ứng dụng Claude/ChatGPT trên màn hình chính.
 set -e
+# Dọn tệp của tính năng đã gỡ (bản cập nhật chỉ thêm/ghi đè tệp, không tự xóa): khóa vân tay đã bỏ ở 2026.10.28.21.
+rm -f /opt/agentos/orchestrator/src/unlock.js
 chmod 755 /usr/local/sbin/agentos-desktop-setup
 /usr/local/sbin/agentos-desktop-setup
 # Nạp lại định nghĩa dịch vụ: gói cập nhật có thể đổi file .service (VD bỏ RestrictSUIDSGID để hộp cô lập AI hoạt động); trình cập nhật khởi động lại bộ điều phối SAU bước này.

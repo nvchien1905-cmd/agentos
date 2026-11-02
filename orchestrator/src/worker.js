@@ -1,7 +1,6 @@
 'use strict';
 
 const RESUME_FAIL_RE = /no conversation found|session.*not found|thread.*not found|cannot resume|could not resume|error resuming|invalid session/i;
-const SLOW_SESSION_MS = 10 * 60 * 1000;      // việc chạy quá 10 phút thì bỏ phiên AI (phiên đã quá nặng)
 const NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', deepseekapi: 'DeepSeek (API)' };
 
 const NL = String.fromCharCode(10);
@@ -96,7 +95,6 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     const scope = db.scopeOf(job);
     let resumeId = isMain ? db.kvGet(sessionKey(scope, eng)) : null;           // việc nền/sự kiện: phiên riêng, không dính phiên trò chuyện chính
     let res;
-    const t0 = now();
     for (let i = 0; i < 2; i++) {
       res = await runWithRetry(job, eng, resumeId);
       // Phiên cũ không còn -> làm lại không kèm phiên (một lần).
@@ -107,9 +105,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       }
       break;
     }
-    // Phiên bị hủy / quá thời gian / chạy quá lâu thường đã phình to (kết quả công cụ trình duyệt rất dài) -> nối lại sẽ càng chậm: bỏ phiên, lần sau mở phiên mới (ngữ cảnh lấy từ tóm tắt + sổ tay).
-    const heavy = (res.timedOut || res.cancelled || now() - t0 > SLOW_SESSION_MS) && isMain;
-    if (heavy) { db.kvDel(sessionKey(scope, eng)); log("bỏ phiên " + name(eng) + " của cuộc trò chuyện " + job.chat_id + " (việc #" + job.id + " bị hủy/quá hạn/chạy lâu)"); }
+    // Việc bị HỦY: bỏ phiên (chủ máy muốn bỏ dở, phiên có thể đang kẹt/phình); việc xong hay quá hạn vẫn giữ phiên để gõ "tiếp tục" là làm tiếp, việc dài nhiều giờ không mất mạch.
+    if (res.cancelled && isMain) { db.kvDel(sessionKey(scope, eng)); log("bỏ phiên " + name(eng) + " của cuộc trò chuyện " + job.chat_id + " (việc #" + job.id + " bị hủy)"); }
     else if (res.ok && res.sessionId && isMain) db.kvSet(sessionKey(scope, eng), res.sessionId);
     if (res.ok && context && isMain) {
       try { const r = await context.afterJob(job, eng, res); if (r && r.rotate) { db.kvDel(sessionKey(scope, eng)); log('xoay phiên ' + name(eng) + ' của cuộc trò chuyện ' + job.chat_id + ' (ngữ cảnh đã được tóm tắt)'); } }

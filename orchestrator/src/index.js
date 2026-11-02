@@ -211,6 +211,8 @@ async function main() {
   const atImages = (text) => imagePaths(text).reduce((t, p) => t.split(p).join('@' + p), String(text));
   const keyEnv = (name) => apikeys.childEnv(name, cfg.apiKeys, { deepseekModel: cfg.deepseekModel });
   // Claude Code chạy cho cả 'claude' và 'deepseekapi' (DeepSeek qua điểm cuối tương thích Anthropic): chỉ khác biến môi trường
+  // Việc nền (/nen) được chạy lâu hơn việc trò chuyện thường: mặc định 4 giờ (JOB_TIMEOUT_BG_SEC), để việc dài nhiều giờ không bị dừng giữa chừng.
+  const timeoutFor = (job) => (job && job.lane === 'bg' ? cfg.jobTimeoutBgMs : cfg.jobTimeoutMs);
   const claudeRun = (name, { job, prompt, resumeId, onProgress }) => {
       const kenv = keyEnv(name);
       if (jobFull(job)) {
@@ -220,7 +222,7 @@ async function main() {
         if (guardOn()) { try { gate.begin(job, { policy: {} }, { guard: true }); gf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được hàng rào cho việc #' + job.id + ': ' + e.message); } }
         const h = startClaude({
           bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cwdOf(job), prompt, resumeId,
-          skipPermissions: true, mcpConfig, settings: gf ? gf.settings : undefined, appendSystemPrompt: FULL_HINT, timeoutMs: cfg.jobTimeoutMs, env: Object.assign({}, kenv, gf ? gf.env : {}), onProgress,   // không wrap: không sandbox
+          skipPermissions: true, mcpConfig, settings: gf ? gf.settings : undefined, appendSystemPrompt: FULL_HINT, timeoutMs: timeoutFor(job), env: Object.assign({}, kenv, gf ? gf.env : {}), onProgress,   // không wrap: không sandbox
         });
         const cleanup = () => { fs.rmSync(mcpConfig, { force: true }); if (gf) { gate.end(job.id); fs.rmSync(gf.settings, { force: true }); } };
         return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
@@ -234,7 +236,7 @@ async function main() {
         prompt, resumeId, allowedTools: tools.allowFor(p).join(','),
         mcpConfig: files.mcpConfig, settings: files.settings, env: Object.assign({}, kenv, files.env),
         permissionPromptTool: 'mcp__agentos_gate__approve',   // dự phòng: công cụ nào hook bỏ sót vẫn bị cổng từ chối
-        appendSystemPrompt: [p.hint, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, onProgress,
+        appendSystemPrompt: [p.hint, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: timeoutFor(job), wrap: sandbox.wrap, onProgress,
       });
       const cleanup = () => { gate.end(job.id); for (const f of [files.mcpConfig, files.settings]) fs.rmSync(f, { force: true }); };
       return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
@@ -247,14 +249,14 @@ async function main() {
       if (jobFull(job)) {
         return startCodex({
           bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job), prompt: '[' + FULL_HINT + ']\n\n' + prompt, resumeId,
-          sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), images: imagePaths(prompt), timeoutMs: cfg.jobTimeoutMs, env: keyEnv('codex'), onProgress,   // không sandbox
+          sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), images: imagePaths(prompt), timeoutMs: timeoutFor(job), env: keyEnv('codex'), onProgress,   // không sandbox
         });
       }
       const p = tools.profile(job.profile);
       return startCodex({
         bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job),
         prompt: '[' + [p.hint, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId, onProgress,
-        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), images: imagePaths(prompt), timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('codex'),
+        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), images: imagePaths(prompt), timeoutMs: timeoutFor(job), wrap: sandbox.wrap, env: keyEnv('codex'),
       });
     },
     // Gemini (Google) KHÔNG đi qua cổng duyệt của AgentOS -> ở chế độ bảo vệ chỉ chạy CHỈ ĐỌC (--approval-mode plan: không ghi tệp, không chạy lệnh, không MCP)
@@ -262,14 +264,14 @@ async function main() {
     gemini: ({ job, prompt, resumeId }) => {
       try { apikeys.setGeminiAuthType(process.env.HOME || require('os').homedir(), cfg.apiKeys.gemini ? 'gemini-api-key' : 'oauth-personal'); } catch (e) { log('không đặt được kiểu đăng nhập Gemini: ' + e.message); }
       if (jobFull(job)) {
-        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job), prompt: '[' + FULL_HINT + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, env: keyEnv('gemini') });
+        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job), prompt: '[' + FULL_HINT + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: timeoutFor(job), env: keyEnv('gemini') });
       }
       const p = tools.profile(job.profile);
       const note = 'Bạn đang ở chế độ CHỈ ĐỌC (không ghi tệp, không chạy lệnh): nếu cần lưu kết quả, hãy đưa nội dung vào câu trả lời để chủ máy lưu.';
       return startGemini({
         bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job),
         prompt: '[' + [p.hint, STYLE_HINT, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + atImages(prompt), resumeId,
-        mode: 'plan', model: cfg.geminiModel, timeoutMs: cfg.jobTimeoutMs, wrap: sandbox.wrap, env: keyEnv('gemini'),
+        mode: 'plan', model: cfg.geminiModel, timeoutMs: timeoutFor(job), wrap: sandbox.wrap, env: keyEnv('gemini'),
       });
     },
   };

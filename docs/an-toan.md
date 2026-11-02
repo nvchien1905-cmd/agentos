@@ -347,3 +347,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.10.28.22 — Nén ngữ cảnh bằng Codex, bỏ phiên nặng
 - Nén ngữ cảnh: không có khóa Gemini/DeepSeek thì dùng Codex (tài khoản đã đăng nhập): chạy mới, không phiên cũ, không MCP, sandbox chỉ đọc, 2 phút. `SUMMARY_PROVIDER=codex` ép dùng Codex; `auto` = Gemini → DeepSeek → Codex.
 - Phiên AI bị bỏ khi việc quá thời gian / bị hủy / chạy hơn 10 phút (phiên đã phình, nối lại sẽ chậm). Số lượt tối đa mỗi phiên 25 → 10 (`MEMORY_ROTATE_AFTER`).
+
+## 2026.10.28.23 — Việc dài nhiều giờ không bị mất mạch
+- Chỉ bỏ phiên AI khi việc bị HỦY (không còn bỏ khi quá hạn hoặc chạy lâu), để gõ "tiếp tục" là làm tiếp đúng mạch.
+- Việc nền `/nen` có hạn chạy riêng, mặc định 4 giờ (`JOB_TIMEOUT_BG_SEC`), việc trò chuyện thường vẫn theo `JOB_TIMEOUT_SEC` (900 giây; 3600 khi bật toàn quyền). Việc nền chạy làn riêng nên không chặn tin nhắn thường.

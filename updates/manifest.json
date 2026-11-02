@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.22",
-  "file": "agentos-update-2026.10.28.22.tar.gz",
-  "size": 339823,
-  "sha256": "3f22663a68f64c278b0ec68d9bcc33a2ec46fdbb96589f7ca7082f62899661a4",
+  "version": "2026.10.28.23",
+  "file": "agentos-update-2026.10.28.23.tar.gz",
+  "size": 339890,
+  "sha256": "8e796b44fca2213f2a6c79fb377ab13e6c1333a40b0ba419395751203dfb74bb",
   "date": "2026-11-02",
-  "notes": "Nén ngữ cảnh bằng Codex khi chưa có khóa API; bỏ phiên AI nặng (quá hạn/hủy/chạy lâu); phiên tối đa 10 lượt"
+  "notes": "Việc dài nhiều giờ: /nen chạy tới 4 giờ, chỉ bỏ phiên AI khi việc bị hủy"
 }

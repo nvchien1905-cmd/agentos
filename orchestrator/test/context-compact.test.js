@@ -17,14 +17,15 @@ test('nén ngữ cảnh: không có khóa API thì dùng Codex (tài khoản đ�
   assert.equal(await bad.run('S', 'u'), null, 'Codex lỗi → null (bộ nhớ tự cắt gọn), không ném lỗi');
 });
 
-test('worker: việc quá thời gian / bị hủy / chạy quá 10 phút thì BỎ phiên AI (phiên đã phình to); việc thường vẫn giữ phiên', async () => {
+test('worker: việc quá thời gian / bị hủy / chạy quá 10 phút thì chỉ việc bị HỦY mới bỏ phiên; việc xong, quá hạn hay chạy lâu vẫn giữ phiên', async () => {
   const { openDb } = require('../src/db'); const { createWorker } = require('../src/worker');
   const db = openDb(':memory:'); let t = 1000000, mode = 'ok';
-  const engines = { claude: { start: () => { if (mode === 'slow') t += 11 * 60 * 1000; return { done: Promise.resolve(mode === 'timeout' ? { ok: false, limit: false, timedOut: true, error: 'x' } : { ok: true, text: 't', sessionId: 'S-' + mode }), kill() {} }; } } };
+  const engines = { claude: { start: () => { if (mode === 'slow') t += 11 * 60 * 1000; return { done: Promise.resolve(mode === 'timeout' ? { ok: false, limit: false, timedOut: true, error: 'x' } : mode === 'cancel' ? { ok: false, limit: false, cancelled: true, error: 'Đã hủy' } : { ok: true, text: 't', sessionId: 'S-' + mode }), kill() {} }; } } };
   const worker = createWorker({ db, engines, order: ['claude'], notify: async () => {}, now: () => t, retryDelaysMs: [1], log: () => {} });
   const key = (id) => 'session:' + db.getJob(id).chat_id + ':claude';
   let id = db.addJob('7', 'a', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), 'S-ok', 'việc thường giữ phiên');
-  mode = 'timeout'; id = db.addJob('7', 'b', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), null, 'quá thời gian → bỏ phiên');
+  mode = 'timeout'; id = db.addJob('7', 'b', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), 'S-ok', 'quá thời gian → vẫn giữ phiên (gõ tiếp tục là làm tiếp)');
   mode = 'ok'; id = db.addJob('7', 'c', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), 'S-ok');
-  mode = 'slow'; id = db.addJob('7', 'd', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), null, 'chạy quá 10 phút → bỏ phiên');
+  mode = 'cancel'; id = db.addJob('7', 'x', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), null, 'bị hủy → bỏ phiên');
+  mode = 'slow'; id = db.addJob('7', 'd', null, null, 'main', null); await worker.wake(); assert.equal(db.kvGet(key(id)), 'S-slow', 'việc chạy lâu nhưng xong thì GIỮ phiên (việc dài nhiều giờ không mất mạch)');
 });

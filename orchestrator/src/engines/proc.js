@@ -12,7 +12,24 @@ function killTree(child, sig) {
     try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => {}); } catch (e) { /* đã thoát */ }
     return;
   }
+  const kids = descendants(child.pid);                 // máy chủ MCP/trình duyệt hay tự tách sang nhóm riêng nên giết theo CÂY cha-con, không chỉ theo nhóm
   try { process.kill(-child.pid, sig); } catch (e) { try { child.kill(sig); } catch (e2) { /* đã thoát */ } }
+  for (const k of kids) { try { process.kill(k, sig); } catch (e) { /* đã thoát */ } }
+}
+
+// Mọi tiến trình con cháu của pid (Linux: đọc /proc). Không đọc được thì trả rỗng.
+function descendants(pid) {
+  const out = [];
+  try {
+    const parent = new Map();
+    for (const d of require('fs').readdirSync('/proc')) {
+      if (!/^[0-9]+$/.test(d)) continue;
+      try { const st = require('fs').readFileSync('/proc/' + d + '/stat', 'utf8'); const pp = Number(st.slice(st.lastIndexOf(')') + 2).split(' ')[1]); (parent.get(pp) || parent.set(pp, []).get(pp)).push(Number(d)); } catch (e) { /* vừa thoát */ }
+    }
+    const stack = [pid];
+    while (stack.length) { const x = stack.pop(); for (const k of parent.get(x) || []) { out.push(k); stack.push(k); } }
+  } catch (e) { /* không có /proc */ }
+  return out;
 }
 
 // Chạy một tiến trình, đưa `input` qua stdin. Trả { done, kill }.
@@ -31,11 +48,14 @@ function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
   });
   let out = '', err = '', killedBy = null;
 
+  let finish = null;
   const kill = (why) => {
     if (killedBy) return;
     killedBy = why || 'cancelled';
     killTree(child, 'SIGTERM');
     setTimeout(() => killTree(child, 'SIGKILL'), 5000).unref();
+    // Nếu còn tiến trình con cháu giữ đường ống mở thì 'close' không bao giờ tới → việc treo vĩnh viễn, không hủy được. Quá 8 giây thì bỏ ống và coi như đã xong.
+    setTimeout(() => { if (finish) { for (const st of [child.stdout, child.stderr]) { try { st.destroy(); } catch (e) { /* đã đóng */ } } finish(null); } }, 8000).unref();
   };
   const timer = timeoutMs ? setTimeout(() => kill('timeout'), timeoutMs) : null;
 
@@ -46,12 +66,15 @@ function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
 
   const done = new Promise((resolve) => {
     child.on('error', (e) => { spawnError = e; });
-    child.on('close', (code) => {
+    let ended = false;
+    finish = (code) => {
+      if (ended) return; ended = true;
       if (timer) clearTimeout(timer);
       // Dọn tiến trình mồ côi còn sót trong nhóm (ví dụ trình duyệt do máy chủ MCP bật) khi tiến trình chính đã thoát.
       if (!IS_WIN && child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (e) { /* không còn gì */ } }
       resolve({ code, out, err, killedBy, spawnError });
-    });
+    };
+    child.on('close', finish);
   });
   return { done, kill };
 }
@@ -64,4 +87,4 @@ function abnormal(r, bin) {
   return null;
 }
 
-module.exports = { runProcess, abnormal, killTree };
+module.exports = { runProcess, abnormal, killTree, descendants };

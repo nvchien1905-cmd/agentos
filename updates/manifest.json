@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.19",
-  "file": "agentos-update-2026.10.28.19.tar.gz",
-  "size": 344678,
-  "sha256": "257568939c2324d1925d891cc3b28e00e1a1345b2271c0530196139a9a2b7cb7",
+  "version": "2026.10.28.20",
+  "file": "agentos-update-2026.10.28.20.tar.gz",
+  "size": 345178,
+  "sha256": "a5526f5f01cf6f90d7b334f69457fe84127d58673f702d36ece009ebdc618792",
   "date": "2026-11-02",
-  "notes": "Khóa vân tay/khuôn mặt 24 giờ (tính riêng từng tài khoản Telegram), máy Windows toàn quyền"
+  "notes": "Sửa /huy: việc AI không còn treo vĩnh viễn khi tiến trình con (trình duyệt/MCP) giữ đường ống; khóa vân tay/khuôn mặt 24 giờ"
 }

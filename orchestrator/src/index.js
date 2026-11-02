@@ -296,9 +296,16 @@ async function main() {
     await tg.sendRich(job.chat_id, head + String(text) + (bits.length ? '\n\n_— ' + bits.join(' · ') + '_' : ''));
   };
   // Bộ nhớ dùng chung (ghi nhớ lâu dài + tóm tắt cuộn + việc gần nhất + tìm lại FTS5) và nén bằng mô hình rẻ (Gemini/DeepSeek qua khóa API, không có khóa thì cắt gọn)
-  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, log });
+  // Nén ngữ cảnh bằng Codex (dùng tài khoản Codex đã đăng nhập, không cần khóa API): một lần chạy mới, KHÔNG phiên cũ, KHÔNG công cụ/MCP, sandbox chỉ đọc, 2 phút.
+  const codexSummarize = (system, user) => new Promise((resolve, reject) => {
+    let h; try {
+      h = startCodex({ bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cfg.workdir, prompt: system + '\n\n' + user, sandbox: 'read-only', timeoutMs: 120000, wrap: sandbox.wrap, env: keyEnv('codex') });
+    } catch (e) { return reject(e); }
+    h.done.then((r) => (r && r.ok && r.text ? resolve(r.text) : reject(new Error((r && r.error) || 'Codex không trả kết quả'))), reject);
+  });
+  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: codexSummarize, log });
   const memory = createMemory({ db, projects, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
-  log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
+  log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek, Codex tắt)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
   setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
   const bookTimer = setInterval(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 10 * 60 * 1000);
   const inboxDir = path.join(cfg.workdir, 'inbox');

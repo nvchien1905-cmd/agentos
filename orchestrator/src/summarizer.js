@@ -2,7 +2,8 @@
 
 // NÉN NGỮ CẢNH bằng mô hình RẺ qua khóa API (Gemini hoặc DeepSeek), không dùng AI mạnh/đắt cho việc tóm tắt.
 // Gọi thẳng API của hãng (không qua CLI): một cuộc gọi, không công cụ, đầu vào bị cắt ngắn. Lỗi/không có khóa -> trả null (bộ nhớ tự dùng cách tóm tắt cắt gọn).
-//   provider: 'auto' (Gemini nếu có khóa, rồi DeepSeek) | 'gemini' | 'deepseek' | 'none'
+//   provider: 'auto' (Gemini nếu có khóa, rồi DeepSeek, rồi Codex nếu có) | 'gemini' | 'deepseek' | 'codex' | 'none'
+//   Codex: dùng tài khoản Codex đã đăng nhập sẵn (không cần khóa API) qua hàm o.codex(system, user) do nơi gọi đưa vào.
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta';
 const DEEPSEEK = 'https://api.deepseek.com/chat/completions';
 const MAX_IN = 14000;                         // ký tự gửi đi tối đa mỗi lần
@@ -21,6 +22,7 @@ function createSummarizer(o) {
     if (provider === 'none') return null;
     if ((provider === 'auto' || provider === 'gemini') && keys.gemini) return 'gemini';
     if ((provider === 'auto' || provider === 'deepseek') && keys.deepseekapi) return 'deepseek';
+    if ((provider === 'auto' || provider === 'codex') && typeof o.codex === 'function') return 'codex';
     return null;
   };
 
@@ -66,12 +68,18 @@ function createSummarizer(o) {
     return text;
   }
 
+  async function viaCodex(system, user) {
+    const text = String(await o.codex(system, user) || '').trim();
+    if (!text) throw new Error('Codex trả rỗng');
+    return text;
+  }
+
   // Trả { text, via } hoặc null khi không có khóa/lỗi.
   async function run(system, user) {
     const via = pick();
     if (!via) return null;
     const input = String(user).length > MAX_IN ? String(user).slice(-MAX_IN) : String(user);
-    try { return { text: await (via === 'gemini' ? viaGemini : viaDeepseek)(system, input), via }; }
+    try { return { text: await (via === 'gemini' ? viaGemini : via === 'codex' ? viaCodex : viaDeepseek)(system, input), via }; }
     catch (e) { log('tóm tắt bằng ' + via + ' lỗi: ' + e.message); return null; }
   }
   return { run, available: () => !!pick(), provider: () => pick() };

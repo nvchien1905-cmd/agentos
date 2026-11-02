@@ -343,3 +343,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Đã xóa hẳn mô-đun `unlock.js` và các lệnh `/khoa …`, `/mokhoa` của khóa vân tay (lệnh `/mokhoa` cũ của máy tính từ xa hoạt động lại như trước). Dữ liệu `unlock_cfg` còn trong cơ sở dữ liệu không còn được đọc.
 - Nếu đã chạy `tailscale serve` cho trang quét vân tay thì tắt bằng `tailscale serve reset` trên máy đầu não.
 - Giữ lại: chế độ toàn quyền của máy Windows, sửa lỗi /huy treo (giết theo cây tiến trình).
+
+## 2026.10.28.22 — Nén ngữ cảnh bằng Codex, bỏ phiên nặng
+- Nén ngữ cảnh: không có khóa Gemini/DeepSeek thì dùng Codex (tài khoản đã đăng nhập): chạy mới, không phiên cũ, không MCP, sandbox chỉ đọc, 2 phút. `SUMMARY_PROVIDER=codex` ép dùng Codex; `auto` = Gemini → DeepSeek → Codex.
+- Phiên AI bị bỏ khi việc quá thời gian / bị hủy / chạy hơn 10 phút (phiên đã phình, nối lại sẽ chậm). Số lượt tối đa mỗi phiên 25 → 10 (`MEMORY_ROTATE_AFTER`).

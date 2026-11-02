@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.21",
-  "file": "agentos-update-2026.10.28.21.tar.gz",
-  "size": 339205,
-  "sha256": "70a11696036134ae932a615ada62a04245072fcdf06d1f53abb9efdcc541d5ee",
+  "version": "2026.10.28.22",
+  "file": "agentos-update-2026.10.28.22.tar.gz",
+  "size": 339823,
+  "sha256": "3f22663a68f64c278b0ec68d9bcc33a2ec46fdbb96589f7ca7082f62899661a4",
   "date": "2026-11-02",
-  "notes": "Gỡ khóa vân tay/khuôn mặt; giữ bản sửa /huy"
+  "notes": "Nén ngữ cảnh bằng Codex khi chưa có khóa API; bỏ phiên AI nặng (quá hạn/hủy/chạy lâu); phiên tối đa 10 lượt"
 }

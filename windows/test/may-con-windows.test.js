@@ -17,6 +17,16 @@ test('máy con Windows: AI chỉ đọc (Claude: chỉ Read/Glob/Grep; Codex: re
   for (const a of [aiCommand('claude', 'x'), aiCommand('codex', 'x')]) assert.ok(!/dangerously|bypass|yolo|workspace-write|full-access/i.test(a.args.join(' ')), 'không có tùy chọn cho phép ghi/chạy lệnh');
 });
 
+test('máy con Windows: TOÀN QUYỀN (allowFull) mới cho ghi tệp + chạy lệnh; mặc định vẫn chỉ đọc; việc Chrome không bị ảnh hưởng', () => {
+  const { FULL_TOOLS, CHROME_TOOLS } = require('../may-con-windows');
+  const a = aiCommand('claude', 'x', false, true); const tools = a.args[a.args.indexOf('--allowedTools') + 1].split(',');
+  assert.deepEqual(tools, FULL_TOOLS); for (const t of ['Edit', 'Write', 'Bash', 'PowerShell']) assert.ok(tools.includes(t));
+  assert.deepEqual(aiCommand('codex', 'x', false, true).args, ['exec', '--skip-git-repo-check', '-s', 'danger-full-access', 'x']);
+  assert.equal(aiCommand('none', 'x', false, true), null);
+  assert.deepEqual(aiCommand('claude', 'x', false, false).args.slice(2, 4), ['--allowedTools', 'Read,Glob,Grep'], 'không bật thì vẫn chỉ đọc');
+  assert.deepEqual(aiCommand('claude', 'x', true, true).args[aiCommand('claude', 'x', true, true).args.indexOf('--allowedTools') + 1].split(','), CHROME_TOOLS, 'việc Chrome luôn chỉ có công cụ trình duyệt');
+});
+
 test('máy con Windows: đầu não (cùng giao thức fleet.js) xem tình trạng, giao việc, lấy kết quả; việc lỗi báo rõ', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'win-')); const fleetFile = path.join(dir, 'fleet.json'); const port = await freePort();
   process.env.AGENTOS_WIN_DIR = dir; process.env.AGENTOS_WIN_CONF = path.join(dir, 'w.json'); fs.writeFileSync(process.env.AGENTOS_WIN_CONF, JSON.stringify({ ai: 'claude', workdir: path.join(dir, 'work') }));

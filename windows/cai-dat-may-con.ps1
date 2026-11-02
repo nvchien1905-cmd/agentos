@@ -3,7 +3,7 @@
 # Lam: copy chuong trinh vao %ProgramData%\AgentOS, tao khoa bi mat, mo cong 8433 CHI cho mang Tailscale (100.64.0.0/10),
 #      tao tac vu tu chay khi dang nhap Windows. In ra DIA CHI + KHOA de nhap vao may dau nao (Cai dat -> Doi may, hoac /may them ...).
 # Go bo: powershell -ExecutionPolicy Bypass -File cai-dat-may-con.ps1 -GoBo
-param([string]$Ten = $env:COMPUTERNAME, [int]$Cong = 8433, [switch]$GoBo, [switch]$ChoPhepDoiKhoa, [switch]$KhongSSH, [switch]$Chrome)
+param([string]$Ten = $env:COMPUTERNAME, [int]$Cong = 8433, [switch]$GoBo, [switch]$ChoPhepDoiKhoa, [switch]$KhongSSH, [switch]$Chrome, [switch]$ToanQuyen, [switch]$ChiDoc)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dest = Join-Path $env:ProgramData 'AgentOS'
@@ -106,6 +106,14 @@ if ($Chrome) {
   [IO.File]::WriteAllText($confFile, ($c | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
   & (Join-Path $dest 'mo-messenger.ps1') -TaoLoiTat
   Write-Host 'Da cho phep AI dung Chrome tren may nay (allowChrome).' -ForegroundColor Green
+}
+
+# Toan quyen: viec giao tu may dau nao duoc doc/GHI tep va CHAY LENH tren may nay (nhu chinh chu may gop). -ChiDoc de tat lai.
+if ($ToanQuyen -or $ChiDoc) {
+  $c = (Get-Content $confFile -Raw).TrimStart([char]0xFEFF) | ConvertFrom-Json
+  $c | Add-Member -NotePropertyName allowFull -NotePropertyValue ([bool]$ToanQuyen) -Force
+  [IO.File]::WriteAllText($confFile, ($c | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+  if ($ToanQuyen) { Write-Host 'Da bat TOAN QUYEN: may dau nao duoc ghi tep va chay lenh tren may nay.' -ForegroundColor Yellow } else { Write-Host 'Da ve che do chi doc.' -ForegroundColor Green }
 }
 
 # tu chay khi dang nhap Windows (an cua so)

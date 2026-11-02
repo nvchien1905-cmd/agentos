@@ -15,4 +15,4 @@ Ba cách (làm được cả ba, độc lập nhau). Tất cả chạy qua **Tai
 4. Script in ra địa chỉ, khóa và lệnh `/may them ...`: gõ lệnh đó (hoặc nhập ở Cài đặt → Đội máy) trên máy đầu não.
 5. Gỡ: `cai-dat-may-con.ps1 -GoBo`.
 
-AI chạy trên Windows luôn ở **chế độ chỉ đọc** (Claude: chỉ Read/Glob/Grep; Codex: read-only); tệp cấu hình `%ProgramData%\AgentOS\windows-agent.json` chọn `ai` (`claude`/`codex`/`none`) và thư mục làm việc.
+AI chạy trên Windows mặc định ở **chế độ chỉ đọc**; chủ máy có thể bật **toàn quyền** (`cai-dat-may-con.ps1 -ToanQuyen`, tắt bằng `-ChiDoc`): ghi tệp + chạy lệnh PowerShell/Bash. Chế độ chỉ đọc là (Claude: chỉ Read/Glob/Grep; Codex: read-only); tệp cấu hình `%ProgramData%\AgentOS\windows-agent.json` chọn `ai` (`claude`/`codex`/`none`) và thư mục làm việc.

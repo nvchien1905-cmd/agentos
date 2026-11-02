@@ -13,7 +13,7 @@ const { spawn, execFileSync } = require('child_process');
 let createFleet; try { ({ createFleet } = require('./fleet')); } catch (e) { ({ createFleet } = require('../orchestrator/src/fleet')); }
 let createTsOwner; try { ({ createTsOwner } = require('./tsowner')); } catch (e) { ({ createTsOwner } = require('../orchestrator/src/tsowner')); }
 
-const VERSION = '2026.10.28.17-win';
+const VERSION = '2026.10.28.18-win';
 const baseDir = process.env.AGENTOS_WIN_DIR || path.join(process.env.ProgramData || os.tmpdir(), 'AgentOS');
 const fleetFile = process.env.AGENTOS_FLEET_FILE || path.join(baseDir, 'fleet.json');
 const confFile = process.env.AGENTOS_WIN_CONF || path.join(baseDir, 'windows-agent.json');
@@ -26,8 +26,15 @@ const conf = () => Object.assign({ ai: 'claude', workdir: path.join(os.homedir()
 // CHẾ ĐỘ CHROME (trợ lý trực Messenger): Claude dùng tiện ích Claude in Chrome trong Chrome ĐÃ ĐĂNG NHẬP của chủ máy này. Mặc định TẮT: chủ máy bật "allowChrome": true trong windows-agent.json.
 // Chỉ cho đúng các công cụ xem/bấm/gõ trong trình duyệt; KHÔNG có chạy mã trang (javascript_tool), tải tệp lên, đóng tab, phím tắt, hay đọc/ghi tệp và chạy lệnh.
 const CHROME_TOOLS = ['tabs_context_mcp', 'tabs_create_mcp', 'navigate', 'read_page', 'get_page_text', 'find', 'computer'].map((t) => 'mcp__claude-in-chrome__' + t);
-function aiCommand(ai, prompt, chrome) {
+// CHẾ ĐỘ TOÀN QUYỀN: chủ máy bật "allowFull": true (cai-dat-may-con.ps1 -ToanQuyen) → việc thường từ máy đầu não được đọc/GHI tệp, CHẠY LỆNH, tải trang web — như chính chủ máy ngồi gõ. Mặc định TẮT.
+const FULL_TOOLS = ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'PowerShell', 'WebFetch', 'WebSearch'];
+function aiCommand(ai, prompt, chrome, full) {
   if (chrome) return ai === 'claude' ? { bin: 'claude', args: ['-p', prompt, '--chrome', '--allowedTools', CHROME_TOOLS.join(','), '--output-format', 'text'] } : null;
+  if (full) {
+    if (ai === 'claude') return { bin: 'claude', args: ['-p', prompt, '--allowedTools', FULL_TOOLS.join(','), '--output-format', 'text'] };
+    if (ai === 'codex') return { bin: 'codex', args: ['exec', '--skip-git-repo-check', '-s', 'danger-full-access', prompt] };
+    return null;
+  }
   if (ai === 'claude') return { bin: 'claude', args: ['-p', prompt, '--allowedTools', 'Read,Glob,Grep', '--output-format', 'text'] };
   if (ai === 'codex') return { bin: 'codex', args: ['exec', '--skip-git-repo-check', '-s', 'read-only', prompt] };
   return null;
@@ -97,7 +104,7 @@ const jobs = new Map(); let nextId = 1, running = null;
 function runJob(id, prompt) {
   const j = jobs.get(id), c = conf();
   if (j.chrome && c.allowChrome !== true) { j.status = 'error'; j.error = 'Chủ máy Windows này chưa bật "cho phép AI dùng Chrome" (windows-agent.json: "allowChrome": true).'; return; }
-  const cmd = o_runner ? o_runner(prompt, c, !!j.chrome) : aiCommand(c.ai, prompt, !!j.chrome);
+  const cmd = o_runner ? o_runner(prompt, c, !!j.chrome) : aiCommand(c.ai, prompt, !!j.chrome, c.allowFull === true);
   if (!cmd) { j.status = 'error'; j.error = 'Máy Windows này chưa chọn AI (windows-agent.json: "ai").'; return; }
   try { fs.mkdirSync(c.workdir, { recursive: true }); } catch (e) { /* bỏ qua */ }
   running = id; j.status = 'running';
@@ -139,13 +146,13 @@ function create(opts) {
   return { fleet, agent };
 }
 
-module.exports = { create, aiCommand, installSshKey, probeMessenger, windowTitles, CHROME_TOOLS, VERSION };
+module.exports = { create, aiCommand, installSshKey, probeMessenger, windowTitles, CHROME_TOOLS, FULL_TOOLS, VERSION };
 
 if (require.main === module) {
   const { fleet, agent } = create();
   const c = fleet.load().agent;
   if (!c.enabled || !c.key) { log('Chưa bật: chạy cai-dat.ps1 trước.'); process.exit(1); }
   (function listen(tries) {
-    agent.listen().then((a) => log('Máy con Windows "' + c.name + '" nghe ở ' + a.address + ':' + a.port + ' (AI: ' + conf().ai + ', chỉ đọc)')).catch((e) => { log('Chưa mở được cổng (' + e.code + '), thử lại sau 30 giây'); setTimeout(() => listen(tries + 1), 30000); });
+    agent.listen().then((a) => log('Máy con Windows "' + c.name + '" nghe ở ' + a.address + ':' + a.port + ' (AI: ' + conf().ai + ', ' + (conf().allowFull === true ? 'TOÀN QUYỀN: ghi tệp + chạy lệnh' : 'chỉ đọc') + ')')).catch((e) => { log('Chưa mở được cổng (' + e.code + '), thử lại sau 30 giây'); setTimeout(() => listen(tries + 1), 30000); });
   })(0);
 }

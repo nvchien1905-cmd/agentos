@@ -55,6 +55,7 @@ const { createLive } = require('./live');
 const { createRemote } = require('./remote');
 const { createOffice } = require('./office');
 const { createRoles } = require('./roles');
+const { createUnlock } = require('./unlock');
 const { createSelfTest } = require('./selftest');
 const { createHealthMon } = require('./healthmon');
 const { createTriggers } = require('./triggers');
@@ -477,6 +478,7 @@ async function main() {
   });
   triggers.start();
   const roles = createRoles({ db, allowed: cfg.allowedUserIds, adminIds: cfg.adminUserIds, log });
+  const unlock = createUnlock({ db, log, notify });          // khóa vân tay 24 giờ cho lệnh Telegram (mặc định TẮT: /khoa dangky → /khoa bat)
   // Chứng từ: quét thư mục CHUNG-TU-MOI của dự án (bật chế độ chứng từ), giao AI đọc + ghi sổ
   const chungtu = createChungTu({ projects, log, submit: (text, projectId) => { db.addJob([...cfg.adminUserIds][0], text, cfg.engineOrder.includes('claude') ? 'claude' : null, null, 'main', projectId); setImmediate(() => crew.wake()); } });
   chungtu.start();
@@ -557,7 +559,7 @@ async function main() {
     monitor.stop(); clearInterval(tick); clearInterval(bookTimer); clearInterval(maintTimer); clearTimeout(maintFirst);
     health.stop();
     ac.abort();
-    triggers.stop();
+    triggers.stop(); unlock.stop();
     await crew.stop();
     await gate.close();
     db.close();
@@ -583,8 +585,17 @@ async function main() {
           if (u.callback_query) {
             // Không chờ: phải trả lời được nút bấm khác trong lúc một việc đang chờ duyệt.
             const cq = u.callback_query;
+            if (cq.from && unlock.isLocked(cq.from.id) && cq.from && cfg.allowedUserIds.has(String(cq.from.id))) { tg.answerCallback(cq.id, '🔒 Máy đang khóa — gõ /mokhoa để quét vân tay').catch(() => {}); continue; }
             bot.handleCallback(cq).then((text) => tg.answerCallback(cq.id, text || '')).catch((e) => log('xử lý nút bấm lỗi: ' + e.message));
           } else {
+            const um = u.message;
+            if (um && um.from && um.chat && cfg.allowedUserIds.has(String(um.from.id))) {          // khóa vân tay: đang khóa thì mọi lệnh (kể cả tin thoại/ảnh) bị chặn trừ /mokhoa
+              const txt = um.text || um.caption || '';
+              const locked = await unlock.gate(txt, um.chat.id, um.from.id);
+              if (locked) { await tg.sendMessage(um.chat.id, locked); continue; }
+              const ur = await unlock.command(txt, um.chat.id, um.from.id);
+              if (ur) { await tg.sendMessage(um.chat.id, ur); continue; }
+            }
             let reply = bot.handle(u.message);
             if (reply && typeof reply.then === 'function') reply = await reply;           // lệnh nhanh trả Promise
             const chat = u.message.chat.id;

@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.17",
-  "file": "agentos-update-2026.10.28.17.tar.gz",
-  "size": 338678,
-  "sha256": "2b18e21312b40b1d2bd6798596c064d4ba5983f078609121351dc72778731d00",
-  "date": "2026-11-01",
-  "notes": "Máy trực: /facebook may dùng Chrome thật của máy Windows để trực Messenger (kiểm nhanh bằng tiêu đề cửa sổ, AI chạy trên Chrome đã đăng nhập, nháp mặc định)"
+  "version": "2026.10.28.19",
+  "file": "agentos-update-2026.10.28.19.tar.gz",
+  "size": 344678,
+  "sha256": "257568939c2324d1925d891cc3b28e00e1a1345b2271c0530196139a9a2b7cb7",
+  "date": "2026-11-02",
+  "notes": "Khóa vân tay/khuôn mặt 24 giờ (tính riêng từng tài khoản Telegram), máy Windows toàn quyền"
 }

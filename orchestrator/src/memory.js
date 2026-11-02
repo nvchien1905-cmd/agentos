@@ -20,7 +20,7 @@ function createMemory(o) {
   const db = o.db, log = o.log || (() => {});
   const now = o.now || Date.now;
   const summarizer = o.summarizer || null;
-  const cfg = Object.assign({ enabled: true, recentTurns: 4, rotateAfter: 25, summarizeAfter: 6, summaryMax: 2200, searchHits: 3, relevantChapters: 2 }, o.cfg || {});
+  const cfg = Object.assign({ enabled: true, recentTurns: 4, rotateAfter: 15, summarizeAfter: 15, summaryMax: 2200, searchHits: 3, relevantChapters: 2 }, o.cfg || {});
   const book = createBook({ dir: o.dir, fallbackDir: o.fallbackDir, summarizer, now, log, cfg: o.bookCfg });
   // DỰ ÁN: mỗi dự án có sổ tay riêng (thư mục SO-TAY trong dự án), cùng bộ máy với sổ tay chung. Sổ tay, chỉ dẫn và tóm tắt đều do AgentOS giữ và ghép vào câu lệnh
   // cho BẤT KỲ AI nào đang chạy -> Claude hết hạn mức thì Codex làm tiếp đúng dự án đó với cùng dữ liệu.

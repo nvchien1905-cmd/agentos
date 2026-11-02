@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.24",
-  "file": "agentos-update-2026.10.28.24.tar.gz",
-  "size": 340227,
-  "sha256": "f7250a2e948b961538f9b6b0ff24d8c4338163283b2e0d98d5206b87a0d4b6ac",
+  "version": "2026.10.28.25",
+  "file": "agentos-update-2026.10.28.25.tar.gz",
+  "size": 340223,
+  "sha256": "1c2bfb639d38c81414a173714f28b084dfd7bdaa9a0380d133a1f2379639d6d4",
   "date": "2026-11-02",
-  "notes": "Sửa mạng chập chờn làm câu trả lời mất định dạng đẹp (hiện Việc #N xong): gửi tin thử lại khi lỗi mạng"
+  "notes": "Nén ngữ cảnh một lần mỗi 15 lượt"
 }

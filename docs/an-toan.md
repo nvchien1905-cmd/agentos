@@ -354,3 +354,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.24 — Mạng chập chờn không làm mất định dạng câu trả lời
 - Lệnh gửi/sửa tin Telegram thử lại khi mạng lỗi ("fetch failed"…) 4 lần (1,5s · 4s · 9s · 20s); lỗi thật của Telegram (có mã) không thử lại; getUpdates có nhịp riêng. Trước đây một lần lỗi mạng làm câu trả lời rơi về bản chữ thường "Việc #N xong:" kèm dấu ** thô.
+
+## 2026.10.28.25 — Nén ngữ cảnh mỗi 15 lượt
+- Mỗi phiên AI tối đa 15 lượt (`MEMORY_ROTATE_AFTER`, trước là 10), tới lượt 15 thì nén ngữ cảnh MỘT lần rồi mở phiên mới; nén định kỳ cũng chỉ sau 15 việc (`MEMORY_SUMMARIZE_AFTER`, trước là 6).

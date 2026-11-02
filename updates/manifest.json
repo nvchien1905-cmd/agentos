@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.26",
-  "file": "agentos-update-2026.10.28.26.tar.gz",
-  "size": 340587,
-  "sha256": "02b660f65f0d47c2ced940b17f4c6a917c52535e9ab71b363be1e0bf211042b8",
+  "version": "2026.10.28.27",
+  "file": "agentos-update-2026.10.28.27.tar.gz",
+  "size": 341096,
+  "sha256": "0f6333cef2dafe90fa1ec37c0969ec714ad2fb7902461e1d3e829b9070dbb049",
   "date": "2026-11-02",
-  "notes": "Rà soát toàn hệ thống: ưu tiên IPv6 (IPv4 mạng nhà hỏng gây fetch failed), ghi rõ mã lỗi mạng, dọn tệp khóa vân tay còn sót"
+  "notes": "Tự chẩn đoán mạng IPv4: cổng mạng chết thì tự xin lại địa chỉ mạng (khởi động lại NetworkManager)"
 }

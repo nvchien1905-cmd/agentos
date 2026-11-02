@@ -30,6 +30,20 @@ function createSelfTest(o) {
       return R('telegram', 'Telegram', 'ok', 'bot @' + me.username + ' nhận tin bình thường' + (hook && hook.pending_update_count ? ', ' + hook.pending_update_count + ' tin chờ' : ''));
     }),
 
+    // Mạng IPv4: cổng mạng (router) không trả lời và không ra Internet qua IPv4 -> lỗi (bác sĩ máy sẽ xin lại địa chỉ mạng bằng cách khởi động lại NetworkManager). Chỉ IPv6 chạy được thì Telegram vẫn nhận tin nhưng GitHub/cập nhật không tới.
+    ipv4: () => safe('ipv4', 'Mạng IPv4', async () => {
+      const rt = await run('ip', ['-4', 'route', 'show', 'default']);
+      if (rt.missing) return R('ipv4', 'Mạng IPv4', 'ok', 'không kiểm (không có lệnh ip)');
+      const gw = (String(rt.out).match(/default via (\S+)/) || [])[1];
+      if (!gw) return R('ipv4', 'Mạng IPv4', 'ok', 'không có đường ra IPv4 mặc định (mạng chỉ IPv6?), bỏ qua');
+      const [p, c] = await Promise.all([run('ping', ['-c', '2', '-W', '2', gw], 9000), run('curl', ['-4', '-s', '-m', '6', '-o', '/dev/null', '-w', '%{http_code}', 'https://api.telegram.org'], 10000)]);
+      if (c.missing) return R('ipv4', 'Mạng IPv4', 'ok', 'không kiểm (không có curl)');
+      const code = String(c.out || '').trim();
+      if (/^[1-5][0-9][0-9]$/.test(code)) return R('ipv4', 'Mạng IPv4', 'ok', 'ra Internet qua cổng ' + gw);
+      if (p.code === 0) return R('ipv4', 'Mạng IPv4', 'warn', 'cổng ' + gw + ' trả lời nhưng IPv4 không ra Internet (nhà mạng/modem?)');
+      return R('ipv4', 'Mạng IPv4', 'fail', 'cổng mạng IPv4 ' + gw + ' không trả lời và không ra Internet qua IPv4 (địa chỉ mạng có thể đã cũ)');
+    }),
+
     services: () => safe('services', 'Dịch vụ', async () => {
       const list = (o.services || ['agentos-deskd', 'agentos-settings', 'tailscaled', 'rustdesk']);
       const r = await run('systemctl', ['is-active'].concat(list));
@@ -130,8 +144,8 @@ function createSelfTest(o) {
     }),
   };
 
-  const LIGHT = ['telegram', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'queue'];
-  const FULL = ['telegram', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'queue'];
+  const LIGHT = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'queue'];
+  const FULL = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'queue'];
 
   async function runList(ids) { const out = []; for (const id of ids) out.push(await checks[id]()); return out; }
 

@@ -13,6 +13,7 @@ const RULES = {
   services: (r) => { const m = String(r.detail || '').match(/không chạy: (.+)$/); return m ? m[1].split(/[,\s]+/).filter((u) => UNIT_OK.test(u)).slice(0, 4).map((u) => 'restart ' + u) : []; },
   resources: (r) => (/ổ đĩa gần đầy/.test(r.detail || '') ? ['free-space'] : []),
   cloud: () => ['cloud'],
+  ipv4: () => ['restart NetworkManager'],               // xin lại địa chỉ mạng (cổng mạng cũ không còn)
 };
 
 function createDoctor(o) {

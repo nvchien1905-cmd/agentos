@@ -362,3 +362,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Chạy toàn bộ test trên máy ảo Linux: bộ điều phối 289/289, cập nhật 11/11, trình hướng dẫn 65/65, trợ lý màn hình 18/18, máy Windows 7/7. Kiểm cú pháp mọi tệp .js / .sh / .ps1: không lỗi.
 - Phát hiện máy đầu não (mạng nhà) IPv4 không ra Internet (ping 1.1.1.1, github, anthropic qua IPv4 đều lỗi), chỉ IPv6 chạy → gây "fetch failed" tới Telegram. Bộ điều phối giờ ưu tiên IPv6 (`dns.setDefaultResultOrder('ipv6first')`), cho mỗi lần thử kết nối 2 giây (mặc định 250ms), và lỗi Telegram ghi rõ mã nguyên nhân (ENETUNREACH, ETIMEDOUT…). Nguyên nhân gốc nằm ở router/nhà mạng (xem hướng dẫn gửi chủ máy).
 - `apply.sh` xóa `unlock.js` còn sót trên máy đã cài (bản cập nhật không tự xóa tệp).
+
+## 2026.10.28.27 — Tự chẩn đoán mạng IPv4 + tự xin lại địa chỉ mạng
+- Đo 03/11/2026 trên máy đầu não: cổng mạng 192.168.2.1 (nhận qua DHCP) không còn trả lời (ARP FAILED) trong khi router thật chỉ còn trả lời bằng IPv6 → không ra Internet qua IPv4, chỉ IPv6 (Telegram, raw.githubusercontent.com, Anthropic, OpenAI vẫn tới; github.com không có IPv6 nên không tới).
+- `/tuchan` có thêm mục "Mạng IPv4" (cổng mạng + ra Internet). Lỗi thì bác sĩ máy (tối đa 3 lần/ngày, cách 20 phút) xin `restart NetworkManager` để xin lại địa chỉ mạng. Cổng ổn mà modem/nhà mạng lỗi chỉ cảnh báo, không khởi động lại; mạng chỉ IPv6 thì bỏ qua.

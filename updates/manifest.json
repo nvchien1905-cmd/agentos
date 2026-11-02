@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.23",
-  "file": "agentos-update-2026.10.28.23.tar.gz",
-  "size": 339890,
-  "sha256": "8e796b44fca2213f2a6c79fb377ab13e6c1333a40b0ba419395751203dfb74bb",
+  "version": "2026.10.28.24",
+  "file": "agentos-update-2026.10.28.24.tar.gz",
+  "size": 340227,
+  "sha256": "f7250a2e948b961538f9b6b0ff24d8c4338163283b2e0d98d5206b87a0d4b6ac",
   "date": "2026-11-02",
-  "notes": "Việc dài nhiều giờ: /nen chạy tới 4 giờ, chỉ bỏ phiên AI khi việc bị hủy"
+  "notes": "Sửa mạng chập chờn làm câu trả lời mất định dạng đẹp (hiện Việc #N xong): gửi tin thử lại khi lỗi mạng"
 }

@@ -19,8 +19,10 @@ function splitMessage(text, max) {
   return parts;
 }
 
-function createTelegram(token, fetchImpl) {
+function createTelegram(token, fetchImpl, opts) {
   const f = fetchImpl || fetch;
+  const sleep = (opts && opts.sleep) || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const RETRY_MS = (opts && opts.retryMs) || [1500, 4000, 9000, 20000];
   const base = 'https://api.telegram.org/bot' + token + '/';
 
   async function parse(r, method) {
@@ -35,7 +37,7 @@ function createTelegram(token, fetchImpl) {
     return j.result;
   }
 
-  async function call(method, params, signal) {
+  async function callOnce(method, params, signal) {
     const guard = signal || AbortSignal.timeout(40000);                      // getUpdates tự đặt giới hạn riêng; lệnh khác quá 40 giây coi như treo
     const r = await f(base + method, {
       method: 'POST',
@@ -44,6 +46,18 @@ function createTelegram(token, fetchImpl) {
       signal: guard,
     });
     return parse(r, method);
+  }
+  // Mạng chập chờn ("fetch failed") làm câu trả lời bị mất định dạng đẹp hoặc không tới nơi: lệnh GỬI/SỬA tin được thử lại vài lần (1,5s, 4s, 9s, 20s) trước khi báo lỗi.
+  // Không áp dụng cho getUpdates (vòng nhận tin tự có nhịp thử lại riêng).
+  async function call(method, params, signal) {
+    for (let n = 0; ; n++) {
+      try { return await callOnce(method, params, signal); }
+      catch (e) {
+        const netErr = !e.code && /fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|network/i.test(String(e.message) + ' ' + String(e.cause && e.cause.code || ''));
+        if (method === 'getUpdates' || !netErr || n >= RETRY_MS.length) throw e;
+        await sleep(RETRY_MS[n]);
+      }
+    }
   }
 
   // Gửi file: { path, name, kind: 'photo' | 'document' }. Ảnh bị Telegram từ chối (kích thước lạ) -> gửi lại dạng tài liệu.

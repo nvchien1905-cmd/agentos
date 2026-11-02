@@ -351,3 +351,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.10.28.23 — Việc dài nhiều giờ không bị mất mạch
 - Chỉ bỏ phiên AI khi việc bị HỦY (không còn bỏ khi quá hạn hoặc chạy lâu), để gõ "tiếp tục" là làm tiếp đúng mạch.
 - Việc nền `/nen` có hạn chạy riêng, mặc định 4 giờ (`JOB_TIMEOUT_BG_SEC`), việc trò chuyện thường vẫn theo `JOB_TIMEOUT_SEC` (900 giây; 3600 khi bật toàn quyền). Việc nền chạy làn riêng nên không chặn tin nhắn thường.
+
+## 2026.10.28.24 — Mạng chập chờn không làm mất định dạng câu trả lời
+- Lệnh gửi/sửa tin Telegram thử lại khi mạng lỗi ("fetch failed"…) 4 lần (1,5s · 4s · 9s · 20s); lỗi thật của Telegram (có mã) không thử lại; getUpdates có nhịp riêng. Trước đây một lần lỗi mạng làm câu trả lời rơi về bản chữ thường "Việc #N xong:" kèm dấu ** thô.

@@ -58,7 +58,7 @@ test('tools: ghi cấu hình MCP cho mọi profile (rỗng cũng ghi) và tham s
   assert.deepEqual(w.mcpServers.browser.env, { DISPLAY: ':99' });
   const a = t.codexArgs(t.profile('web'));
   assert.equal(a[0], '-c'); assert.equal(a[1], 'mcp_servers.browser.command="/opt/agentos/tools/node_modules/.bin/playwright-mcp"');
-  assert.match(a[3], /^mcp_servers\.browser\.args=\["--browser","chromium"/);
+  assert.match(a[3], /^mcp_servers\.browser\.args=\["--browser","chrome"/);
   assert.equal(a[5], 'mcp_servers.browser.env={DISPLAY=":99"}');
   assert.deepEqual(t.codexArgs(t.profile('chung')), []);
 });

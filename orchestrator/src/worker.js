@@ -5,6 +5,9 @@ const NAMES = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', deepseekapi:
 
 const NL = String.fromCharCode(10);
 const pad = (n) => String(n).padStart(2, '0');
+// AI gặp trang đòi đăng nhập thì dừng và in "CẦN ĐĂNG NHẬP: ..." (xem LOGIN_HINT): bot báo thẳng chủ máy cách đăng nhập thay vì để việc im lặng.
+const LOGIN_RE = /CẦN ĐĂNG NHẬP/;
+const loginNote = (t) => LOGIN_RE.test(String(t || '')) ? NL + NL + '🔐 Trình duyệt của bot chưa đăng nhập trang này. Cách làm (một lần): 1) gõ /mo webbot, trình duyệt của bot mở trên màn hình máy; 2) anh tự đăng nhập trang đó (bot không bao giờ tự nhập mật khẩu); 3) gõ /dong webbot rồi nhắn "làm tiếp".' + (/kiotviet/i.test(String(t)) ? NL + '📦 Với KiotViet không cần đăng nhập web: gõ /hanghoa (thống kê hàng hóa), /ton <tên> (tồn kho), /doanhso (doanh số) để lấy thẳng qua API.' : '') : '';
 function fmtTime(ms) {
   const d = new Date(ms);
   return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ' ' + pad(d.getDate()) + '/' + pad(d.getMonth() + 1);
@@ -94,9 +97,16 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     // Phiên của AI được nhớ THEO DỰ ÁN (phạm vi = cuộc trò chuyện + dự án): đổi dự án thì phiên khác, không lẫn ngữ cảnh
     const scope = db.scopeOf(job);
     let resumeId = isMain ? db.kvGet(sessionKey(scope, eng)) : null;           // việc nền/sự kiện: phiên riêng, không dính phiên trò chuyện chính
-    let res;
-    for (let i = 0; i < 2; i++) {
+    let res; let stalledOnce = false;
+    for (let i = 0; i < 3; i++) {
       res = await runWithRetry(job, eng, resumeId);
+      // AI im lặng quá lâu (mạng chết giữa chừng, phiên quá nặng): bỏ phiên cũ rồi làm lại không kèm phiên (một lần) thay vì để việc treo hàng đợi.
+      if (res.stalled && resumeId && !stalledOnce) {
+        stalledOnce = true; db.kvDel(sessionKey(scope, eng)); resumeId = null;
+        log(name(eng) + ' im lặng quá lâu ở việc #' + job.id + ', bỏ phiên cũ và chạy lại');
+        await safeNotify(job.chat_id, '⏱️ ' + name(eng) + ' im lặng quá lâu ở việc #' + job.id + ' (nghi mạng chập chờn). Em bỏ phiên cũ và chạy lại một lần.');
+        continue;
+      }
       // Phiên cũ không còn -> làm lại không kèm phiên (một lần).
       if (!res.ok && resumeId && !res.limit && !res.cancelled && !res.timedOut && RESUME_FAIL_RE.test(res.error || '')) {
         db.kvDel(sessionKey(scope, eng));
@@ -224,7 +234,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     const tag = 'Việc #' + job.id + (used !== order[0] ? ' (' + name(used) + ')' : '');
     if (res.ok) {
       db.finishJob(job.id, 'done', { result: res.text, sessionId: res.sessionId, costUsd: res.costUsd });
-      const body = res.text || '(không có nội dung trả về)';
+      const body = (res.text || '(không có nội dung trả về)') + loginNote(res.text);
       if (answer) {
         try { await answer(job, body, { engine: used, primary: order[0], name: name(used), secs: meta.secs, steps: meta.steps }); }
         catch (e) { log('gửi câu trả lời đẹp lỗi: ' + e.message); await safeNotify(job.chat_id, tag + ' xong:\n' + body); }
@@ -233,6 +243,9 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     } else if (res.cancelled) {
       db.finishJob(job.id, 'cancelled', { error: res.error });
       await safeNotify(job.chat_id, 'Việc #' + job.id + ' đã hủy.');
+    } else if (res.stalled) {
+      db.finishJob(job.id, 'error', { error: res.error });
+      await safeNotify(job.chat_id, tag + ' dừng vì ' + name(used) + ' im lặng quá lâu, chạy lại vẫn vậy. Nhiều khả năng mạng đang chập chờn: gõ /tuchan để kiểm tra rồi nhắn lại việc này.');
     } else if (res.timedOut) {
       db.finishJob(job.id, 'error', { error: res.error });
       await safeNotify(job.chat_id, 'Việc #' + job.id + ' dừng vì quá thời gian cho phép.');

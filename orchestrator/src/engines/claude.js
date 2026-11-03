@@ -40,7 +40,7 @@ function startClaude(opts) {
     let ev; try { ev = JSON.parse(line); } catch (e) { return; }
     if (ev && ev.type === 'result') finalEv = ev; else fromClaude(ev, opts.onProgress);
   }) : null;
-  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
+  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, idleMs: stream ? opts.idleMs : undefined, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
   const done = p.done.then((r) => {
     if (reader) reader.flush();
     const ab = abnormal(r, opts.bin);

@@ -20,7 +20,7 @@ function parseTitle(title) {
 function createProbe(o) {
   o = o || {};
   const url = o.url || 'https://www.messenger.com/';
-  const exe = o.chromium || '/usr/bin/chromium';
+  const exe = o.chromium || '/usr/bin/google-chrome-stable';
   const settleMs = o.settleMs === undefined ? 5000 : o.settleMs;
   const now = o.now || Date.now;
   const load = o.load || (() => require(o.lib || '/opt/agentos/tools/node_modules/playwright-core'));

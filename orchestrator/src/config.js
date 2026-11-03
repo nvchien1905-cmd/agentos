@@ -42,6 +42,8 @@ function load(env) {
     allowedTools: env.CLAUDE_ALLOWED_TOOLS === undefined ? 'Read,Glob,Grep' : env.CLAUDE_ALLOWED_TOOLS,
     codexSandbox: env.CODEX_SANDBOX || 'read-only',
     jobTimeoutMs: (Number(env.JOB_TIMEOUT_SEC) || 900) * 1000,
+    jobIdleMs: (Number(env.JOB_IDLE_SEC) || 15 * 60) * 1000,                                   // AI không in gì quá chừng này (mặc định 15 phút) -> coi là kẹt, cắt và chạy lại không kèm phiên cũ
+    jobIdleBgMs: (Number(env.JOB_IDLE_BG_SEC) || 60 * 60) * 1000,
     jobTimeoutBgMs: Math.max(Number(env.JOB_TIMEOUT_BG_SEC) || 4 * 3600, Number(env.JOB_TIMEOUT_SEC) || 900) * 1000,   // việc nền /nen: mặc định 4 giờ
     limitCooldownMs: (Number(env.LIMIT_COOLDOWN_MIN) || 60) * 60 * 1000,
     dbPath: path.resolve(env.DB_PATH || './data/agentos.db'),

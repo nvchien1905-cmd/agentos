@@ -103,7 +103,7 @@ systemctl restart agentos-fullaccess.socket >/dev/null 2>&1 || systemctl start a
 # Sửa màn hình trắng của trình hướng dẫn lần đầu trên một số card đồ họa: tắt tăng tốc GPU của Chromium kiosk
 W=/etc/xdg/autostart/agentos-wizard.desktop
 if [ -f "$W" ] && ! grep -q -- '--disable-gpu' "$W"; then
-  sed -i 's/exec chromium --kiosk /exec chromium --kiosk --disable-gpu --disable-gpu-compositing /' "$W"
+  sed -i 's/exec google-chrome-stable --kiosk /exec google-chrome-stable --kiosk --disable-gpu --disable-gpu-compositing /' "$W"
 fi
 
 # Biểu tượng ứng dụng mới cho người dùng mới (skel) và người dùng đã có

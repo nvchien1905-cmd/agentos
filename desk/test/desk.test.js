@@ -211,12 +211,12 @@ test('OCR nút chữ trắng trên nền xanh: chế độ rải rác bỏ sót 
 });
 
 test('fbbot (trình duyệt của bot để đăng nhập Facebook): mở bằng đúng người dùng agentos trên màn hình của người ngồi máy sau khi cấp quyền vẽ (xhost), đóng thì thu hồi; chỉ đóng đúng tiến trình đó', async () => {
-  const { desk, calls, detached } = make({ first: (cmd, args) => (cmd === 'ps' && args.includes('agentos') ? { code: 0, out: '  500 /usr/lib/chromium/chromium --user-data-dir=/var/lib/agentos/data/browser-profile --no-first-run https://www.facebook.com/messages\n  501 /usr/lib/chromium/chromium --headless --remote-debugging-pipe --user-data-dir=/var/lib/agentos/data/browser-profile\n  502 /opt/google/chrome/chrome --password-store=basic\n', err: '' } : null) });
+  const { desk, calls, detached } = make({ first: (cmd, args) => (cmd === 'ps' && args.includes('agentos') ? { code: 0, out: '  500 /opt/google/chrome/chrome --user-data-dir=/var/lib/agentos/data/browser-profile --no-first-run https://www.facebook.com/messages\n  501 /opt/google/chrome/chrome --headless --remote-debugging-pipe --user-data-dir=/var/lib/agentos/data/browser-profile\n  502 /opt/google/chrome/chrome --password-store=basic\n', err: '' } : null) });
   const r = await desk.handle({ cmd: 'open', app: 'fbbot' });
   assert.equal(r.ok, true);
   const xh = calls.find((c) => c.args.includes('xhost')); assert.ok(xh, 'cấp quyền vẽ lên màn hình'); assert.ok(xh.args.includes('+SI:localuser:agentos')); assert.equal(xh.args[xh.args.indexOf('-u') + 1], 'chien', 'xhost chạy bằng người ngồi máy (chủ màn hình)');
   assert.equal(detached.length, 1); const [bin, args] = detached[0]; assert.equal(bin, 'runuser'); assert.deepEqual(args.slice(0, 3), ['-u', 'agentos', '--']); assert.ok(args.includes('DISPLAY=:0'));
-  assert.ok(args.includes('--user-data-dir=/var/lib/agentos/data/browser-profile') && args.includes('/usr/bin/chromium'));
+  assert.ok(args.includes('--user-data-dir=/var/lib/agentos/data/browser-profile') && args.includes('/usr/bin/google-chrome-stable'));
   calls.length = 0; const c = await desk.handle({ cmd: 'close', app: 'fbbot' });
   assert.equal(c.ok, true); assert.equal(c.closed, 1, 'chỉ đóng cửa sổ có hiển thị, không đóng trình duyệt ẩn của AI hay Chrome thường');
   const kill = calls.find((x) => x.cmd === 'kill'); assert.deepEqual(kill.args, ['-TERM', '500']);

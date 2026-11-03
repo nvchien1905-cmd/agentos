@@ -31,7 +31,7 @@ chk "kernel.panic = 10" bash -c '[ "$(cat /proc/sys/kernel/panic)" = 10 ]'
 chk "sleep.target bi mask (chong ngu)" bash -c '[ "$(systemctl is-enabled sleep.target 2>&1)" = masked ]'
 chk "logind IdleAction=ignore" grep -q IdleAction=ignore /etc/systemd/logind.conf.d/10-agentos.conf
 chk "journald co gioi han dung luong" grep -q SystemMaxUse /etc/systemd/journald.conf.d/10-agentos.conf
-chk "Chromium co mat" which chromium
+chk "Google Chrome co mat" which google-chrome-stable
 chk "Google Chrome co mat" test -x /usr/bin/google-chrome-stable
 chk "tro ly man hinh (deskd) co mat va bat" bash -c 'test -f /opt/agentos/desk/server.js && test -x /usr/local/bin/agentos-desk && systemctl is-enabled --quiet agentos-deskd && command -v xclip scrot xdotool >/dev/null'
 chk "OneDrive: goi onedrive + dich vu dong bo + thu muc /srv/onedrive (2775, nhom agentos) + cau hinh" bash -c 'command -v onedrive >/dev/null && systemctl is-enabled --quiet onedrive-agentos.path && [ "$(stat -c %a /srv/onedrive)" = 2775 ] && [ "$(stat -c %G /srv/onedrive)" = agentos ] && sudo -n grep -q "classify_as_big_delete" /var/lib/agentos/.config/onedrive/config && ! systemctl --global is-enabled --quiet onedrive.service'

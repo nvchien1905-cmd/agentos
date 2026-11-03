@@ -27,7 +27,6 @@ xorg
 lightdm
 xfce4
 xfce4-terminal
-chromium
 
 # Màn hình ảo để AI điều khiển ứng dụng (+ công cụ cho điều khiển máy tính ở GĐ 3b)
 xvfb

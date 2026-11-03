@@ -34,7 +34,7 @@ function startCodex(opts) {
   args.push('-'); // đọc prompt từ stdin
 
   const reader = typeof opts.onProgress === 'function' ? lineReader((line) => { let ev; try { ev = JSON.parse(line); } catch (e) { return; } fromCodex(ev, opts.onProgress); }) : null;
-  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
+  const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, idleMs: opts.idleMs, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
   const done = p.done.then((r) => {
     if (reader) reader.flush();
     const ab = abnormal(r, opts.bin);

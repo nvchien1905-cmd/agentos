@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.27",
-  "file": "agentos-update-2026.10.28.27.tar.gz",
-  "size": 341096,
-  "sha256": "0f6333cef2dafe90fa1ec37c0969ec714ad2fb7902461e1d3e829b9070dbb049",
-  "date": "2026-11-02",
-  "notes": "Tự chẩn đoán mạng IPv4: cổng mạng chết thì tự xin lại địa chỉ mạng (khởi động lại NetworkManager)"
+  "version": "2026.10.28.29",
+  "file": "agentos-update-2026.10.28.29.tar.gz",
+  "size": 344108,
+  "sha256": "0e4e5bd86b1d11cfb2e89021e1f91c6d9b2e9c9736981d07cf63bca1d0d7c743",
+  "date": "2026-11-03",
+  "notes": "Việc AI không treo hàng đợi: ưu tiên IPv4, bỏ ảnh khỏi phiên, canh giữ AI im lặng (tự chạy lại không kèm phiên); chỉ dùng Google Chrome; báo chưa đăng nhập kèm cách đăng nhập (/mo webbot); /hanghoa thống kê hàng hóa KiotViet"
 }

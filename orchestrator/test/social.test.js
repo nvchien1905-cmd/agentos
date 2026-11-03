@@ -272,9 +272,9 @@ test('facebook dangnhap: hướng dẫn mở trình duyệt của bot bằng /mo
   assert.match(r, /\/mo fbbot[^]*tự đăng nhập[^]*\/dong fbbot[^]*không bao giờ tự nhập mật khẩu/);
   const { APPS } = require('../../desk/server.js'); const a = APPS.fbbot; assert.ok(a, 'fbbot trong deskd');
   assert.ok(a.argv.includes('--user-data-dir=/var/lib/agentos/data/browser-profile'), 'đúng hồ sơ mà AI (playwright-mcp) dùng');
-  assert.equal(a.match('/usr/lib/chromium/chromium --user-data-dir=/var/lib/agentos/data/browser-profile --no-first-run https://www.facebook.com/messages'), true);
+  assert.equal(a.match('/opt/google/chrome/chrome --user-data-dir=/var/lib/agentos/data/browser-profile --no-first-run https://www.facebook.com/messages'), true);
   assert.equal(a.match('/opt/google/chrome/chrome --password-store=basic'), false, 'không đóng nhầm Chrome thường');
-  assert.equal(a.match('/usr/lib/chromium/chromium --headless --user-data-dir=/var/lib/agentos/data/browser-profile'), false, 'không đóng nhầm trình duyệt đang chạy việc của AI');
+  assert.equal(a.match('/opt/google/chrome/chrome --headless --user-data-dir=/var/lib/agentos/data/browser-profile'), false, 'không đóng nhầm trình duyệt đang chạy việc của AI');
   const { createQuick } = require('../src/quick'); assert.equal(typeof createQuick, 'function');
 });
 

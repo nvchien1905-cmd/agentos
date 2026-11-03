@@ -5,9 +5,9 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
 
-const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'fbbot', facebook: 'fbbot', kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
+const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
@@ -36,11 +36,11 @@ function createQuick(o) {
           return r.ok ? (r.windows.length ? '🪟 Cửa sổ đang mở:\n• ' + r.windows.join('\n• ') : 'Không có cửa sổ nào đang mở.') : '⚠️ ' + r.error;
         }
         case 'mo': case 'dong': {
-          if (!arg) return 'Cách dùng: /' + name + ' <ứng dụng>. Ứng dụng: zalo, kiotviet, deepseek, chrome, rustdesk' + (name === 'mo' ? ', claude, codex, gemini' : '') + '.';
+          if (!arg) return 'Cách dùng: /' + name + ' <ứng dụng>. Ứng dụng: zalo, kiotviet, deepseek, chrome, rustdesk, webbot (trình duyệt của bot, để đăng nhập trang AI cần)' + (name === 'mo' ? ', claude, codex, gemini' : '') + '.';
           const key = appKey(arg);
-          if (key === 'fbbot' && name === 'mo' && o.onFbOpen) await o.onFbOpen(true).catch(() => {});        // trợ lý Facebook nhả hồ sơ trình duyệt để cửa sổ đăng nhập dùng
+          if ((key === 'fbbot' || key === 'webbot') && name === 'mo' && o.onFbOpen) await o.onFbOpen(true).catch(() => {});        // trợ lý Facebook nhả hồ sơ trình duyệt để cửa sổ đăng nhập dùng
           const r = await desk.call({ cmd: name === 'mo' ? 'open' : 'close', app: key });
-          if (key === 'fbbot' && name === 'dong' && o.onFbOpen) await o.onFbOpen(false).catch(() => {});      // đóng cửa sổ: trợ lý Facebook kiểm lại ngay
+          if ((key === 'fbbot' || key === 'webbot') && name === 'dong' && o.onFbOpen) await o.onFbOpen(false).catch(() => {});      // đóng cửa sổ: trợ lý Facebook kiểm lại ngay
           if (!r.ok) return '⚠️ ' + r.error;
           if (name === 'mo') return '✅ Đã mở ' + r.app + ' trên màn hình máy. Gõ /manhinh để xem.';
           return r.closed ? '✅ Đã đóng ' + r.app + '.' : r.app + ' đang không mở.';
@@ -85,9 +85,9 @@ function createQuick(o) {
           }
           return 'Cách dùng: /onedrive (tình trạng) · /onedrive ketnoi · /onedrive dongbo · /onedrive thumuc · /onedrive ngat co';
         }
-        case 'doanhso': case 'ton': {
+        case 'doanhso': case 'ton': case 'hanghoa': {
           if (!kv || !kv.configured()) return '⚠️ Chưa cấu hình KiotViet. Thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào /etc/agentos/orchestrator.env rồi khởi động lại bộ điều phối.';
-          return name === 'doanhso' ? await kv.revenue(arg) : await kv.stock(arg);
+          return name === 'doanhso' ? await kv.revenue(arg) : name === 'hanghoa' ? await kv.catalog(arg) : await kv.stock(arg);
         }
         case 'baocao': case 'hen': return sched ? await sched.command(name, arg, ctx) : '⚠️ Máy này chưa có tính năng hẹn giờ.';
         case 'tailscale': {

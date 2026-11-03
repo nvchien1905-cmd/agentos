@@ -321,7 +321,7 @@ function createWizard(options) {
       state.finished = true;
       // Tự vô hiệu hóa sau khi trả lời xong: không để dịch vụ chạy bằng root nằm đó.
       setTimeout(() => {
-        run('pkill', ['-f', 'chromium.*127\\.0\\.0\\.1:8088'], { timeoutMs: 5000 });          // đóng cửa sổ toàn màn hình của trình hướng dẫn
+        run('pkill', ['-f', 'chrome.*127\\.0\\.0\\.1:8088'], { timeoutMs: 5000 });          // đóng cửa sổ toàn màn hình của trình hướng dẫn
         run('systemctl', ['disable', '--now', 'agentos-wizard.service'], { timeoutMs: 30000 });
       }, o.finishDelayMs == null ? 5000 : o.finishDelayMs).unref();
       return { ok: true, engines: ready };

@@ -35,7 +35,8 @@ function descendants(pid) {
 // Chạy một tiến trình, đưa `input` qua stdin. Trả { done, kill }.
 // done -> { code, out, err, killedBy: null|'timeout'|'cancelled', spawnError }
 // `wrap({bin,args,cwd})` (tùy chọn) bọc lệnh vào sandbox (xem sandbox.js).
-function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
+// idleMs (tùy chọn): AI không in gì suốt chừng đó thời gian -> coi là kẹt (mạng chết giữa chừng, chờ mãi) và cắt với killedBy='stalled'. Chỉ nên đặt cho engine có luồng sự kiện (Codex --json, Claude stream-json).
+function runProcess({ bin, args, cwd, input, timeoutMs, idleMs, env, wrap, onStdout }) {
   let spec = { bin, args, cwd };
   let spawnError = null;
   try { if (wrap) spec = wrap(spec); } catch (e) { spawnError = e; }
@@ -58,8 +59,11 @@ function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
     setTimeout(() => { if (finish) { for (const st of [child.stdout, child.stderr]) { try { st.destroy(); } catch (e) { /* đã đóng */ } } finish(null); } }, 8000).unref();
   };
   const timer = timeoutMs ? setTimeout(() => kill('timeout'), timeoutMs) : null;
+  let idleTimer = null;
+  const bump = () => { if (!idleMs || killedBy) return; if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => kill('stalled'), idleMs); if (idleTimer.unref) idleTimer.unref(); };
+  bump();
 
-  child.stdout.on('data', (d) => { if (onStdout) { try { onStdout(String(d)); } catch (e) { /* bỏ qua */ } } if (out.length < MAX_OUT) out += d; });
+  child.stdout.on('data', (d) => { bump(); if (onStdout) { try { onStdout(String(d)); } catch (e) { /* bỏ qua */ } } if (out.length < MAX_OUT) out += d; });
   child.stderr.on('data', (d) => { if (err.length < MAX_OUT) err += d; });
   child.stdin.on('error', () => { /* tiến trình thoát sớm */ });
   child.stdin.end(input);
@@ -70,6 +74,7 @@ function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
     finish = (code) => {
       if (ended) return; ended = true;
       if (timer) clearTimeout(timer);
+      if (idleTimer) clearTimeout(idleTimer);
       // Dọn tiến trình mồ côi còn sót trong nhóm (ví dụ trình duyệt do máy chủ MCP bật) khi tiến trình chính đã thoát.
       if (!IS_WIN && child.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (e) { /* không còn gì */ } }
       resolve({ code, out, err, killedBy, spawnError });
@@ -82,6 +87,7 @@ function runProcess({ bin, args, cwd, input, timeoutMs, env, wrap, onStdout }) {
 // Các kết quả chung cho mọi engine; trả null nếu tiến trình chạy bình thường.
 function abnormal(r, bin) {
   if (r.spawnError) return { ok: false, limit: false, error: 'Không chạy được ' + bin + ': ' + r.spawnError.message };
+  if (r.killedBy === 'stalled') return { ok: false, limit: false, stalled: true, error: 'AI im lặng quá lâu (nghi mất kết nối giữa chừng)' };
   if (r.killedBy === 'timeout') return { ok: false, limit: false, timedOut: true, error: 'Quá thời gian cho phép' };
   if (r.killedBy) return { ok: false, limit: false, cancelled: true, error: 'Đã hủy' };
   return null;

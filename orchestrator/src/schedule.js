@@ -132,7 +132,8 @@ function createSchedule(o) {
     }
     // /hen
     const a = noAccent(arg);
-    const proj = projects && ctx && ctx.chatId != null ? projects.active(ctx.chatId) : null;       // đang ở dự án: /hen thao tác trên lịch của DỰ ÁN
+    const ap = projects && ctx && ctx.chatId != null ? projects.active(ctx.chatId) : null;
+    const proj = ap && !ap.home ? ap : null;       // đang ở dự án: /hen thao tác trên lịch của DỰ ÁN (dự án tổng riêng của ID thì vẫn dùng lịch chung)
     if (proj) return projectHen(proj, arg, a);
     if (!a) {
       return '⏰ Báo cáo hằng ngày: ' + (s.report.enabled ? s.report.time : 'tắt') + '\n' +

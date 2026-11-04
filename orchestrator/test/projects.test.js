@@ -147,6 +147,7 @@ function botOf(P, db, extra) {
 
 test('Telegram /duan: tạo, vào, việc mới gắn đúng dự án, #tên hỏi một lần, /moi chỉ làm mới dự án, thoát; người thường chỉ vào dự án được gán', async () => {
   const { db, projects: P } = mk(); const { say } = botOf(P, db);
+  P.setHomeEnabled(false);          // thử chế độ chung cũ; dự án tổng riêng từng ID có test riêng (home-parallel.test.js)
   assert.match(await say(111, '/duan'), /Chưa có dự án/);
   assert.match(await say(111, '/duan moi Kế toán 2026'), /Đã tạo.*Kế toán 2026/);
   await say(111, 'Doanh thu tháng này?'); const j1 = db.recentJobs('111', 1)[0]; assert.equal(j1.project, 'ke-toan-2026');
@@ -175,7 +176,7 @@ test('Telegram /duan: tạo, vào, việc mới gắn đúng dự án, #tên h�
 });
 
 test('Telegram: tệp gửi lúc đang ở dự án được chép vào TAI-LIEU và câu lệnh trỏ tới bản đó', async () => {
-  const { db, projects: P } = mk(); const p = P.create('Hóa đơn'); P.setActive('111', p.id);
+  const { db, projects: P } = mk(); P.setHomeEnabled(false); const p = P.create('Hóa đơn'); P.setActive('111', p.id);
   const src = path.join(tmp(), 'hoadon.pdf'); fs.writeFileSync(src, 'PDF');
   const { createProjectCommands } = require('../src/projectCmd');
   const pc = createProjectCommands({ db, projects: P, isAdmin: () => true });

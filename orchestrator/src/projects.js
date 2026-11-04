@@ -157,10 +157,28 @@ function createProjects(o) {
 
   // ---------- ai đang ở dự án nào ----------
   const kActive = (chat) => 'proj:active:' + chat;
+  // DỰ ÁN TỔNG của từng ID Telegram: mỗi ID mặc định làm việc trong dự án riêng (thư mục, phiên, sổ tay, lịch sử riêng) nên các ID không đụng nhau.
+  // Tạo lười biếng lần đầu ID đó nhắn việc. Tắt bằng /duan tong tat (kv home_projects = '0'); khi tắt, ai chưa chọn dự án sẽ về chế độ chung như cũ.
+  const homeEnabled = () => !!o.db && db.kvGet('home_projects') !== '0';
+  const setHomeEnabled = (on) => { if (o.db) db.kvSet('home_projects', on ? '1' : '0'); };
+  function homeOf(chatId) {
+    const c = String(chatId == null ? '' : chatId);
+    if (!baseDir || !homeEnabled() || !/^\d{3,}$/.test(c)) return null;
+    try {
+      const st = load(); let p = st.list.find((x) => x.home === c && !x.deleted);
+      if (!p) {
+        let id = 'tong-' + c, n = 2; while (st.list.some((x) => x.id === id) || fs.existsSync(dirOf(id))) id = 'tong-' + c + '-' + n++;
+        p = { id, name: 'Tổng · ' + c, created: now(), createdBy: c, archived: false, engine: null, users: [c], home: c };
+        st.list.push(p); ensureDirs(p); save(st);
+        log('tạo dự án tổng cho ID ' + c + ' (' + id + ')');
+      }
+      return pub(p);
+    } catch (e) { log('dự án tổng ' + c + ' lỗi: ' + e.message); return null; }
+  }
   function active(chatId) {
-    const id = db.kvGet(kActive(chatId)); if (!id) return null;
-    const p = get(id); if (!p || p.archived) { db.kvDel(kActive(chatId)); return null; }
-    return p;
+    const id = db.kvGet(kActive(chatId));
+    if (id) { const p = get(id); if (p && !p.archived) return p; db.kvDel(kActive(chatId)); }
+    return homeOf(chatId);
   }
   function setActive(chatId, id) { if (id) db.kvSet(kActive(chatId), id); else db.kvDel(kActive(chatId)); }
 
@@ -183,7 +201,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

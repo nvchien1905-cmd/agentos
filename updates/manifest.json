@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.32",
-  "file": "agentos-update-2026.10.28.32.tar.gz",
-  "size": 348088,
-  "sha256": "e8f78d8306d9210b953fc4630cfe7418c09ed9c3cb57718b2df74079862f3007",
+  "version": "2026.10.28.33",
+  "file": "agentos-update-2026.10.28.33.tar.gz",
+  "size": 349464,
+  "sha256": "5339d0c753cc0648f53d58a8e209b182c6a5b79cd3fe6541b7df50e9e93905b0",
   "date": "2026-11-04",
-  "notes": "Nhật ký có nút tạm dừng/tiếp tục/hủy từng việc và chọn dự án; hủy việc định kỳ Facebook"
+  "notes": "Mỗi ID Telegram một dự án tổng riêng (không đụng nhau), các ID làm việc song song, việc /web chỉ một lúc"
 }

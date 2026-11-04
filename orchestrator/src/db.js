@@ -107,11 +107,21 @@ function openDb(file) {
     scopeOf(job) { return String(job.chat_id) + (job.project ? '#' + job.project : ''); },
     getJob(id) { return q.get.get(id); },
     // Lấy việc tới lượt (đang xếp hàng, hoặc đang chờ hạn mức mà đã tới giờ) và đánh dấu đang chạy.
-    claimNext(at, lanes) {
+    // opt.perChat: không nhận việc của chat đang có việc chạy (mỗi ID Telegram làm tuần tự, các ID khác nhau chạy song song).
+    // opt.exclusiveProfiles: các bộ công cụ dùng chung MỘT tài nguyên (trình duyệt đã đăng nhập) nên chỉ một việc chạy tại một thời điểm.
+    claimNext(at, lanes, opt) {
       lanes = lanes && lanes.length ? lanes : ['main'];
-      const key = lanes.length; let st = nextByLanes.get(key);
-      if (!st) { st = db.prepare("SELECT * FROM jobs WHERE (status = 'queued' OR (status = 'waiting' AND run_after <= ?)) AND COALESCE(lane,'main') IN (" + lanes.map(() => '?').join(',') + ') ORDER BY id LIMIT 1'); nextByLanes.set(key, st); }
-      const j = st.get(at == null ? now() : at, ...lanes);
+      const perChat = !!(opt && opt.perChat), ex = (opt && opt.exclusiveProfiles) || [];
+      const key = lanes.join(',') + '|' + perChat + '|' + ex.join(','); let st = nextByLanes.get(key);
+      const ph = (a) => a.map(() => '?').join(',');
+      if (!st) {
+        st = db.prepare("SELECT * FROM jobs j WHERE (j.status = 'queued' OR (j.status = 'waiting' AND j.run_after <= ?)) AND COALESCE(j.lane,'main') IN (" + ph(lanes) + ')' +
+          (perChat ? " AND NOT EXISTS (SELECT 1 FROM jobs r WHERE r.status = 'running' AND r.chat_id = j.chat_id AND COALESCE(r.lane,'main') IN (" + ph(lanes) + '))' : '') +
+          (ex.length ? " AND NOT (COALESCE(j.profile,'') IN (" + ph(ex) + ") AND EXISTS (SELECT 1 FROM jobs r2 WHERE r2.status = 'running' AND COALESCE(r2.profile,'') IN (" + ph(ex) + ')))' : '') +
+          ' ORDER BY j.id LIMIT 1');
+        nextByLanes.set(key, st);
+      }
+      const j = st.get(at == null ? now() : at, ...lanes, ...(perChat ? lanes : []), ...ex, ...(ex.length ? ex : []));
       if (!j) return null;
       if (q.run.run(now(), j.id).changes !== 1) return null;
       return q.get.get(j.id); // run_after còn nguyên để biết việc này từng phải chờ

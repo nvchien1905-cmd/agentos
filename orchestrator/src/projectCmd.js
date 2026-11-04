@@ -16,13 +16,13 @@ function createProjectCommands(o) {
     const p = projects.active(chatId);
     return p && projects.canUse(uid == null ? chatId : uid, p, isAdmin) ? p : null;
   }
-  const label = (p) => '📁 ' + p.name;
-  const usable = (uid) => projects.list().filter((p) => projects.canUse(uid, p, isAdmin));
+  const label = (p) => '📁 ' + (p.home ? 'Dự án tổng của bạn' : p.name);
+  const usable = (uid) => projects.list().filter((p) => !p.home && projects.canUse(uid, p, isAdmin));     // dự án tổng riêng của từng ID không nằm trong danh sách chung
 
   function help(uid) {
     const adm = isAdmin(uid);
     return '📁 DỰ ÁN — mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay và lịch sử riêng; AI nào (Claude/Codex/Gemini/DeepSeek) cũng dùng chung dữ liệu dự án, hết hạn mức thì tự chuyển AI khác.\n' +
-      '/duan — danh sách · /duan <tên> — vào dự án · /duan thoat — về chế độ chung\n' +
+      '/duan — danh sách · /duan <tên> — vào dự án · /duan thoat — về dự án tổng của bạn (mỗi ID Telegram có một dự án tổng riêng, chạy song song với ID khác)\n' +
       '#<tên-dự-án> <việc> — hỏi một lần trong dự án mà không đổi chỗ đang đứng\n' +
       '/duan chidan — xem chỉ dẫn · /duan tep — xem tệp' +
       (adm ? '\n/duan moi <tên> — tạo dự án · /duan chidan <văn bản> (thay) hoặc /duan chidan them <dòng> · /duan ai <claude|codex|gemini|deepseekapi|tudong> · /duan chungtu bat|tat (đọc hóa đơn/phiếu tự động) · /duan hoidap bat|tat (kho kiến thức cho nhân viên bán hàng)\n' +
@@ -31,8 +31,9 @@ function createProjectCommands(o) {
 
   function listText(chatId, uid) {
     const cur = current(chatId, uid), list = usable(uid);
-    if (!list.length) return 'Chưa có dự án nào' + (isAdmin(uid) ? '. Tạo bằng /duan moi <tên>, ví dụ /duan moi Kế toán 2026.' : ' dành cho bạn. Nhờ chủ máy gán.') + '\n\n' + help(uid);
-    return '📁 Dự án' + (cur ? ' (đang ở: ' + cur.name + ')' : ' (đang ở chế độ chung)') + ':\n' +
+    const where = cur ? (cur.home ? ' (đang ở dự án tổng của bạn)' : ' (đang ở: ' + cur.name + ')') : ' (đang ở chế độ chung)';
+    if (!list.length) return 'Chưa có dự án nào' + (isAdmin(uid) ? '. Tạo bằng /duan moi <tên>, ví dụ /duan moi Kế toán 2026.' : ' dành cho bạn. Nhờ chủ máy gán.') + (cur && cur.home ? '\n📁 Bạn đang làm việc trong dự án tổng riêng của mình (ID ' + chatId + ').' : '') + '\n\n' + help(uid);
+    return '📁 Dự án' + where + ':\n' +
       list.map((p) => (cur && cur.id === p.id ? '▶️ ' : '• ') + p.name + (p.engine ? ' [' + (ENGINES[p.engine] || p.engine) + ']' : '') + ' — ' + projects.usage(p.id).docs + ' tài liệu, ' + projects.usage(p.id).results + ' kết quả').join('\n') +
       '\n\nVào dự án: /duan <tên> · Thoát: /duan thoat · Hướng dẫn: /duan tro-giup';
   }
@@ -51,7 +52,13 @@ function createProjectCommands(o) {
     };
     switch (sub) {
       case 'tro-giup': case 'trogiup': case 'help': return help(uid);
-      case 'thoat': case 'ra': case 'chung': projects.setActive(chatId, null); return '↩️ Đã về chế độ chung (không còn trong dự án nào).';
+      case 'thoat': case 'ra': case 'chung': projects.setActive(chatId, null); return projects.homeOf(chatId) ? '↩️ Đã về dự án tổng của bạn (mỗi ID Telegram có một dự án tổng riêng, không đụng nhau).' : '↩️ Đã về chế độ chung (không còn trong dự án nào).';
+      case 'tong': {                                  // /duan tong — về dự án tổng của mình; /duan tong bat|tat — chủ máy bật/tắt chế độ "mỗi ID một dự án tổng"
+        const k = na(rest);
+        if (k === 'bat' || k === 'tat') { const e = need(); if (e) return e; projects.setHomeEnabled(k === 'bat'); return k === 'bat' ? '✅ Đã bật: mỗi ID Telegram mặc định làm việc trong dự án tổng riêng.' : '✅ Đã tắt: ai chưa chọn dự án sẽ làm việc ở chế độ chung như trước (dự án tổng đã tạo vẫn giữ).'; }
+        projects.setActive(chatId, null);
+        return projects.homeOf(chatId) ? '↩️ Đã về dự án tổng của bạn.' : 'Chế độ "mỗi ID một dự án tổng" đang tắt, nên bạn ở chế độ chung. Chủ máy bật bằng /duan tong bat.';
+      }
       case 'moi': case 'tao': {
         const e = need(); if (e) return e;
         let p; try { p = projects.create(rest, uid); } catch (x) { return '⚠️ ' + x.message; }

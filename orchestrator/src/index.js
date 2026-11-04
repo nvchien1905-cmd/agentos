@@ -319,28 +319,34 @@ async function main() {
   const inboxDir = path.join(cfg.workdir, 'inbox');
   const voice = createVoice({ tg, log, bin: process.env.STT_BIN || undefined });
   const media = createMedia({ tg, dir: inboxDir, log, voice });
-  const worker = createWorker({
+  // Hàng đợi chính: mỗi ID Telegram làm tuần tự nhưng các ID khác nhau chạy SONG SONG (mainParallel worker dùng chung hàng đợi, db.claimNext perChat).
+  // Bộ công cụ có trình duyệt (/web) dùng chung MỘT hồ sơ Chrome đã đăng nhập nên chỉ một việc /web chạy tại một thời điểm.
+  const exclusiveProfiles = Object.keys(tools.profiles).filter((n) => (tools.profiles[n].mcp || []).includes('browser'));
+  const makeMain = () => createWorker({
     db, log, notify, engines, ui: live, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     outbox: createOutbox(outDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
-    retryDelaysMs: cfg.retryDelaysMs,
+    retryDelaysMs: cfg.retryDelaysMs, perChat: true, exclusiveProfiles,
     // Ổ đĩa gần đầy thì không nhận việc (Chromium/AI ghi nhiều file tạm; đầy đĩa làm hỏng cả cơ sở dữ liệu).
     preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB, cần ít nhất ' + cfg.minFreeMb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
   });
+  const mainWorkers = Array.from({ length: cfg.mainParallel }, makeMain);
+  const worker = mainWorkers[0];
   // Việc nền (/nen), sự kiện tự kích hoạt và webhook chạy SONG SONG với hàng đợi chính: 2 worker riêng cho các làn đó
   const bgWorkers = [1, 2].map(() => createWorker({
     db, log, notify, engines, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)), retryDelaysMs: cfg.retryDelaysMs, lanes: ['bg', 'event', 'hook'],
     preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
   }));
+  const allWorkers = [...mainWorkers, ...bgWorkers];
   const crew = {
-    wake() { worker.wake(); for (const b of bgWorkers) b.wake(); },
-    cancelRunning(chatId) { let any = worker.cancelRunning(chatId); for (const b of bgWorkers) if (b.cancelRunning(chatId)) any = true; return any; },
-    cancelJob(id) { let any = worker.cancelJob(id); for (const b of bgWorkers) if (b.cancelJob(id)) any = true; return any; },
-    currentJobId() { return worker.currentJobId() || (bgWorkers.map((b) => b.currentJobId()).find(Boolean) || null); },
+    wake() { for (const w of allWorkers) w.wake(); },
+    cancelRunning(chatId) { let any = false; for (const w of allWorkers) if (w.cancelRunning(chatId)) any = true; return any; },
+    cancelJob(id) { let any = false; for (const w of allWorkers) if (w.cancelJob(id)) any = true; return any; },
+    currentJobId() { return allWorkers.map((w) => w.currentJobId()).find(Boolean) || null; },
     engineNames: () => worker.engineNames(),
     engineStatus: () => worker.engineStatus(),
-    async stop() { await Promise.all([worker.stop(), ...bgWorkers.map((b) => b.stop())]); },
+    async stop() { await Promise.all(allWorkers.map((w) => w.stop())); },
   };
   const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
   // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
@@ -436,7 +442,7 @@ async function main() {
   alerts.start();
   const schedule = createSchedule({
     db, log, kiotviet, notify, admins: [...cfg.adminUserIds], oneDriveDir: cfg.oneDriveDir, diskFreeMb: () => maint.diskFreeMb(cfg.workdir), defaultReportTime: cfg.reportTime,
-    projects, submitJob: (chatId, text, project) => { db.addJob(chatId, text, null, null, 'main', project || null); setImmediate(() => crew.wake()); },
+    projects, submitJob: (chatId, text, project) => { const home = project ? null : projects.homeOf(chatId); db.addJob(chatId, text, null, null, 'main', project || (home ? home.id : null)); setImmediate(() => crew.wake()); },
   });
   const updates = createUpdateWatcher({
     db, log, notify, admins: [...cfg.adminUserIds], url: cfg.updateUrl || undefined,

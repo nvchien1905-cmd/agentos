@@ -124,7 +124,7 @@ test('fanpage: khóa hết hạn (mã 190) chỉ báo MỘT lần; thao tác b�
 function mkFb(o) {
   o = o || {}; const subs = [], texts = [], cards = [], jobs = {}; let id = 100, clock = Date.UTC(2026, 0, 5, 3, 0, 0);          // 10:00 giờ VN = 03:00 UTC nhưng đồng hồ máy chạy thử theo giờ địa phương
   const fb = createFacebook({
-    file: path.join(tmp(), 'fb.json'), now: () => clock, admin: () => '1', probe: o.probe, isBusy: o.isBusy, remote: o.remote,
+    file: path.join(tmp(), 'fb.json'), now: () => clock, admin: () => '1', probe: o.probe, isBusy: o.isBusy, remote: o.remote, botBrowser: o.botBrowser !== false,
     notify: async (c, t) => { texts.push(t); }, ask: async (c, t, b) => { cards.push({ t, b }); return 700 + cards.length; }, edit: async () => {},
     submit: (prompt, kind) => { id++; subs.push({ id, prompt, kind }); jobs[id] = { status: 'running' }; return id; }, getJob: (i) => jobs[i],
   });
@@ -183,7 +183,7 @@ test('bot: /fanpage /facebook /fb chỉ chủ máy; nút fp:/fb: chỉ chủ má
   assert.match(await say(1, '/fanpage them ' + TOKEN, 77), /Đã kết nối trang "Gia Dụng Huyền Anh"[^]*XÓA tin nhắn/); assert.deepEqual(deleted, [['1', 77]], 'tự xóa tin nhắn chứa khóa');
   assert.match(await say(1, '/fanpage tudong'), /TỰ ĐỘNG/); assert.match(await say(1, '/fanpage them khóa-sai'), /không đúng dạng/);
   await say(1, '/fanpage ketnoi'); const j = db.getJob(1); assert.ok(j, 'tạo việc cho AI'); assert.equal(j.profile, 'web'); assert.match(j.prompt, /\[KẾT NỐI FANPAGE\]/); assert.ok(!j.prompt.includes(TOKEN));
-  assert.match(await say(1, '/facebook bat'), /BẬT/); assert.match(await say(1, '/facebook'), /BẬT — AI kiểm mỗi 20 phút/);
+  assert.match(await say(1, '/facebook bat'), /BẬT/); assert.match(await say(1, '/facebook'), /ĐANG NGHỈ/);
   await F.fb.onResult({}, '```json\n{"tin":[{"n":1,"ten":"Mai","xem_truoc":"a","nhap":"b"}]}\n```');
   assert.match(await bot.handleCallback({ from: { id: 2 }, data: 'fb:1:y' }) || '', /Chỉ chủ máy|^$/); assert.equal(F.subs.length, 0, 'người khác bấm không gửi được');
   assert.match(await bot.handleCallback({ from: { id: 1 }, data: 'fb:1:y' }), /Đang nhờ AI gửi cho Mai/);
@@ -351,4 +351,16 @@ test('MÁY TRỰC (/facebook may): một lệnh kiểm máy + cửa sổ Messeng
   raw = { found: true, unread: 9, chromeReady: true }; runRes = { ok: false, error: 'Chủ máy Windows này chưa bật' }; S.bump(1); S.fb.command('bat'); S.fb.command('may May van phong');
   S.bump(1); await S.fb.tick(); await new Promise((r) => setImmediate(r)); await new Promise((r) => setImmediate(r)); assert.ok(S.texts.some((t) => /Máy trực "May van phong" không kiểm được tin: Chủ máy Windows/.test(t)));
   assert.match(await S.fb.command('may tat'), /Đã quay về/); assert.equal(S.fb.load().machine, null);
+});
+
+test('facebook: bản chạy thật KHÔNG trực bằng trình duyệt của bot — chưa chọn máy Windows thì im lặng, không nhắc đăng nhập, không mở trình duyệt', async () => {
+  let probes = 0, released = 0;
+  const S = mkFb({ botBrowser: false, probe: async () => { probes++; return { login: true }; } });
+  S.at(10); S.fb.command('bat');
+  for (let i = 0; i < 5; i++) { S.bump(1); assert.equal(await S.fb.tick(), false); }
+  assert.equal(probes, 0, 'không kiểm bằng trình duyệt của bot');
+  assert.equal(S.subs.length, 0, 'không giao việc cho AI');
+  assert.ok(!S.texts.some((t) => /chưa đăng nhập|dangnhap/.test(t)), 'không nhắc đăng nhập Facebook vào trình duyệt của bot');
+  assert.match(await S.fb.command('kiemtra'), /Chưa chọn máy Windows/);
+  assert.match(S.fb.command(''), /KHÔNG dùng trình duyệt của nó/);
 });

@@ -61,6 +61,7 @@ function sendPrompt(ten, text, remote) {
 function createFacebook(o) {
   const { notify, ask, edit, submit, getJob, probe, isBusy } = o, remote = o.remote || null;
   const file = o.file || '/var/lib/agentos/data/facebook.json';
+  const botBrowser = o.botBrowser === true;   // chỉ để thử/tương thích: bản chạy thật KHÔNG truyền nên không bao giờ trực Facebook bằng trình duyệt của bot
   const now = o.now || Date.now, log = o.log || (() => {});
   const admin = () => (typeof o.admin === 'function' ? o.admin() : o.admin);
   const defaults = () => ({ maxPerHour: 8, pausedUntil: 0, probeSec: 30, enabled: false, machine: null, warnedChrome: 0, everyMin: 20, from: 420, to: 1320, lastRun: 0, lastProbe: 0, probeFails: 0, handled: 0, jobId: 0, last: [], warnedLogin: 0, mode: 'nhap', tudongList: [], khongList: [], instructions: '', signature: null, history: [] });
@@ -101,6 +102,8 @@ function createFacebook(o) {
       const t = now();
       if (t < (c.pausedUntil || 0) || !inHours(c, new Date(t))) { if (probe) await releaseBrowser(); return false; }
       const rm = !!(remote && c.machine), prb = rm ? async () => mapRemote(await remote.probe(c.machine)) : probe;       // máy trực từ xa: kiểm nhanh bằng tiêu đề cửa sổ Chrome của máy đó
+      // Chủ máy không muốn đăng nhập Facebook vào trình duyệt của bot (Facebook dễ khóa tài khoản): chưa chọn máy Windows thì KHÔNG dùng trình duyệt của bot để trực, cũng không nhắc đăng nhập.
+      if (!rm && !botBrowser) { if (probe) await releaseBrowser(); return false; }
       if (c.jobId) { const j = getJobX(c.jobId); if (j && ['queued', 'running', 'waiting'].includes(j.status)) return false; }
       // Capped: đã tự trả lời đủ `maxPerHour` tin trong 1 giờ qua thì lượt này chỉ ĐỌC + soạn nháp (không tự gõ gì), giữ nhịp như người thật
       const capped = c.mode !== 'nhap' && (c.history || []).filter((h) => t - h.at < 3600000).length >= (c.maxPerHour || 8);
@@ -190,7 +193,7 @@ function createFacebook(o) {
   const modeText = (c) => (c.mode === 'tudong' ? '🤖 TỰ ĐỘNG trả lời mọi người (trừ danh sách "không": ' + ((c.khongList || []).join(', ') || 'trống') + ')' : c.mode === 'danhsach' ? '🤖 TỰ ĐỘNG với: ' + ((c.tudongList || []).join(', ') || '(trống)') + ' · người khác: nháp chờ anh duyệt' : '✍️ NHÁP: chỉ đọc + soạn, anh bấm ✅ mới gửi');
   function status() {
     const c = load();
-    return '📘 Trợ lý trực Facebook cá nhân (' + (c.machine ? 'chạy trên Chrome của máy "' + c.machine + '"' : 'qua Chrome của bot') + '): ' + (c.enabled ? '🟢 BẬT — ' + (probe ? 'kiểm nhanh mỗi ' + c.probeSec + ' giây (không tốn AI; AI chỉ vào khi có tin chưa đọc mới)' : 'AI kiểm mỗi ' + Math.max(c.everyMin, 20) + ' phút') + ', ' + fmtHour(c.from) + '–' + fmtHour(c.to) : '⚪ TẮT') + '\n' +
+    return '📘 Trợ lý trực Facebook cá nhân (' + (c.machine ? 'chạy trên Chrome của máy "' + c.machine + '"' : 'chưa chọn máy Windows — bot KHÔNG dùng trình duyệt của nó để trực Facebook') + '): ' + (c.enabled ? (c.machine ? '🟢 BẬT — ' : '⏸ ĐANG NGHỈ (chọn máy bằng /facebook may <tên máy>) — ') + (!c.machine && !botBrowser ? '' : probe ? 'kiểm nhanh mỗi ' + c.probeSec + ' giây (không tốn AI; AI chỉ vào khi có tin chưa đọc mới)' : 'AI kiểm mỗi ' + Math.max(c.everyMin, 20) + ' phút') + ', ' + fmtHour(c.from) + '–' + fmtHour(c.to) : '⚪ TẮT') + '\n' +
       'Chế độ: ' + modeText(c) + '\n' + 'Chữ ký: ' + (c.signature || '(không có — tin gửi đi không nhắc gì tới AI, viết như chính anh nhắn)') + '\n' + (c.lastRun ? 'Lần kiểm gần nhất: ' + Math.max(1, Math.round((now() - c.lastRun) / 60000)) + ' phút trước\n' : '') +
       'Tin nhạy cảm (tiền, mật khẩu, OTP, liên kết lạ, tin buồn, khẩn cấp...) LUÔN chờ anh duyệt.\n' +
       'Lệnh: /facebook may [tên máy] (dùng Chrome máy Windows — khuyên dùng) · dangnhap · bat [giây] · nhip <giây> · tat · kiemtra · gio 7-22 · tudong [tên] · nhap · khong <tên> · chidan <nội dung> · chuky <chữ|tat> · gioihan <số> · nhatky · /fb tra <số> [nội dung]';
@@ -257,7 +260,7 @@ function createFacebook(o) {
     if (sub === 'dangnhap') return '🔐 Đăng nhập Facebook cho trợ lý (làm MỘT lần):\n1) Gõ /mo fbbot — mở trình duyệt CỦA BOT (đúng hồ sơ mà AI dùng) trên màn hình máy, trang Messenger.\n2) Anh tự đăng nhập Facebook (xem màn hình bằng /manhinh, hoặc điều khiển bằng /tuxa nếu anh ở xa); nên chọn "Tin cậy thiết bị này" để Facebook ít đòi xác minh.\n3) Xong gõ /dong fbbot để đóng cửa sổ rồi /facebook bat.\nBot không bao giờ tự nhập mật khẩu hay mã xác minh. Nếu Facebook đòi xác minh về sau, bot dừng và báo anh.';
     if (sub === 'gioihan') { const n = Number(rest); if (!(n >= 1 && n <= 60)) return 'Cách dùng: /facebook gioihan <số tin tự trả lời tối đa mỗi giờ, 1–60>. Hiện: ' + (load().maxPerHour || 8) + '.'; mut((x) => { x.maxPerHour = Math.round(n); }); return '✅ Tối đa ' + Math.round(n) + ' tin tự trả lời mỗi giờ; vượt thì chỉ soạn nháp chờ anh duyệt (giữ nhịp như người thật, Facebook ít nghi hơn).'; }
     if (sub === 'nhatky') { const h = load().history || []; return h.length ? '🧾 Các tin trợ lý đã tự trả lời gần đây:\n' + h.slice(-10).reverse().map((x) => '• ' + new Date(x.at).toLocaleString('vi-VN') + ' — ' + x.ten + ': "' + x.hoi + '"\n   ↪ ' + x.tra_loi).join('\n') : 'Chưa có tin nào được trợ lý tự trả lời.'; }
-    if (sub === 'kiemtra') { const c = load(); const id = dispatch(c, (rem) => checkPrompt(c, rem), 'check'); mut((x) => { x.lastRun = now(); x.jobId = id; }); return '🔎 Đang nhờ AI vào Messenger kiểm tin (việc #' + id + ', chế độ ' + c.mode + ')...'; }
+    if (sub === 'kiemtra') { const c = load(); if (!(remote && c.machine) && !botBrowser) return '⏸ Chưa chọn máy Windows nên chưa kiểm được. Bot không dùng trình duyệt của nó để vào Facebook. Chọn máy: /facebook may <tên máy>'; const id = dispatch(c, (rem) => checkPrompt(c, rem), 'check'); mut((x) => { x.lastRun = now(); x.jobId = id; }); return '🔎 Đang nhờ AI vào Messenger kiểm tin (việc #' + id + ', chế độ ' + c.mode + ')...'; }
     return status();
   }
   function fbCommand(arg) {                                                        // /fb tra <số> [nội dung]

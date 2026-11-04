@@ -93,7 +93,7 @@ function createSchedule(o) {
       runReport(admins).catch((e) => log('báo cáo lỗi: ' + e.message));
     }
     for (const j of s.jobs) {
-      if (!due(j.time, j.last)) continue;
+      if (j.paused || !due(j.time, j.last)) continue;
       j.last = t.date; dirty = true; fired++;
       save(s);
       try { submitJob(j.chatId, j.text); log('hẹn giờ #' + j.id + ' đã giao việc cho AI'); } catch (e) { log('hẹn giờ #' + j.id + ' lỗi: ' + e.message); }
@@ -102,7 +102,7 @@ function createSchedule(o) {
     if (projects) {
       for (const p of projects.list()) {
         for (const j of p.schedule || []) {
-          if (!due(j.time, j.last) || (j.days && j.days.length && !j.days.includes(t.dow))) continue;
+          if (j.paused || !due(j.time, j.last) || (j.days && j.days.length && !j.days.includes(t.dow))) continue;
           try { projects.markRan(p.id, j.id, t.date); } catch (e) { continue; }          // ghi trước: lỗi giữa chừng cũng không chạy lặp
           fired++;
           try { submitJob(String(admins[0] || (p.users && p.users[0]) || ''), j.text, p.id); log('hẹn giờ dự án "' + p.name + '" #' + j.id + ' đã giao việc cho AI'); } catch (e) { log('hẹn giờ dự án ' + p.id + ' lỗi: ' + e.message); }
@@ -182,7 +182,41 @@ function createSchedule(o) {
     } catch (e) { return '⚠️ ' + e.message; }
   }
 
-  return { tick, command, buildReport, runReport, parseTime, load };
+  // ---------- điều khiển TỪNG việc định kỳ (trang Cài đặt → Nhật ký, qua control.js) ----------
+  // scope '' = việc hẹn giờ chung (/hen); scope = mã dự án = lịch tự làm của dự án đó
+  function listAll() {
+    const out = load().jobs.map((j) => ({ scope: '', projectName: '', id: j.id, time: j.time, days: [], text: j.text, paused: !!j.paused, last: j.last || '' }));
+    if (projects) for (const p of projects.list({ all: true })) for (const j of p.schedule || []) out.push({ scope: p.id, projectName: p.name, id: j.id, time: j.time, days: j.days || [], text: j.text, paused: !!j.paused, last: j.last || '' });
+    return out;
+  }
+  function setPaused(scope, id, paused) {
+    if (scope) return projects ? projects.setSchedulePaused(scope, id, paused) : false;
+    const s = load(), j = s.jobs.find((x) => x.id === Number(id)); if (!j) return false;
+    j.paused = !!paused; save(s); return true;
+  }
+  function removeJob(scope, id) {
+    if (scope) return projects ? projects.removeSchedule(scope, id) : false;
+    const s = load(), n = s.jobs.length; s.jobs = s.jobs.filter((x) => x.id !== Number(id)); if (s.jobs.length === n) return false; save(s); return true;
+  }
+  // Chuyển việc hẹn giờ chung vào một dự án: từ nay chạy TRONG dự án đó (thư mục, chỉ dẫn, sổ tay riêng), dữ liệu về dự án đó
+  function moveToProject(id, projectId) {
+    const s = load(), j = s.jobs.find((x) => x.id === Number(id));
+    if (!j || !projects || !projects.get(projectId)) return false;
+    const pid = projects.get(projectId).id;
+    const added = projects.addSchedule(pid, { time: j.time, days: [], text: j.text });
+    if (j.paused) projects.setSchedulePaused(pid, added.id, true);
+    s.jobs = s.jobs.filter((x) => x.id !== j.id); save(s); return true;
+  }
+  // Xóa mọi việc định kỳ có nội dung chứa đoạn chữ này (dùng khi chủ máy bảo hủy một việc theo tên)
+  function removeMatching(text) {
+    text = String(text || ''); if (!text) return 0;
+    let n = 0; const s = load(), before = s.jobs.length;
+    s.jobs = s.jobs.filter((j) => !String(j.text).includes(text)); n += before - s.jobs.length; if (before !== s.jobs.length) save(s);
+    if (projects) for (const p of projects.list({ all: true })) for (const j of (p.schedule || []).slice()) if (String(j.text).includes(text) && projects.removeSchedule(p.id, j.id)) n++;
+    return n;
+  }
+
+  return { tick, command, buildReport, runReport, parseTime, load, listAll, setPaused, removeJob, moveToProject, removeMatching };
 }
 
 module.exports = { createSchedule, parseTime };

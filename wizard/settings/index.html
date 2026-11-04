@@ -12,6 +12,7 @@ main{flex:1;overflow:auto;padding:22px 28px}h2{margin:0 0 14px;font-size:20px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
 .card h3{margin:0 0 8px;font-size:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}
 button.b{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}button.b:hover{background:#eef3f8}
+table.t button.b{padding:4px 10px;margin:2px 2px 2px 0}table.t select{max-width:170px;padding:4px 6px}
 button.p{background:var(--pri);color:#fff;border-color:var(--pri)}button.p:hover{background:#0a4f7c}button.d{color:var(--bad)}button:disabled{opacity:.5;cursor:default}
 input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;min-width:0}input[type=text],input[type=password]{flex:1}
 .mute{color:var(--mute)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}small{color:var(--mute)}
@@ -263,18 +264,47 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     aud: function () {
       var f = { days: 7, q: '', status: '', denied: false };
       function qs() { return 'days=' + f.days + '&q=' + encodeURIComponent(f.q) + '&status=' + f.status + (f.denied ? '&denied=1' : '') + '&limit=150'; }
+      function send(body, msg) { api('POST', 'control', body).then(function () { toast(msg || 'Đã gửi lệnh, đang cập nhật...'); setTimeout(load, 2500); }).catch(fail); }
+      function projSel(j, projects) {
+        var dis = j.status === 'running' ? ' disabled title="Việc đang chạy: đổi dự án sau khi xong"' : '';
+        return '<select data-jp="' + j.id + '"' + dis + '><option value="">— không —</option>' + (projects || []).map(function (p) { return '<option value="' + esc(p.id) + '"' + (j.project === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>';
+      }
+      function ctl(j) {
+        var b = function (act, label, cls) { return '<button class="b ' + (cls || '') + '" data-ctl="' + act + '" data-id="' + j.id + '">' + label + '</button> '; };
+        if (j.status === 'running') return b('job.cancel', 'Hủy', 'd');
+        if (j.held) return b('job.release', 'Tiếp tục', 'p') + b('job.cancel', 'Hủy', 'd');
+        if (j.status === 'queued' || j.status === 'waiting') return b('job.hold', 'Tạm dừng') + b('job.cancel', 'Hủy', 'd');
+        return '';
+      }
+      function schedHtml(r) {
+        var L = r.schedules || [];
+        var h = '<div class="card"><h3>Việc định kỳ (tự chạy theo giờ)</h3>';
+        if (!L.length) return h + '<p class="mute">Chưa có việc định kỳ nào. Thêm bằng /hen trên Telegram hoặc ở mục Dự án.</p></div>';
+        h += '<table class="t"><tr><th>Giờ</th><th>Ngày</th><th>Nội dung</th><th>Dự án</th><th>Trạng thái</th><th>Điều khiển</th></tr>';
+        L.forEach(function (j) {
+          var k = 'data-sc="' + esc(j.scope) + '" data-id="' + j.id + '"';
+          var proj = j.scope ? esc(j.projectName) : '<select data-sp="' + j.id + '"><option value="">— chung (chưa gắn dự án) —</option>' + (r.projects || []).map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') + '</select>';
+          h += '<tr><td>' + esc(j.time) + '</td><td>' + (j.days && j.days.length ? esc(j.days.map(function (d) { return ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'][d]; }).join(',')) : 'mỗi ngày') + '</td><td>' + esc(j.text) + '</td><td>' + proj + '</td><td>' + (j.paused ? '⏸ tạm dừng' : '🟢 đang bật') + '</td><td>' +
+            '<button class="b ' + (j.paused ? 'p' : '') + '" data-sa="' + (j.paused ? 'sched.resume' : 'sched.pause') + '" ' + k + '>' + (j.paused ? 'Bật lại' : 'Tạm dừng') + '</button> <button class="b d" data-sa="sched.remove" ' + k + '>Xóa</button></td></tr>';
+        });
+        return h + '</table></div>';
+      }
       function draw(r) {
         var w = r.week, st = {}; w.byStatus.forEach(function (x) { st[x.status] = x.n; });
-        var h = '<h2>Nhật ký</h2><div class="card"><p>7 ngày qua: <b>' + w.total + '</b> việc (' + (st.done || 0) + ' xong, ' + (st.error || 0) + ' lỗi) · AI xin dùng công cụ: ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'allow' ? x.n : 0); }, 0) + ' được phép, ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'deny' ? x.n : 0); }, 0) + ' bị từ chối.</p>' +
+        var h = '<h2>Nhật ký</h2>' + schedHtml(r) + '<div class="card"><p>7 ngày qua: <b>' + w.total + '</b> việc (' + (st.done || 0) + ' xong, ' + (st.error || 0) + ' lỗi) · AI xin dùng công cụ: ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'allow' ? x.n : 0); }, 0) + ' được phép, ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'deny' ? x.n : 0); }, 0) + ' bị từ chối.</p>' +
           '<div class="row"><select id="aud-d"><option value="1">Hôm nay</option><option value="7">7 ngày</option><option value="30">30 ngày</option><option value="90">90 ngày</option></select>' +
           '<select id="aud-s"><option value="">Mọi trạng thái</option><option value="done">Xong</option><option value="error">Lỗi</option><option value="cancelled">Đã hủy</option></select>' +
           '<label class="mute"><input type="checkbox" id="aud-x"> chỉ việc có công cụ bị từ chối</label><input id="aud-q" placeholder="Tìm trong nội dung" style="flex:1;min-width:140px"><button class="b p" id="aud-go">Lọc</button><button class="b" id="aud-csv">Xuất CSV</button></div>' +
-          '<table class="t"><tr><th>#</th><th>Lúc</th><th>Người nhắn</th><th>Dự án</th><th>AI</th><th>Kết quả</th><th>Giây</th><th>Công cụ</th><th>Nội dung</th></tr>' +
-          r.list.map(function (j) { return '<tr data-j="' + j.id + '" style="cursor:pointer"><td>' + j.id + '</td><td>' + esc(j.at) + '</td><td>' + esc(j.who) + '</td><td>' + esc(j.projectName || '') + '</td><td>' + esc(j.engine || '') + '</td><td>' + esc(j.statusText) + '</td><td>' + (j.secs == null ? '' : j.secs) + '</td><td>' + j.tools + (j.denied ? ' <b class="bad">(' + j.denied + ' từ chối)</b>' : '') + '</td><td>' + esc(j.prompt) + '</td></tr>'; }).join('') + '</table><div id="aud-det"></div></div>';
+          '<table class="t"><tr><th>#</th><th>Lúc</th><th>Người nhắn</th><th>Dự án</th><th>AI</th><th>Kết quả</th><th>Giây</th><th>Công cụ</th><th>Nội dung</th><th>Điều khiển</th></tr>' +
+          r.list.map(function (j) { return '<tr data-j="' + j.id + '" style="cursor:pointer"><td>' + j.id + '</td><td>' + esc(j.at) + '</td><td>' + esc(j.who) + '</td><td>' + projSel(j, r.projects) + '</td><td>' + esc(j.engine || '') + '</td><td>' + esc(j.statusText) + '</td><td>' + (j.secs == null ? '' : j.secs) + '</td><td>' + j.tools + (j.denied ? ' <b class="bad">(' + j.denied + ' từ chối)</b>' : '') + '</td><td>' + esc(j.prompt) + '</td><td>' + ctl(j) + '</td></tr>'; }).join('') + '</table><div id="aud-det"></div></div>';
         set(h);
         document.getElementById('aud-d').value = String(f.days); document.getElementById('aud-s').value = f.status; document.getElementById('aud-x').checked = f.denied; document.getElementById('aud-q').value = f.q;
         on('aud-go', function () { f.days = Number(document.getElementById('aud-d').value); f.status = document.getElementById('aud-s').value; f.denied = document.getElementById('aud-x').checked; f.q = document.getElementById('aud-q').value; load(); });
         on('aud-csv', function () { api('GET', 'audit/csv?days=' + f.days).then(function (x) { var b = new Blob([x.csv], { type: 'text/csv;charset=utf-8' }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'nhat-ky-agentos.csv'; document.body.appendChild(a); a.click(); a.remove(); }).catch(fail); });
+        [].forEach.call(main.querySelectorAll('button[data-ctl]'), function (b) { b.onclick = function (ev) { ev.stopPropagation(); var a = b.getAttribute('data-ctl'), id = b.getAttribute('data-id'); if (a === 'job.cancel' && !ask('Hủy việc #' + id + '? Việc đang chạy sẽ bị dừng.')) return; send({ action: a, id: Number(id) }); }; });
+        [].forEach.call(main.querySelectorAll('select[data-jp]'), function (sel) { sel.onclick = function (ev) { ev.stopPropagation(); }; sel.onchange = function () { send({ action: 'job.project', id: Number(sel.getAttribute('data-jp')), project: sel.value }, 'Đã đổi dự án của việc.'); }; });
+        [].forEach.call(main.querySelectorAll('button[data-sa]'), function (b) { b.onclick = function () { var a = b.getAttribute('data-sa'); if (a === 'sched.remove' && !ask('Xóa hẳn việc định kỳ này?')) return; send({ action: a, scope: b.getAttribute('data-sc'), id: Number(b.getAttribute('data-id')) }); }; });
+        [].forEach.call(main.querySelectorAll('select[data-sp]'), function (sel) { sel.onchange = function () { if (sel.value && ask('Chuyển việc định kỳ này vào dự án đã chọn? Từ nay nó chạy trong dự án đó (thư mục, chỉ dẫn, sổ tay riêng).')) send({ action: 'sched.project', id: Number(sel.getAttribute('data-sp')), project: sel.value }, 'Đã chuyển việc vào dự án.'); else sel.value = ''; }; });
         [].forEach.call(main.querySelectorAll('tr[data-j]'), function (tr) { tr.onclick = function () { api('GET', 'audit/job?id=' + tr.getAttribute('data-j')).then(function (d) {
           document.getElementById('aud-det').innerHTML = '<h3>Việc #' + d.id + ' · ' + esc(d.statusText) + (d.council ? ' · hội đồng AI' : '') + '</h3><p class="mute">' + esc(d.who) + ' · ' + esc(d.at) + (d.engine ? ' · AI: ' + esc(d.engine) : '') + (d.projectName ? ' · dự án: ' + esc(d.projectName) : '') + '</p><p><b>Yêu cầu:</b></p><pre style="white-space:pre-wrap">' + esc(d.prompt.slice(0, 3000)) + '</pre><p><b>Kết quả:</b></p><pre style="white-space:pre-wrap">' + esc((d.result || d.error || '').slice(0, 4000)) + '</pre><p><b>Công cụ AI đã xin (' + d.tools.length + '):</b></p><ul>' + d.tools.map(function (t) { return '<li>' + esc(t.at) + ' ' + (t.decision === 'allow' ? '✅' : '⛔') + ' ' + esc(t.tool) + ' (' + esc(t.source || '') + ') ' + esc(t.summary) + '</li>'; }).join('') + '</ul>'; }).catch(fail); }; });
       }

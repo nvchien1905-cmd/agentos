@@ -1,6 +1,6 @@
 #!/bin/bash
 # Chạy bằng root sau khi tệp của bản cập nhật đã được ghi (nằm trong phần được ký).
-# Bản này: gỡ mục KiotViet; Chrome lưu mật khẩu + giữ phiên đăng nhập; bot không trực Facebook bằng trình duyệt của nó.
+# Bản này: Nhật ký có nút điều khiển từng việc; hủy việc định kỳ Facebook; gỡ mục KiotViet; Chrome lưu mật khẩu + giữ phiên đăng nhập; bot không trực Facebook bằng trình duyệt của nó.
 set -e
 # Dọn tệp của tính năng đã gỡ (bản cập nhật chỉ thêm/ghi đè tệp, không tự xóa): khóa vân tay đã bỏ ở 2026.10.28.21.
 rm -f /opt/agentos/orchestrator/src/unlock.js
@@ -68,6 +68,10 @@ rm -f /usr/share/applications/agentos-kiotviet.desktop /usr/share/icons/hicolor/
 ) || true
 gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
 update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+# Theo yêu cầu chủ máy (04/11/2026): hủy việc định kỳ "[HOC-FACEBOOK-HUYEN-ANH]" (đọc tin Facebook) và việc đang chạy/chờ của nó. Thả tệp yêu cầu; bộ điều phối làm sau khi khởi động lại (control.js).
+mkdir -p /var/lib/agentos/data/control && chown agentos:agentos /var/lib/agentos/data/control 2>/dev/null || true
+printf '{"action":"sched.removeMatching","text":"[HOC-FACEBOOK-HUYEN-ANH]"}' > /var/lib/agentos/data/control/000-huy-hoc-facebook.json
+chown agentos:agentos /var/lib/agentos/data/control/000-huy-hoc-facebook.json 2>/dev/null || true; chmod 600 /var/lib/agentos/data/control/000-huy-hoc-facebook.json
 chmod 755 /usr/local/sbin/agentos-desktop-setup
 /usr/local/sbin/agentos-desktop-setup
 # Nạp lại định nghĩa dịch vụ: gói cập nhật có thể đổi file .service (VD bỏ RestrictSUIDSGID để hộp cô lập AI hoạt động); trình cập nhật khởi động lại bộ điều phối SAU bước này.

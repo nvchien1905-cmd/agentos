@@ -21,6 +21,7 @@ const { createProjects } = require('../../orchestrator/src/projects');
 const { createBackup } = require('../../orchestrator/src/backup');
 const { createUsage } = require('../../orchestrator/src/usage');
 const { createAuditLog } = require('../../orchestrator/src/auditlog');
+const { ACTIONS: CONTROL_ACTIONS } = require('../../orchestrator/src/control');
 const { createFleet } = require('../../orchestrator/src/fleet');
 const { createLogin } = require('../lib/login');
 const qrLib = require('../lib/qr');
@@ -610,7 +611,23 @@ function createSettings(o) {
     async 'POST /api/fleet/remove'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); return { ok: fleetLib().removeMachine(String(b.name || '')) }; },
     async 'POST /api/fleet/update'(b) { return fleetLib().updateMachine(String(b.name || '')); },
     // ---- Nhật ký kiểm toán (chỉ đọc): danh sách việc, chi tiết 1 việc (công cụ AI đã xin), báo cáo tuần, xuất CSV
-    async 'GET /api/audit'(b, ctx) { return withRoDb((db) => { const g = (k) => ctx.query.get(k) || ''; const a = createAuditLog({ db, projects: projectsLib() }); return { list: a.list({ days: g('days'), q: g('q'), status: g('status'), project: g('project'), denied: g('denied') === '1', limit: g('limit') }), week: a.week(7) }; }); },
+    async 'GET /api/audit'(b, ctx) { return withRoDb((db) => { const g = (k) => ctx.query.get(k) || ''; const a = createAuditLog({ db, projects: projectsLib() }); let sched = []; try { sched = (JSON.parse(db.kvGet('sched') || 'null') || {}).jobs || []; } catch (e) { /* hỏng: bỏ */ }
+      const schedules = sched.map((j) => ({ scope: '', projectName: '', id: j.id, time: j.time, days: [], text: String(j.text || '').slice(0, 400), paused: !!j.paused, last: j.last || '' }));
+      for (const p of projectsLib().list({ all: true })) for (const j of p.schedule || []) schedules.push({ scope: p.id, projectName: p.name, id: j.id, time: j.time, days: j.days || [], text: String(j.text || '').slice(0, 400), paused: !!j.paused, last: j.last || '' });
+      return { list: a.list({ days: g('days'), q: g('q'), status: g('status'), project: g('project'), denied: g('denied') === '1', limit: g('limit') }), week: a.week(7), schedules, projects: projectsLib().list().map((p) => ({ id: p.id, name: p.name })) }; }); },
+    // Điều khiển từng việc / việc định kỳ: thả tệp yêu cầu cho bộ điều phối (control.js) — trang này chỉ đọc cơ sở dữ liệu nên không sửa trực tiếp
+    async 'POST /api/control'(b) {
+      const action = String((b && b.action) || ''); if (!CONTROL_ACTIONS.includes(action)) throw new Error('Hành động không hợp lệ.');
+      const req = { action };
+      if (b.id != null) { req.id = Number(b.id); if (!Number.isInteger(req.id)) throw new Error('Mã việc không hợp lệ.'); }
+      if (b.scope != null) req.scope = String(b.scope).slice(0, 80);
+      if (b.project != null) req.project = String(b.project).slice(0, 80);
+      if (b.text != null) req.text = String(b.text).slice(0, 400);
+      const dir = o.controlDir || '/var/lib/agentos/data/control'; fs.mkdirSync(dir, { recursive: true });
+      const f = path.join(dir, Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.json');
+      fs.writeFileSync(f, JSON.stringify(req), { mode: 0o600 }); try { chownAgentos(f); } catch (e) { /* bỏ qua */ }
+      return { ok: true };
+    },
     async 'GET /api/audit/job'(b, ctx) { return withRoDb((db) => { const d = createAuditLog({ db, projects: projectsLib() }).detail(ctx.query.get('id')); if (!d) throw new Error('Không có việc này.'); return d; }); },
     async 'GET /api/audit/csv'(b, ctx) { return withRoDb((db) => ({ csv: createAuditLog({ db, projects: projectsLib() }).csv(Number(ctx.query.get('days')) || 30) })); },
     // ---- Thống kê sử dụng AI (đọc cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC; đặt trần tháng bằng /chiphi trên Telegram)

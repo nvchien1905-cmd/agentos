@@ -41,6 +41,8 @@ CREATE INDEX IF NOT EXISTS audit_job ON audit(job_id, id);
 // 'chatId#dự-án' -> ['chatId', 'dự-án']; 'chatId' -> ['chatId', '']
 function splitScope(scope) { const s = String(scope); const i = s.indexOf('#'); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]; }
 
+// run_after >= HOLD_AT nghĩa là việc đang được chủ máy TẠM DỪNG (chờ mãi tới khi bấm Tiếp tục)
+const HOLD_AT = 8e15;
 function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
@@ -82,8 +84,8 @@ function openDb(file) {
     recent: db.prepare('SELECT * FROM jobs WHERE chat_id = ? ORDER BY id DESC LIMIT ?'),
     history: db.prepare("SELECT id, prompt, result FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ? AND status = 'done' AND id > ? AND id < ? ORDER BY id DESC LIMIT ?"),
     lastId: db.prepare("SELECT COALESCE(MAX(id), 0) AS n FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ?"),
-    countQueued: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','waiting')"),
-    countWaiting: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'waiting'"),
+    countQueued: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' OR (status = 'waiting' AND COALESCE(run_after, 0) < " + HOLD_AT + ')'),
+    countWaiting: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'waiting' AND COALESCE(run_after, 0) < " + HOLD_AT),
     countAhead: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running','waiting') AND id < ? AND COALESCE(lane,'main') = COALESCE((SELECT lane FROM jobs WHERE id = ?),'main')"),
     running: db.prepare("SELECT * FROM jobs WHERE status = 'running'"),
     interrupt: db.prepare("UPDATE jobs SET status = 'interrupted', finished_at = ? WHERE status = 'running'"),
@@ -149,6 +151,11 @@ function openDb(file) {
       q.interrupt.run(now());
       return list;
     },
+    // Điều khiển TỪNG việc (trang Cài đặt → Nhật ký): hủy việc đang xếp hàng, tạm dừng (giữ lại, không chạy) / tiếp tục, đổi dự án. Việc đang chạy do worker.cancelJob xử lý.
+    cancelJobById(id) { return db.prepare("UPDATE jobs SET status = 'cancelled', run_after = NULL, finished_at = ? WHERE id = ? AND status IN ('queued','waiting')").run(now(), Number(id)).changes > 0; },
+    holdJob(id) { return db.prepare("UPDATE jobs SET status = 'waiting', run_after = ? WHERE id = ? AND status = 'queued'").run(HOLD_AT, Number(id)).changes > 0; },
+    releaseJob(id) { return db.prepare("UPDATE jobs SET status = 'queued', run_after = NULL WHERE id = ? AND status = 'waiting' AND run_after >= ?").run(Number(id), HOLD_AT).changes > 0; },
+    setJobProject(id, project) { return db.prepare("UPDATE jobs SET project = ? WHERE id = ? AND status <> 'running'").run(project || null, Number(id)).changes > 0; },
     cancelQueued(chatId) { return q.cancelQueued.run(now(), String(chatId)).changes; },
     addAudit(a) { q.addAudit.run(now(), a.jobId == null ? null : a.jobId, a.tool || null, a.cls || null, a.decision, a.source || null, String(a.summary || '').slice(0, 500)); },
     recentAudit(n) { return q.recentAudit.all(n || 15).reverse(); },
@@ -169,4 +176,4 @@ function openDb(file) {
   };
 }
 
-module.exports = { openDb };
+module.exports = { openDb, HOLD_AT };

@@ -317,3 +317,17 @@ test('Cài đặt: đăng nhập AI QUA ĐIỆN THOẠI — không mở cửa s�
     assert.equal((await S.call('POST', 'ai/login/cancel')).status, 200); assert.equal((await S.call('POST', 'ai/login/phone')).status, 400, 'hủy rồi thì không còn gì để gửi');
   } finally { await S.s.close(); }
 });
+
+test('Cài đặt: điều khiển việc thả tệp yêu cầu cho bộ điều phối (chỉ hành động trong danh sách); Nhật ký trả việc định kỳ và dự án', { skip: (() => { try { require('../../orchestrator/node_modules/better-sqlite3'); return false; } catch (e) { try { require('better-sqlite3'); return false; } catch (e2) { return true; } } })() }, async () => {
+  const { openDb } = require('../../orchestrator/src/db'); const dir = tmp(); const file = path.join(dir, 'c.db'); const db = openDb(file);
+  db.kvSet('sched', JSON.stringify({ jobs: [{ id: 1, time: '09:00', text: '[HOC-FACEBOOK-HUYEN-ANH] đọc tin', paused: true, last: '' }], nextId: 2 })); const id = db.addJob('1', 'việc'); db.holdJob(id); db.close();
+  const ctl = path.join(dir, 'control');
+  const S = await boot({ dbFile: file, onedriveDir: dir, controlDir: ctl });
+  try {
+    const r = (await S.call('GET', 'audit?days=7')).body; assert.equal(r.schedules.length, 1); assert.equal(r.schedules[0].paused, true); assert.equal(r.list[0].held, true); assert.equal(r.list[0].statusText, 'tạm dừng'); assert.ok(Array.isArray(r.projects));
+    assert.equal((await S.call('POST', 'control', { action: 'job.cancel', id })).status, 200);
+    const f = fs.readdirSync(ctl); assert.equal(f.length, 1); assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ctl, f[0]), 'utf8')), { action: 'job.cancel', id });
+    assert.equal((await S.call('POST', 'control', { action: 'rm -rf' })).status, 400); assert.equal((await S.call('POST', 'control', { action: 'job.cancel', id: 'x' })).status, 400);
+    assert.equal(fs.readdirSync(ctl).length, 1);
+  } finally { await S.s.close(); }
+});

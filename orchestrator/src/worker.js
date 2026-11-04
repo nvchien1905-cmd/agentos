@@ -276,6 +276,8 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       if (current && String(current.chatId) === String(chatId)) { current.kill('cancelled'); return true; }
       return false;
     },
+    // Hủy ĐÚNG việc đang chạy có mã này (trang Cài đặt → Nhật ký)
+    cancelJob(id) { if (current && Number(current.jobId) === Number(id)) { current.kill('cancelled'); return true; } return false; },
     currentJobId() { return current ? current.jobId : null; },
     engineNames() { return Object.keys(engines); },
     // Tình trạng các engine: until > now nghĩa là đang nghỉ vì hết hạn mức.

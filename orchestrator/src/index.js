@@ -52,6 +52,7 @@ const { createSummarizer } = require('./summarizer');
 const router = require('./router');
 const { createMedia, imagePaths } = require('./media');
 const { createSchedule } = require('./schedule');
+const { createControl } = require('./control');
 const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
 const { createLive } = require('./live');
@@ -335,6 +336,7 @@ async function main() {
   const crew = {
     wake() { worker.wake(); for (const b of bgWorkers) b.wake(); },
     cancelRunning(chatId) { let any = worker.cancelRunning(chatId); for (const b of bgWorkers) if (b.cancelRunning(chatId)) any = true; return any; },
+    cancelJob(id) { let any = worker.cancelJob(id); for (const b of bgWorkers) if (b.cancelJob(id)) any = true; return any; },
     currentJobId() { return worker.currentJobId() || (bgWorkers.map((b) => b.currentJobId()).find(Boolean) || null); },
     engineNames: () => worker.engineNames(),
     engineStatus: () => worker.engineStatus(),
@@ -526,6 +528,10 @@ async function main() {
     notify(j.chat_id, 'Việc #' + j.id + ' bị ngắt vì hệ thống khởi động lại. Gửi lại nếu cần làm tiếp.').catch(() => {});
   }
   crew.wake();
+  // Điều khiển từng việc từ trang Cài đặt (tệp yêu cầu trong thư mục control, xem control.js)
+  const controlDir = path.join(dataDir, 'control'); try { fs.mkdirSync(controlDir, { recursive: true, mode: 0o700 }); } catch (e) { /* tick sẽ bỏ qua nếu không có thư mục */ }
+  const control = createControl({ dir: controlDir, db, worker: crew, schedule, projects, log });
+  setInterval(() => { try { control.tick(); } catch (e) { log('điều khiển lỗi: ' + e.message); } }, 2000).unref();
   // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
   const tick = setInterval(() => { crew.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); updates.tick().catch((e) => log('kiểm bản cập nhật lỗi: ' + e.message)); updates.autoTick().catch((e) => log('tự cập nhật lỗi: ' + e.message)); updates.announceResult().catch((e) => log('báo kết quả cập nhật lỗi: ' + e.message)); }, 30000);
 

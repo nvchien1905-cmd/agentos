@@ -138,6 +138,7 @@ function createProjects(o) {
     update(id, (p) => { const before = (p.schedule || []).length; p.schedule = (p.schedule || []).filter((x) => x.id !== Number(sid)); n = before - p.schedule.length; });
     return n > 0;
   }
+  function setSchedulePaused(id, sid, on) { let n = 0; update(id, (p) => { const x = (p.schedule || []).find((y) => y.id === Number(sid)); if (x) { x.paused = !!on; n = 1; } }); return n > 0; }
   function markRan(id, sid, date) { update(id, (p) => { const x = (p.schedule || []).find((y) => y.id === Number(sid)); if (x) x.last = date; }); }
   const daysText = (days) => (!days || !days.length || days.length === 7 ? 'mỗi ngày' : days.map((d) => DAY_NAMES[d]).join(','));
 
@@ -182,7 +183,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

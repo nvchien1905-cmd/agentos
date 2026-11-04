@@ -8,6 +8,7 @@ const mask = (s) => String(s == null ? '' : s).replace(SECRET, '$1=***').replace
 const pad = (n) => String(n).padStart(2, '0');
 const vnTime = (ms) => { if (!ms) return ''; const d = new Date(ms + 7 * 3600 * 1000); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()); };
 const cut = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+const HOLD_AT = 8e15;                    // run_after >= mốc này = việc đang được chủ máy tạm dừng (xem db.holdJob)
 const STATUS = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn mức', done: 'xong', error: 'lỗi', limit: 'hết hạn mức', cancelled: 'đã hủy', interrupted: 'bị ngắt' };
 
 function createAuditLog(o) {
@@ -27,10 +28,10 @@ function createAuditLog(o) {
     if (opt.chat) { conds.push('j.chat_id = ?'); args.push(String(opt.chat)); }
     if (opt.q) { conds.push('(j.prompt LIKE ? OR j.result LIKE ?)'); args.push('%' + opt.q + '%', '%' + opt.q + '%'); }
     if (opt.denied) conds.push('EXISTS (SELECT 1 FROM audit a WHERE a.job_id = j.id AND a.decision = \'deny\')');
-    const rows = raw().prepare('SELECT j.id, j.chat_id, j.lane, j.project, j.engine, j.status, j.prompt, j.created_at, j.started_at, j.finished_at, j.cost_usd, ' +
+    const rows = raw().prepare('SELECT j.id, j.chat_id, j.lane, j.project, j.engine, j.status, j.prompt, j.created_at, j.started_at, j.finished_at, j.cost_usd, j.run_after, ' +
       "(SELECT COUNT(*) FROM audit a WHERE a.job_id = j.id) AS tools, (SELECT COUNT(*) FROM audit a WHERE a.job_id = j.id AND a.decision = 'deny') AS denied " +
       'FROM jobs j WHERE ' + conds.join(' AND ') + ' ORDER BY j.id DESC LIMIT ?').all(...args, limit);
-    return rows.map((r) => ({ id: r.id, who: who(r.chat_id), chat: r.chat_id, lane: r.lane, project: r.project || null, projectName: projName(r.project), engine: r.engine, status: r.status, statusText: STATUS[r.status] || r.status,
+    return rows.map((r) => ({ id: r.id, who: who(r.chat_id), chat: r.chat_id, lane: r.lane, project: r.project || null, projectName: projName(r.project), engine: r.engine, status: r.status, held: r.status === 'waiting' && r.run_after >= HOLD_AT, statusText: r.status === 'waiting' && r.run_after >= HOLD_AT ? 'tạm dừng' : (STATUS[r.status] || r.status),
       prompt: cut(mask(r.prompt), 160), at: vnTime(r.created_at), secs: r.started_at && r.finished_at ? Math.round((r.finished_at - r.started_at) / 1000) : null, cost: r.cost_usd, tools: r.tools, denied: r.denied }));
   }
 

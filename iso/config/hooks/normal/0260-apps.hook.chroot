@@ -1,5 +1,5 @@
 #!/bin/sh
-# Ứng dụng trên màn hình chính: Google Chrome (hook 0250), Zalo + KiotViet (cửa sổ web riêng), RustDesk (điều khiển từ xa, thay cho
+# Ứng dụng trên màn hình chính: Google Chrome (hook 0250), Zalo (cửa sổ web riêng), RustDesk (điều khiển từ xa, thay cho
 # UltraViewer vốn chỉ có bản Windows), Claude Code + Codex (mở dưới tài khoản `agentos`, cùng tài khoản với bot).
 set -e
 
@@ -32,7 +32,7 @@ sed -i 's|^Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable
 apt-get purge -y gnome-keyring libpam-gnome-keyring 2>/dev/null || true
 
 mkdir -p /etc/skel/Desktop
-for f in google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini agentos-apikey agentos-claudeweb agentos-chatgpt; do
+for f in google-chrome agentos-zalo agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini agentos-apikey agentos-claudeweb agentos-chatgpt; do
 	src=/usr/share/applications/$f.desktop
 	[ -f "$src" ] || { echo "[CANH BAO] thieu $src"; continue; }
 	cp "$src" /etc/skel/Desktop/$f.desktop

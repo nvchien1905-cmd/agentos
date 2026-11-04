@@ -57,15 +57,6 @@ function createSchedule(o) {
   async function buildReport() {
     const t = vn();
     const lines = ['📋 Báo cáo AgentOS · ' + t.show];
-    if (kv && kv.configured()) {
-      try { lines.push(await kv.revenue('')); } catch (e) { lines.push('📊 Doanh số: không đọc được KiotViet (' + e.message + ')'); }
-      try {
-        const low = await kv.lowStock(12);
-        if (!low.total) lines.push('📦 Không có hàng nào chạm mức tồn tối thiểu đã đặt trong KiotViet.');
-        else lines.push('📦 ' + low.total + ' mặt hàng sắp hết (tồn ≤ mức tối thiểu)' + (low.total > low.items.length ? ', ' + low.items.length + ' mặt đầu' : '') + ':\n' +
-          low.items.map((i) => '• ' + i.name + ' (' + i.code + '): còn ' + i.onHand + ' / tối thiểu ' + i.min).join('\n'));
-      } catch (e) { lines.push('📦 Tồn kho: không đọc được KiotViet (' + e.message + ')'); }
-    } else lines.push('📊 Doanh số/tồn kho: chưa cấu hình KiotViet (chạy dat-khoa-kiotviet.sh).');
     const free = diskFreeMb();
     lines.push('💾 Ổ đĩa còn ' + (free === Infinity ? '?' : (free >= 1024 ? (free / 1024).toFixed(1) + ' GB' : free + ' MB')) + (free !== Infinity && free < 2048 ? ' ⚠️ sắp đầy' : ''));
     const b = lastBackup();

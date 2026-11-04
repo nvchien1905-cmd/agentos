@@ -19,9 +19,8 @@ function helpText(profiles) {
     '/go <chữ> · /phim <phím> · /bam <x> <y> [dup|phai] - gõ chữ, bấm phím, bấm chuột trên màn hình máy (sau mỗi thao tác bot tự chụp lại)\n' +
     '/guilen - tạo link để gửi tệp LỚN (tới 5 GB) từ điện thoại lên máy · /lay <tệp> - tệp quá 49 MB tự tạo link tải về · /tuxa - mở RustDesk, bot gửi ID + mật khẩu tạm vào đây để anh điều khiển trực tiếp từ xa (/tuxa dong để đóng)\n' +
     '/timchu <chữ> · /bamchu <chữ> - tìm/bấm đúng nút theo CHỮ trên màn hình (đọc chữ OCR, không cần đoán toạ độ) · /chuyen <tên cửa sổ> · /dan [chữ] - xem/chép bộ nhớ tạm của máy · /mokhoa · /doc [tệp] - đọc nội dung Word/Excel/PowerPoint/PDF (không ghi tệp thì đọc tệp anh vừa gửi) · /doi <pdf|docx|xlsx|pptx...> [tệp] - đổi định dạng · /thay <chữ cũ> | <chữ mới> - sửa chữ trong .docx/.pptx/.xlsx, gửi lại bản mới · /saoluu [nhãn|ds] - điểm khôi phục cấu hình · /bat <tên|MAC> - bật máy khác trong nhà (Wake-on-LAN)\n' +
-    '/mo <zalo|kiotviet|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
+    '/mo <zalo|deepseek|chrome|rustdesk> · /dong <ứng dụng> · /khoamay · /khoimay co · /tatmay co\n' +
     '/deepseek <việc> - mở DeepSeek web trên máy + chép sẵn câu lệnh (anh bấm Ctrl+V và Gửi)\n' +
-    '/doanhso [hôm nay|hôm qua|tuần|tháng] · /ton <sản phẩm> · /hanghoa [tên] - KiotViet (thống kê hàng hóa)\n' +
     '/onedrive [ketnoi|dongbo|thumuc|ngat co] - OneDrive: AI đọc dữ liệu và lưu kết quả/ghi nhớ ở đó\n' +
     '/baocao [gio 21:30|tat|bat] - báo cáo doanh số, hàng sắp hết, ổ đĩa · /hen 08:00 <việc> - mỗi ngày giao việc cho AI · /hen xoa <số>\n' +
     '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +

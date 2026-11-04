@@ -58,7 +58,7 @@ test('vai banhang: tin nhắn thường thành câu hỏi hỏi đáp (không ph
   const say = (uid, t) => bot.handle({ from: { id: uid }, chat: { id: uid, type: 'private' }, text: t });
   await say(33300, 'Nồi chiên 6L giá bao nhiêu?'); const j = db.recentJobs('33300', 1)[0]; assert.match(j.prompt, /HỎI ĐÁP BÁN HÀNG/); assert.match(j.prompt, /Sunhouse/);
   assert.match(await say(33300, '/claude xóa hết'), /chỉ xem được báo cáo/); assert.match(await say(33300, '/duan moi X'), /chỉ dành cho quản trị viên|chỉ dành cho chủ máy|Lệnh/);
-  assert.match(await say(33300, '/doanhso hôm nay'), /chỉ dành cho quản trị viên/);
+  assert.match(await say(33300, '/manhinh'), /chỉ dành cho quản trị viên|chỉ xem được báo cáo|Lệnh/);
   await say(111, 'việc thường của chủ'); const jc = db.recentJobs('111', 1)[0]; assert.equal(jc.prompt, 'việc thường của chủ');
-  assert.ok(quick.has('gia'));
+  assert.equal(quick.has('doanhso'), false);
 });

@@ -122,32 +122,6 @@ function createKiotViet(o) {
       return all;
     },
 
-    // Thống kê hàng hóa (chỉ số lượng, KHÔNG giá vốn): số mã đang bán, còn/hết hàng, tồn theo chi nhánh, 10 mã tồn nhiều nhất. arg = lọc theo tên/mã (tùy chọn).
-    async catalog(arg) {
-      const q = String(arg || '').trim();
-      const all = [];
-      for (let cur = 0; cur < 30000; cur += 100) {
-        const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), includeInventory: 'true', isActive: 'true' });
-        if (q) qs.set('name', q);
-        const d = await get('/products?' + qs.toString());
-        const items = d.data || [];
-        all.push(...items);
-        if (items.length < 100 || all.length >= (d.total || 0)) break;
-      }
-      if (!all.length) return 'Không có sản phẩm nào' + (q ? ' khớp "' + q + '"' : '') + '.';
-      const byBranch = new Map(); let inStock = 0, totalQty = 0; const rows = [];
-      for (const p of all) {
-        const inv = p.inventories || []; let sum = 0;
-        for (const x of inv) { const n = Number(x.onHand) || 0; sum += n; if (n > 0) { const b = byBranch.get(x.branchName || '?') || { qty: 0, skus: 0 }; b.qty += n; b.skus++; byBranch.set(x.branchName || '?', b); } }
-        if (sum > 0) inStock++; totalQty += sum; rows.push({ name: p.name || '?', code: p.code || '?', sum });
-      }
-      rows.sort((a, b) => b.sum - a.sum);
-      const lines = ['📦 Hàng hóa KiotViet' + (q ? ' "' + q + '"' : '') + ': ' + all.length + ' mã đang bán',
-        '• Còn hàng: ' + inStock + ' mã · hết hàng ở mọi chi nhánh: ' + (all.length - inStock) + ' mã · tổng tồn ' + totalQty.toLocaleString('vi-VN') + ' cái',
-        '• Tồn theo chi nhánh:'].concat([...byBranch.entries()].sort((a, b) => b[1].qty - a[1].qty).map(([n, b]) => '   – ' + n + ': ' + b.qty.toLocaleString('vi-VN') + ' cái (' + b.skus + ' mã)'),
-        ['• 10 mã tồn nhiều nhất:'], rows.slice(0, 10).map((r) => '   – ' + r.name + ' (' + r.code + '): ' + r.sum));
-      return lines.join(String.fromCharCode(10));
-    },
 
     // Danh sách sản phẩm có giá + tồn theo chi nhánh (dùng cho hỏi đáp bán hàng)
     async products(query, limit) {

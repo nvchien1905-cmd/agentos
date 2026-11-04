@@ -1,5 +1,5 @@
 #!/bin/bash
-# Thêm ứng dụng vào máy AgentOS ĐÃ CÀI (không cần cài lại): Google Chrome, RustDesk, Zalo (web), KiotViet (web), Claude Code, Codex,
+# Thêm ứng dụng vào máy AgentOS ĐÃ CÀI (không cần cài lại): Google Chrome, RustDesk, Zalo (web), Claude Code, Codex,
 # kèm biểu tượng trên màn hình chính của mọi người dùng. Chạy bằng root:
 #   curl -sL https://raw.githubusercontent.com/nvchien1905-cmd/agentos/main/scripts/cai-ung-dung.sh | sudo bash
 # Chạy lại nhiều lần không hại (cập nhật biểu tượng/launcher, giữ nguyên /etc/agentos/apps.conf nếu đã sửa).
@@ -38,7 +38,7 @@ apt-get purge -y gnome-keyring libpam-gnome-keyring 2>/dev/null || true
 echo "== 3/4 Launcher, biểu tượng, quyền mở Claude/Codex"
 put usr/local/bin/agentos-app /usr/local/bin/agentos-app 755
 put usr/local/bin/agentos-ai /usr/local/bin/agentos-ai 755
-for n in zalo kiotviet deepseek claude codex gemini; do
+for n in zalo deepseek claude codex gemini; do
   put usr/share/applications/agentos-$n.desktop /usr/share/applications/agentos-$n.desktop 644
   put usr/share/icons/hicolor/scalable/apps/agentos-$n.svg /usr/share/icons/hicolor/scalable/apps/agentos-$n.svg 644
 done
@@ -51,7 +51,7 @@ gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 update-desktop-database /usr/share/applications 2>/dev/null || true
 
 echo "== 4/4 Biểu tượng trên màn hình chính"
-APPS="google-chrome agentos-zalo agentos-kiotviet agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini agentos-apikey"
+APPS="google-chrome agentos-zalo agentos-deepseek rustdesk agentos-claude agentos-codex agentos-gemini agentos-apikey"
 place() { # place <thư mục Desktop> <chủ sở hữu hoặc rỗng>
   mkdir -p "$1"
   for f in $APPS; do
@@ -69,5 +69,4 @@ for h in /home/*; do
   place "$h/Desktop" "$u:$(id -gn "$u")"; echo "  đã thêm cho $u"
 done
 echo
-echo "✅ Xong. Đăng xuất rồi đăng nhập lại (hoặc đợi vài giây) để thấy biểu tượng: Google Chrome, Zalo, KiotViet, DeepSeek, RustDesk, Claude Code, Codex."
-echo "   KiotViet: sửa địa chỉ cửa hàng ở /etc/agentos/apps.conf (dòng KIOTVIET_URL=)."
+echo "✅ Xong. Đăng xuất rồi đăng nhập lại (hoặc đợi vài giây) để thấy biểu tượng: Google Chrome, Zalo, DeepSeek, RustDesk, Claude Code, Codex."

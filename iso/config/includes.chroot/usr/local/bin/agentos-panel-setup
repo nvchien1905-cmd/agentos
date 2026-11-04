@@ -1,5 +1,5 @@
 #!/bin/sh
-# Thêm nút "Cài đặt AgentOS" và các ứng dụng chính (Chrome, Zalo, KiotViet, Claude, ChatGPT) vào THANH TRÊN của Xfce, một lần cho mỗi người dùng.
+# Thêm nút "Cài đặt AgentOS" và các ứng dụng chính (Chrome, Zalo, Claude, ChatGPT) vào THANH TRÊN của Xfce, một lần cho mỗi người dùng.
 # Chạy trong phiên đăng nhập của người dùng (autostart /etc/xdg/autostart/agentos-panel-setup.desktop). Chạy lại không hại: có tệp đánh dấu thì thoát.
 MARK="$HOME/.config/agentos/panel-v1"
 [ -f "$MARK" ] && exit 0
@@ -9,7 +9,7 @@ i=0; while [ $i -lt 30 ]; do xfconf-query -c xfce4-panel -p /panels >/dev/null 2
 xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids >/dev/null 2>&1 || exit 0
 
 ID=21; NEW=""
-for app in agentos-settings google-chrome agentos-zalo agentos-kiotviet agentos-claudeweb agentos-chatgpt; do
+for app in agentos-settings google-chrome agentos-zalo agentos-claudeweb agentos-chatgpt; do
   src=/usr/share/applications/$app.desktop
   [ -f "$src" ] || continue
   d="$HOME/.config/xfce4/panel/launcher-$ID"

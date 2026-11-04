@@ -102,12 +102,12 @@ async function main() {
   const guardOn = () => db.kvGet('guard') !== '0';
   // Nhìn / điều khiển MÀN HÌNH THẬT của máy (qua trợ lý màn hình agentos-deskd). Quy tắc về Zalo/DeepSeek/KiotViet nằm ngay trong lời nhắc.
   const DESK_HINT = 'Có lệnh `agentos-desk` để nhìn và điều khiển MÀN HÌNH THẬT của máy: `agentos-desk screenshot` (in đường dẫn ảnh .png, hãy đọc ảnh bằng công cụ Read), ' +
-    '`agentos-desk windows`, `open|close <zalo|kiotviet|deepseek|chrome|rustdesk>`, `click X Y`, `type "chữ"`, `key Return`, `clip "chữ"`, ' +
+    '`agentos-desk windows`, `open|close <zalo|deepseek|chrome|rustdesk>`, `click X Y`, `type "chữ"`, `key Return`, `clip "chữ"`, ' +
     '`info` (kích thước màn hình + cửa sổ đang chọn), `focus <tên cửa sổ>`, `find "chữ"` (đọc chữ trên màn hình bằng OCR, in toạ độ giữa), `clicktext "chữ" [--nth=2]` (bấm đúng vào nút/menu theo tên), `drag`, `scroll`, `move`. ' +
     'CÁCH LÀM VIỆC TRÊN GIAO DIỆN: ưu tiên phím tắt (`key ctrl+s`, `alt+Tab`, `ctrl+l`) và `clicktext` hơn là đoán toạ độ từ ảnh; sau MỖI thao tác chụp lại và kiểm tra đúng ý rồi mới làm bước tiếp; không thấy kết quả mong đợi thì thử cách khác (tối đa 3 lần) rồi báo chủ máy; chuyển cửa sổ bằng `focus` trước khi gõ. ' +
     'Quy tắc: KHÔNG tự gửi tin nhắn Zalo/chat/email cho người khác bằng cách gõ rồi bấm Gửi (Zalo có thể khóa tài khoản), chỉ mở và đọc; ' +
     'với DeepSeek web chỉ chép câu lệnh vào bộ nhớ tạm (`clip`) rồi để chủ máy tự dán và Gửi (điều khoản DeepSeek cấm robot tự gửi); ' +
-    'với KiotViet đừng nhập/sửa dữ liệu bán hàng nếu chủ máy không yêu cầu rõ (xem doanh số/tồn đã có lệnh /doanhso, /ton).';
+    'với KiotViet hay trang bán hàng khác đừng nhập/sửa dữ liệu nếu chủ máy không yêu cầu rõ.';
   // OneDrive: nơi chủ máy để dữ liệu cho AI dùng và nơi AI lưu kết quả + trí nhớ lâu dài (đồng bộ hai chiều, tự động).
   const OFFICE_HINT = 'Máy có sẵn công cụ văn phòng chạy không cần màn hình: LibreOffice (soffice --headless --convert-to pdf|xlsx|docx <tệp>), Python có pandas/openpyxl/python-docx/xlsxwriter/reportlab, ' +
     'pdftotext/pdftoppm (đọc PDF), tesseract -l vie (đọc chữ trong ảnh), ImageMagick (convert), ffmpeg, jq, sqlite3, pandoc. Cần đọc/tạo Excel, Word, PDF, ảnh hóa đơn thì dùng chúng. ' +

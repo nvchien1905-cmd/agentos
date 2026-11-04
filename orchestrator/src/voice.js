@@ -14,8 +14,6 @@ const STT_BIN = '/usr/local/bin/agentos-stt';
 function spoken(text) {
   const a = noAccent(text);
   let m;
-  if ((m = a.match(/^(?:bao cao |xem )?doanh so(?: (hom nay|hom qua|tuan(?: nay)?|thang(?: nay)?))?$/))) return '/doanhso' + (m[1] ? ' ' + m[1] : '');
-  if ((m = a.match(/^(?:xem )?ton(?: kho)? (.{2,60})$/))) return '/ton ' + m[1];
   if (/^(chup |xem )?man hinh( may)?$/.test(a)) return '/manhinh';
   if (/^(xem )?cua so( dang mo)?$/.test(a)) return '/cuaso';
   if (/^khoa (man hinh|may)$/.test(a)) return '/khoamay';

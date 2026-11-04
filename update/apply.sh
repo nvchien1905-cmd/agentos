@@ -1,6 +1,6 @@
 #!/bin/bash
 # Chạy bằng root sau khi tệp của bản cập nhật đã được ghi (nằm trong phần được ký).
-# Bản này: AI không còn treo hàng đợi (ưu tiên IPv4, trình duyệt của AI chuyển sang Google Chrome, bỏ ảnh khỏi phiên).
+# Bản này: gỡ mục KiotViet; Chrome lưu mật khẩu + giữ phiên đăng nhập; bot không trực Facebook bằng trình duyệt của nó.
 set -e
 # Dọn tệp của tính năng đã gỡ (bản cập nhật chỉ thêm/ghi đè tệp, không tự xóa): khóa vân tay đã bỏ ở 2026.10.28.21.
 rm -f /opt/agentos/orchestrator/src/unlock.js
@@ -35,6 +35,39 @@ for (const f of ["/opt/agentos/orchestrator/tools.json", "/opt/agentos/orchestra
 }
 ' || true
 fi
+# Google Chrome: cho phép lưu mật khẩu, giữ cookie, và "tiếp tục nơi đã dừng" (RestoreOnStartup=1 là cài đặt Chrome giữ cả cookie phiên) => đăng nhập một lần, lần sau vào web vẫn còn đăng nhập.
+mkdir -p /etc/opt/chrome/policies/managed
+cat > /etc/opt/chrome/policies/managed/agentos.json <<'EOP'
+{
+  "PasswordManagerEnabled": true,
+  "DefaultCookiesSetting": 1,
+  "BlockThirdPartyCookies": false,
+  "RestoreOnStartup": 1,
+  "DefaultBrowserSettingEnabled": false
+}
+EOP
+chmod 644 /etc/opt/chrome/policies/managed/agentos.json
+# Gỡ mục KiotViet khỏi hệ điều hành (chủ máy tự vào KiotViet bằng Chrome, đăng nhập một lần): biểu tượng, menu, nút trên thanh trên.
+rm -f /usr/share/applications/agentos-kiotviet.desktop /usr/share/icons/hicolor/scalable/apps/agentos-kiotviet.svg /etc/skel/Desktop/agentos-kiotviet.desktop /home/*/Desktop/agentos-kiotviet.desktop
+[ -f /etc/agentos/apps.conf ] && sed -i '/^KIOTVIET_URL=/d' /etc/agentos/apps.conf
+(
+  for h in /home/*; do
+    u=$(basename "$h"); id -u "$u" >/dev/null 2>&1 || continue; uid=$(id -u "$u")
+    for d in "$h"/.config/xfce4/panel/launcher-*; do
+      [ -f "$d/agentos-kiotviet.desktop" ] || continue
+      pid=${d##*-}; rm -rf "$d"
+      [ -S "/run/user/$uid/bus" ] || continue
+      runuser -u "$u" -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" DISPLAY=:0 sh -c '
+        pid='"$pid"'; args=""
+        for p in $(xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids | grep -E "^[0-9]+$"); do [ "$p" = "$pid" ] || args="$args -t int -s $p"; done
+        xfconf-query -c xfce4-panel -p /panels/panel-1/plugin-ids $args
+        xfconf-query -c xfce4-panel -p /plugins/plugin-$pid -r -R
+        xfce4-panel -r >/dev/null 2>&1 &' || true
+    done
+  done
+) || true
+gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 chmod 755 /usr/local/sbin/agentos-desktop-setup
 /usr/local/sbin/agentos-desktop-setup
 # Nạp lại định nghĩa dịch vụ: gói cập nhật có thể đổi file .service (VD bỏ RestrictSUIDSGID để hộp cô lập AI hoạt động); trình cập nhật khởi động lại bộ điều phối SAU bước này.

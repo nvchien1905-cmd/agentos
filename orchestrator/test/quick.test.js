@@ -24,11 +24,11 @@ test('quick: /manhinh trả ảnh (xóa sau khi gửi), lỗi từ trợ lý mà
 });
 
 test('quick: /mo, /dong hiểu tên gọi tiếng Việt, không đoán bừa; thiếu tên thì hướng dẫn', async () => {
-  assert.deepEqual(['Kiot', 'Trình duyệt', 'Zalo', 'KiotViet', 'điều khiển từ xa', 'Deep Seek'].map(appKey), ['kiotviet', 'chrome', 'zalo', 'kiotviet', 'rustdesk', 'deepseek']);
-  const d = fakeDesk((r) => (r.cmd === 'open' ? ok({ app: 'KiotViet' }) : ok({ app: 'Zalo', closed: 0 })));
+  assert.deepEqual(['Trình duyệt', 'Zalo', 'điều khiển từ xa', 'Deep Seek'].map(appKey), ['chrome', 'zalo', 'rustdesk', 'deepseek']);
+  const d = fakeDesk((r) => (r.cmd === 'open' ? ok({ app: 'Zalo' }) : ok({ app: 'Zalo', closed: 0 })));
   const q = createQuick({ desk: d });
-  assert.match(await q.run('mo', 'Kiot'), /Đã mở KiotViet/);
-  assert.deepEqual(d.calls[0], { cmd: 'open', app: 'kiotviet' });
+  assert.match(await q.run('mo', 'Zalo'), /Đã mở Zalo/);
+  assert.deepEqual(d.calls[0], { cmd: 'open', app: 'zalo' });
   assert.match(await q.run('dong', 'zalo'), /Zalo đang không mở/);
   assert.match(await q.run('mo', ''), /Cách dùng: \/mo/);
   assert.equal(d.calls.length, 2);                                  // thiếu tên: không gọi trợ lý màn hình
@@ -58,10 +58,8 @@ test('quick: /deepseek chép câu lệnh rồi mở DeepSeek web; KHÔNG tự g�
   assert.deepEqual(d2.calls.map((c) => c.cmd), ['clip']);
 });
 
-test('quick: KiotViet chưa cấu hình thì hướng dẫn thêm khóa; lỗi bất ngờ không làm sập', async () => {
-  const q = createQuick({ desk: fakeDesk(() => ok()), kiotviet: createKiotViet({}) });
-  assert.match(await q.run('doanhso', ''), /Chưa cấu hình KiotViet/);
-  const boom = createQuick({ desk: { call: async () => { throw new Error('hỏng'); } } });
+test('quick: lỗi bất ngờ không làm sập', async () => {
+    const boom = createQuick({ desk: { call: async () => { throw new Error('hỏng'); } } });
   assert.match(await boom.run('manhinh', ''), /Lỗi: hỏng/);
 });
 
@@ -159,6 +157,6 @@ test('bot: lệnh nhanh chỉ quản trị viên, trả Promise; không phải a
   assert.match(bot.handle(m('/tatmay co', 2)), /chỉ dành cho quản trị viên/);
   assert.equal(d.calls.length, 1);                                             // người thứ hai không gây ra lệnh nào
   const help = bot.handle(m('/help'));
-  for (const w of ['/manhinh', '/mo', '/deepseek', '/doanhso', '/ton']) assert.ok(help.includes(w), w);
+  for (const w of ['/manhinh', '/mo', '/deepseek']) assert.ok(help.includes(w), w);
   assert.equal(bot.handle({ from: { id: 99 }, chat: { id: 99, type: 'private' }, text: '/manhinh' }), null);   // người lạ: im lặng
 });

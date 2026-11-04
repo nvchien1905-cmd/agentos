@@ -1,7 +1,7 @@
 {
-  "TranslateEnabled": false,
-  "DefaultBrowserSettingEnabled": false,
-  "MetricsReportingEnabled": false,
-  "PromotionalTabsEnabled": false,
-  "BrowserSignin": 0
+  "PasswordManagerEnabled": true,
+  "DefaultCookiesSetting": 1,
+  "BlockThirdPartyCookies": false,
+  "RestoreOnStartup": 1,
+  "DefaultBrowserSettingEnabled": false
 }

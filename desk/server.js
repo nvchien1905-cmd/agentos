@@ -15,7 +15,6 @@ const OUT_DIR = process.env.DESK_OUT || '/run/agentos';
 // Ứng dụng mở được. `match`: nhận diện tiến trình để đóng.
 const APPS = {
   zalo: { label: 'Zalo', argv: ['/usr/local/bin/agentos-app', 'zalo'], match: (c) => /agentos-app-zalo/.test(c) },
-  kiotviet: { label: 'KiotViet', argv: ['/usr/local/bin/agentos-app', 'kiotviet'], match: (c) => /agentos-app-kiotviet/.test(c) },
   deepseek: { label: 'DeepSeek', argv: ['/usr/local/bin/agentos-app', 'deepseek'], match: (c) => /agentos-app-deepseek/.test(c) },
   claudeweb: { label: 'Claude (web)', argv: ['/usr/local/bin/agentos-app', 'claudeweb'], match: (c) => /agentos-app-claudeweb/.test(c) },
   chatgpt: { label: 'ChatGPT', argv: ['/usr/local/bin/agentos-app', 'chatgpt'], match: (c) => /agentos-app-chatgpt/.test(c) },

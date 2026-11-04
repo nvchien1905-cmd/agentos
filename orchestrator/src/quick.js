@@ -4,10 +4,9 @@ const { noAccent } = require('./kiotviet');
 // LỆNH NHANH: chạy ngay, KHÔNG qua AI (nhanh, không tốn hạn mức, không bị lừa bằng nội dung web). Chỉ dành cho quản trị viên.
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
-//   /doanhso [hôm nay|hôm qua|tuần|tháng]  /ton <sản phẩm>   -> KiotViet API chính thức, chỉ đọc
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
 
-const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', kiot: 'kiotviet', 'kiot viet': 'kiotviet', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
+const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
@@ -36,7 +35,7 @@ function createQuick(o) {
           return r.ok ? (r.windows.length ? '🪟 Cửa sổ đang mở:\n• ' + r.windows.join('\n• ') : 'Không có cửa sổ nào đang mở.') : '⚠️ ' + r.error;
         }
         case 'mo': case 'dong': {
-          if (!arg) return 'Cách dùng: /' + name + ' <ứng dụng>. Ứng dụng: zalo, kiotviet, deepseek, chrome, rustdesk, webbot (trình duyệt của bot, để đăng nhập trang AI cần)' + (name === 'mo' ? ', claude, codex, gemini' : '') + '.';
+          if (!arg) return 'Cách dùng: /' + name + ' <ứng dụng>. Ứng dụng: zalo, deepseek, chrome, rustdesk, webbot (trình duyệt của bot, để đăng nhập trang AI cần)' + (name === 'mo' ? ', claude, codex, gemini' : '') + '.';
           const key = appKey(arg);
           if ((key === 'fbbot' || key === 'webbot') && name === 'mo' && o.onFbOpen) await o.onFbOpen(true).catch(() => {});        // trợ lý Facebook nhả hồ sơ trình duyệt để cửa sổ đăng nhập dùng
           const r = await desk.call({ cmd: name === 'mo' ? 'open' : 'close', app: key });
@@ -84,10 +83,6 @@ function createQuick(o) {
             await od.disconnect(); return '✅ Đã ngắt kết nối OneDrive. Muốn nối lại: /onedrive ketnoi.';
           }
           return 'Cách dùng: /onedrive (tình trạng) · /onedrive ketnoi · /onedrive dongbo · /onedrive thumuc · /onedrive ngat co';
-        }
-        case 'doanhso': case 'ton': case 'hanghoa': {
-          if (!kv || !kv.configured()) return '⚠️ Chưa cấu hình KiotViet. Thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào /etc/agentos/orchestrator.env rồi khởi động lại bộ điều phối.';
-          return name === 'doanhso' ? await kv.revenue(arg) : name === 'hanghoa' ? await kv.catalog(arg) : await kv.stock(arg);
         }
         case 'baocao': case 'hen': return sched ? await sched.command(name, arg, ctx) : '⚠️ Máy này chưa có tính năng hẹn giờ.';
         case 'tailscale': {
@@ -214,10 +209,6 @@ function createQuick(o) {
           try { const r = await iot.plug(m[1], act); return (r.on === null ? '❔ ' : r.on ? '💡 ' : '⚫ ') + m[1] + (r.on === null ? ': không biết trạng thái' : r.on ? ': ĐANG BẬT' : ': đang tắt'); } catch (e) { return '⚠️ ' + e.message; }
         }
         case 'canhbao': return alerts ? await alerts.command(arg) : '⚠️ Máy này chưa có cảnh báo chủ động.';
-        case 'gia': {                                              // tra giá + tồn (cùng lệnh /ton)
-          if (!kv || !kv.configured()) return '⚠️ Chưa nối KiotViet.';
-          return await kv.stock(arg);
-        }
         case 'chiphi': {                                           // thống kê sử dụng AI + ngân sách tháng
           if (!usage) return '⚠️ Máy này chưa có thống kê sử dụng.';
           const w = noAccent(arg);

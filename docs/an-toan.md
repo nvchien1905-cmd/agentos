@@ -379,3 +379,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.30 — Bot không còn trực Facebook bằng trình duyệt của nó
 - Theo yêu cầu chủ máy (Facebook dễ khóa tài khoản): chưa chọn máy Windows (`/facebook may <tên máy>`) thì trợ lý trực Messenger NGHỈ — không mở trình duyệt của bot, không giao việc cho AI, không nhắc "đăng nhập Facebook" mỗi 6 giờ. `/facebook kiemtra` báo cần chọn máy. Chạy qua Chrome của máy Windows vẫn như cũ.
+
+## 2026.10.28.31 — Gỡ mục KiotViet; Chrome lưu mật khẩu và giữ phiên đăng nhập
+- Chủ máy muốn tự vào KiotViet bằng Chrome (đăng nhập một lần) nên đã GỠ khỏi hệ điều hành: biểu tượng/menu/nút KiotViet, `/mo kiotviet`, lệnh `/doanhso` `/ton` `/hanghoa` `/gia`, dòng doanh số/tồn trong báo cáo ngày, script `dat-khoa-kiotviet.sh`, mục KiotViet ở Cài đặt → Tài khoản, địa chỉ KiotViet ở apps.conf. Bản cập nhật tự xóa biểu tượng và nút trên thanh trên của máy đã cài. Mô-đun `kiotviet.js` còn lại chỉ là thư viện nội bộ (không khóa thì các cảnh báo/hỏi đáp tự bỏ qua).
+- Chính sách Google Chrome (`/etc/opt/chrome/policies/managed/agentos.json`): bật trình quản lý mật khẩu, nhận cookie, `RestoreOnStartup=1` (tiếp tục nơi đã dừng — cài đặt duy nhất của Chrome giữ cả cookie phiên) → đăng nhập một lần, lần sau còn đăng nhập. Áp dụng cho mọi Chrome trên máy, kể cả hồ sơ trình duyệt của bot.

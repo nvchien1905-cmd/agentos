@@ -18,9 +18,6 @@ const worker = { engineNames: () => [], wake() {}, currentJobId: () => null, eng
 
 // ---------- giọng nói ----------
 test('voice: cụm nói quen thuộc chạy lệnh nhanh, câu khác trả null (giao AI); lệnh nguy hiểm KHÔNG nói được', () => {
-  assert.equal(spoken('Doanh số hôm nay'), '/doanhso hom nay');
-  assert.equal(spoken('báo cáo doanh số tháng'), '/doanhso thang');
-  assert.equal(spoken('tồn kho nồi chiên'), '/ton noi chien');
   assert.equal(spoken('Chụp màn hình.'), '/manhinh');
   assert.equal(spoken('khóa máy'), '/khoamay');
   assert.equal(spoken('báo cáo'), '/baocao');
@@ -53,11 +50,11 @@ function botWith(voice, quick) {
 const voiceMsg = (uid, extra) => ({ from: { id: Number(uid) }, chat: { id: Number(uid), type: 'private' }, voice: Object.assign({ file_id: 'F', duration: 5 }, extra) });
 
 test('bot: tin thoại -> nghe được chữ -> như gõ chữ (lệnh nhanh hoặc việc cho AI); người không phải admin bị từ chối', async () => {
-  const quick = createQuick({ kiotviet: { configured: () => true, revenue: async (a) => 'DOANHSO:' + a } });
+  const quick = createQuick({ schedule: { command: async (n, a) => 'BAOCAO:' + n } });
   const say = (t) => ({ transcribe: async () => ({ ok: true, text: t }), spoken });
-  let { bot, db } = botWith(say('Doanh số hôm qua'), quick);
+  let { bot, db } = botWith(say('Báo cáo'), quick);
   const r1 = await bot.handle(voiceMsg(1));
-  assert.match(r1, /Em nghe được: "Doanh số hôm qua"/); assert.match(r1, /DOANHSO:hom qua/);
+  assert.match(r1, /Em nghe được: "Báo cáo"/); assert.match(r1, /BAOCAO:baocao/);
   ({ bot, db } = botWith(say('Viết bài giới thiệu cửa hàng'), quick));
   const r2 = await bot.handle(voiceMsg(1));
   assert.match(r2, /Đã nhận việc #1/);
@@ -86,13 +83,13 @@ test('schedule: parseTime hiểu 8, 8h30, 21:30 và từ chối giờ sai', () =
 test('schedule: báo cáo hằng ngày đúng giờ, không gửi lặp, chạy bù trong 2 giờ, không chạy bù sau đó', async () => {
   const db = openDb(':memory:'); const sent = []; let clock = vnMs('2026-10-20T21:00:00');
   const dir = tmp();
-  const kv = { configured: () => true, revenue: async () => '📊 Doanh số hôm nay: 10đ', lowStock: async () => ({ total: 1, items: [{ name: 'Nồi', code: 'N1', onHand: 1, min: 5 }] }) };
+  const kv = { configured: () => false };
   const s = createSchedule({ db, kiotviet: kv, now: () => clock, notify: async (c, t) => sent.push([c, t]), admins: ['1'], oneDriveDir: dir, diskFreeMb: () => 5000 });
   assert.equal(await s.tick(), 0);                                  // 21:00 < 21:30
   clock = vnMs('2026-10-20T21:31:00');
   assert.equal(await s.tick(), 1);
   await new Promise((r) => setTimeout(r, 30));
-  assert.equal(sent.length, 1); assert.match(sent[0][1], /Doanh số hôm nay/); assert.match(sent[0][1], /Nồi \(N1\): còn 1/); assert.match(sent[0][1], /Ổ đĩa còn 4\.9 GB/);
+  assert.equal(sent.length, 1); assert.doesNotMatch(sent[0][1], /KiotViet|Doanh số/);assert.match(sent[0][1], /Ổ đĩa còn 4\.9 GB/);
   assert.equal(await s.tick(), 0);                                  // cùng ngày: không lặp
   assert.ok(fs.existsSync(path.join(dir, 'AgentOS', 'bao-cao', '2026-10-20.md')));
   clock = vnMs('2026-10-21T23:45:00');                              // trễ 2h15 so với 21:30: bỏ qua
@@ -117,7 +114,7 @@ test('schedule: /baocao đổi giờ/tắt/bật, /hen thêm-xem-xóa và giao v
   assert.match(await s.command('hen', 'xoa 1', {}), /Đã xóa/);
   assert.match(await s.command('hen', 'xoa 1', {}), /Không có/);
   const rep = await s.command('baocao', '', {});                    // chưa cấu hình KiotViet vẫn báo cáo được
-  assert.match(rep, /chưa cấu hình KiotViet/);
+  assert.doesNotMatch(rep, /KiotViet/); assert.match(rep, /Ổ đĩa/);
 });
 
 test('kiotviet.lowStock: lọc sản phẩm có mức tối thiểu và tồn <= mức, sắp xếp thiếu nhiều nhất trước', async () => {

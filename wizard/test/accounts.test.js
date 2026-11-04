@@ -82,7 +82,7 @@ test('trang Tài khoản đã lưu: cho biết cái gì đã có, che bớt bí 
     assert.match(JSON.stringify(g['ai-claude'].rows), /sk-a••••/); assert.match(JSON.stringify(g['ai-claude'].rows), /c•••@g•••\.com/);
     assert.match(JSON.stringify(g['ai-codex'].rows), /c•••@o•••\.com/); assert.match(JSON.stringify(g['ai-gemini'].rows), /g•••@g•••\.com/);
     assert.equal(g['ai-deepseekapi'].status, 'ok'); assert.equal(g.onedrive.status, 'none'); assert.equal(g.tailscale.status, 'ok'); assert.match(JSON.stringify(g.tailscale.rows), /100\.64\.1\.2/);
-    assert.equal(g.kiotviet.status, 'ok'); assert.equal(g.kiotviet.rows[0][1], 'cuahanghuyenanh'); assert.match(JSON.stringify(g.kiotviet.rows), /kv-c••••def/);
+    assert.equal(g.kiotviet, undefined, 'KiotViet đã gỡ khỏi trang Tài khoản');
     assert.match(JSON.stringify(g.system.rows), /dấu vân [0-9a-f]{16}/);
     // KHÔNG lộ bí mật nào, ở bất kỳ đâu
     const all = r.text;

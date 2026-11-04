@@ -51,7 +51,7 @@ test('đăng nhập: AI in "CẦN ĐĂNG NHẬP" → câu trả lời kèm cách
   db.addJob('7', 'thống kê hàng hóa', null, null, 'main', null); await worker.wake();
   const all = msgs.join('\n');
   assert.match(all, /CẦN ĐĂNG NHẬP: KiotViet/);
-  assert.match(all, /\/mo webbot/); assert.match(all, /\/dong webbot/); assert.match(all, /\/hanghoa/);
+  assert.match(all, /\/mo webbot/); assert.match(all, /\/dong webbot/); assert.doesNotMatch(all, /\/hanghoa|\/doanhso/);
 });
 
 test('trình duyệt: chỉ dùng Google Chrome đã cài (không Chromium), bỏ ảnh khỏi phiên AI; thứ tự IPv4 do gai.conf', () => {
@@ -70,19 +70,15 @@ test('trình duyệt: chỉ dùng Google Chrome đã cài (không Chromium), b�
   assert.match(fs.readFileSync(path.join(root, 'orchestrator', 'src', 'index.js'), 'utf8'), /setDefaultResultOrder\('verbatim'\)/);
 });
 
-test('/hanghoa: thống kê hàng hóa KiotViet qua API (số mã, còn/hết hàng, tồn theo chi nhánh, top tồn), không lộ giá vốn', async () => {
-  const { createKiotViet } = require('../src/kiotviet');
-  const prods = [
-    { name: 'Nồi A', code: 'SP1', basePrice: 100000, inventories: [{ branchName: 'Kho Tổng', onHand: 30, cost: 50000 }, { branchName: 'Hồng Hà', onHand: 5 }] },
-    { name: 'Chảo B', code: 'SP2', inventories: [{ branchName: 'Kho Tổng', onHand: 0 }] },
-    { name: 'Cốc C', code: 'SP3', inventories: [{ branchName: 'Hồng Hà', onHand: 12 }] },
-  ];
-  const f = async (url) => (String(url).includes('connect/token')
-    ? { ok: true, json: async () => ({ access_token: 't', expires_in: 3600 }) }
-    : { ok: true, json: async () => ({ total: prods.length, data: prods }) });
-  const kv = createKiotViet({ fetch: f, clientId: 'a', clientSecret: 'b', retailer: 'x' });
-  const out = await kv.catalog('');
-  assert.match(out, /3 mã đang bán/); assert.match(out, /Còn hàng: 2 mã/); assert.match(out, /hết hàng ở mọi chi nhánh: 1 mã/); assert.match(out, /tổng tồn 47 cái/);
-  assert.match(out, /Kho Tổng: 30 cái \(1 mã\)/); assert.match(out, /Hồng Hà: 17 cái \(2 mã\)/); assert.match(out, /Nồi A \(SP1\): 35/);
-  assert.doesNotMatch(out, /50\.?000|giá vốn/i, 'không đưa giá vốn');
+test('KiotViet đã gỡ khỏi hệ điều hành: không biểu tượng/lệnh/khóa; vào KiotViet bằng Chrome (đăng nhập, lưu mật khẩu, giữ phiên)', () => {
+  const root = path.join(__dirname, '..', '..');
+  assert.ok(!fs.existsSync(path.join(root, 'iso', 'config', 'includes.chroot', 'usr', 'share', 'applications', 'agentos-kiotviet.desktop')));
+  assert.ok(!fs.existsSync(path.join(root, 'scripts', 'dat-khoa-kiotviet.sh')));
+  const quick = fs.readFileSync(path.join(root, 'orchestrator', 'src', 'quick.js'), 'utf8');
+  assert.doesNotMatch(quick, /'doanhso'|'hanghoa'|case 'ton'|case 'gia'/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'desk', 'server.js'), 'utf8'), /kiotviet:\s*\{/);
+  assert.match(fs.readFileSync(path.join(root, 'update', 'apply.sh'), 'utf8'), /agentos-kiotviet/);
+  const pol = JSON.parse(fs.readFileSync(path.join(root, 'iso', 'config', 'includes.chroot', 'etc', 'opt', 'chrome', 'policies', 'managed', 'agentos.json'), 'utf8'));
+  assert.equal(pol.PasswordManagerEnabled, true); assert.equal(pol.RestoreOnStartup, 1); assert.equal(pol.DefaultCookiesSetting, 1);
+  assert.match(fs.readFileSync(path.join(root, 'update', 'apply.sh'), 'utf8'), /policies\/managed\/agentos\.json/);
 });

@@ -409,11 +409,6 @@ function createSettings(o) {
       groups.push({ id: 'tailscale', icon: '🔐', title: 'Tailscale (đường vào dự phòng)', status: t.state === 'Running' ? 'ok' : t.state === 'missing' ? 'none' : 'warn',
         rows: [['Trạng thái', t.state === 'Running' ? 'đã đăng nhập' : t.state === 'missing' ? 'chưa cài' : 'chưa đăng nhập (' + t.state + ')'], ['Địa chỉ', t.state === 'Running' ? ((t.ips || [])[0] || '') + (t.dns ? ' · ' + t.dns : '') : '—']], hint: t.state === 'Running' ? '' : 'Vào "Kết nối" để đăng nhập Tailscale.' });
 
-      // KiotViet
-      const kid = val('KIOTVIET_CLIENT_ID'), ksec = val('KIOTVIET_CLIENT_SECRET'), kret = val('KIOTVIET_RETAILER');
-      groups.push({ id: 'kiotviet', icon: '🧾', title: 'KiotViet (doanh số, tồn kho)', status: kid && ksec && kret ? 'ok' : (kid || ksec || kret ? 'warn' : 'none'),
-        rows: [['Cửa hàng (retailer)', kret || 'chưa có'], ['Client ID', kid ? mask.secret(kid) : 'chưa có'], ['Client Secret', ksec ? mask.secret(ksec) : 'chưa có']], hint: kid && ksec && kret ? '' : 'Muốn dùng /doanhso và /ton: thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào ' + o.envFile + '.' });
-
       // Hệ thống
       let fp = ''; try { fp = require('crypto').createHash('sha256').update(fs.readFileSync(o.updatePubkey || '/etc/agentos/update-pubkey.pem')).digest('hex').slice(0, 16); } catch (e) { /* không có */ }
       groups.push({ id: 'system', icon: '🛡️', title: 'Bảo mật hệ thống', status: 'ok',

@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.30",
-  "file": "agentos-update-2026.10.28.30.tar.gz",
-  "size": 344589,
-  "sha256": "349b1de89065d86643de7becc7286ad8cbb682ff71f96a91c9df67eaf9adfe66",
+  "version": "2026.10.28.31",
+  "file": "agentos-update-2026.10.28.31.tar.gz",
+  "size": 343479,
+  "sha256": "339447f81b3d4fb5f8dc4950bf0b910551baa6b66ed45f59e70ad59c1818d89c",
   "date": "2026-11-04",
-  "notes": "Bot không còn trực Facebook bằng trình duyệt của nó và không nhắc đăng nhập Facebook"
+  "notes": "Gỡ mục KiotViet khỏi hệ điều hành; Chrome lưu mật khẩu và giữ phiên đăng nhập"
 }

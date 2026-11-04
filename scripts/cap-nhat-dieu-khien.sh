@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cập nhật máy AgentOS ĐÃ CÀI để ra lệnh MỌI THỨ qua Telegram (không cần cài lại): trợ lý màn hình + lệnh nhanh (/manhinh /mo /dong /khoamay /khoimay
-# /tatmay /deepseek /doanhso /ton) + AI nhìn/bấm màn hình thật. Chạy bằng root:
+# /tatmay /deepseek) + AI nhìn/bấm màn hình thật. Chạy bằng root:
 #   curl -sL https://raw.githubusercontent.com/nvchien1905-cmd/agentos/main/scripts/cap-nhat-dieu-khien.sh | sudo bash
 # Có sao lưu mã cũ; mỗi tệp được kiểm cú pháp trước khi thay. Chạy lại nhiều lần không hại.
 set -e
@@ -171,6 +171,5 @@ sleep 6
 systemctl is-active --quiet agentos-deskd && echo "✅ Trợ lý màn hình đang chạy." || echo "⚠️ Trợ lý màn hình chưa lên: journalctl -u agentos-deskd -n 20"
 systemctl is-active --quiet agentos-orchestrator && echo "✅ Bộ điều phối đang chạy." || echo "⚠️ Bộ điều phối chưa lên: journalctl -u agentos-orchestrator -n 30"
 echo
-echo "Xong. Mở Telegram gõ /help để thấy lệnh nhanh: /manhinh /mo /dong /khoamay /khoimay /tatmay /deepseek /doanhso /ton /onedrive."
+echo "Xong. Mở Telegram gõ /help để thấy lệnh nhanh: /manhinh /mo /dong /khoamay /khoimay /tatmay /deepseek /onedrive."
 echo "OneDrive: nhắn bot  /onedrive ketnoi  rồi đăng nhập Microsoft trên điện thoại (làm một lần)."
-echo "KiotViet (/doanhso, /ton) cần khóa API: chạy  curl -sL $R/scripts/dat-khoa-kiotviet.sh -o k.sh; sudo bash k.sh"

@@ -115,3 +115,27 @@ test('hộp thư ra riêng từng ID: chỉ quét thư mục của chat của vi
   assert.deepEqual(box(0, { chat_id: '3' }), []);
   assert.deepEqual(createOutbox(out)(0).map((f) => f.name).sort(), ['anh-1.png', 'anh-2.png', 'chung.png'], 'không có dirFor thì giữ cách cũ');
 });
+
+test('dự án tổng tự đặt tên theo tên Telegram; chủ máy đổi tên rồi thì không bị ghi đè', () => {
+  const db = openDb(':memory:'), projects = createProjects({ db, baseDir: tmp() });
+  projects.noteName('1001', 'Nguyễn Chiến');
+  assert.equal(projects.active('1001').name, 'Nguyễn Chiến (1001)');
+  projects.noteName('1001', 'Chiến Mới'); assert.equal(projects.active('1001').name, 'Chiến Mới (1001)', 'đổi tên Telegram thì tên theo');
+  projects.rename(projects.active('1001').id, 'Phòng kế toán');
+  projects.noteName('1001', 'Tên khác'); assert.equal(projects.active('1001').name, 'Phòng kế toán', 'đã tự đổi tên thì giữ');
+  projects.noteName('2002', ''); assert.equal(projects.list().some((p) => p.home === '2002'), false, 'không có tên thì không tạo');
+});
+
+test('Nhật ký: danh sách lệnh đang chạy/chờ, nút Chạy lại tạo việc mới cùng nội dung (chỉ việc đã kết thúc)', () => {
+  const { createAuditLog } = require('../src/auditlog');
+  const { createControl } = require('../src/control');
+  const db = openDb(':memory:'), projects = createProjects({ db, baseDir: tmp() });
+  const woke = []; const ctl = createControl({ dir: tmp(), db, worker: { wake: () => woke.push(1) }, schedule: null, projects, log() {} });
+  const a = db.addJob('1', 'đang chờ'), b = db.addJob('1', 'đã xong', 'codex', null, 'main', null);
+  db.claimNext(Date.now(), ['main']); db.finishJob(a, 'done'); const run = db.claimNext(Date.now(), ['main']);
+  const act = createAuditLog({ db: { raw: db.raw } }).list({ active: true });
+  assert.deepEqual(act.map((x) => x.id), [run.id]); assert.equal(act[0].statusText, 'đang chạy');
+  assert.equal(ctl.apply({ action: 'job.rerun', id: run.id }), false, 'việc đang chạy không chạy lại');
+  assert.equal(ctl.apply({ action: 'job.rerun', id: a }), true);
+  const copy = db.recentJobs('1', 1)[0]; assert.equal(copy.prompt, 'đang chờ'); assert.equal(copy.status, 'queued'); assert.notEqual(copy.id, a);
+});

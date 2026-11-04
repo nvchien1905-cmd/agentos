@@ -398,3 +398,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.34 — Hộp thư ra riêng từng ID
 - Trình duyệt của mỗi việc lưu ảnh vào `work/out/<ID Telegram>/browser` và bộ điều phối chỉ quét `work/out/<ID>` của chat đó để gửi tệp về Telegram → hai ID làm cùng lúc không nhận nhầm tệp của nhau. Tệp để thẳng ở gốc `work/out` không còn được tự gửi (AI hãy lưu kết quả vào thư mục dự án KET-QUA hoặc `out/<ID>`).
+
+## 2026.10.28.35 — Dự án tổng đặt tên theo người; Nhật ký có trạng thái trực tiếp và nút Chạy lại
+- Dự án tổng của mỗi ID tự đặt tên "Tên Telegram (ID)"; chủ máy đổi tên ở Cài đặt → Dự án thì tên đó được giữ.
+- Cài đặt → Nhật ký: thẻ "Lệnh đang chạy / đang chờ" (tự làm mới 5 giây, kèm Tạm dừng/Hủy/chọn dự án), nhãn trạng thái có màu (🟢 đang chạy, ⏸ tạm dừng, ✅ xong, ❌ lỗi…), việc đã kết thúc có nút Chạy lại (tạo việc mới cùng nội dung, dự án, AI).

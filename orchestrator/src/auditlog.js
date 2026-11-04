@@ -21,8 +21,9 @@ function createAuditLog(o) {
   function list(opt) {
     opt = opt || {};
     const days = Math.max(1, Math.min(366, Number(opt.days) || 7)), limit = Math.max(1, Math.min(500, Number(opt.limit) || 100));
-    const from = now() - days * 86400000;
+    const from = opt.active ? 0 : now() - days * 86400000;
     const conds = ['j.created_at >= ?'], args = [from];
+    if (opt.active) conds.push("j.status IN ('queued','running','waiting')");
     if (opt.status && STATUS[opt.status]) { conds.push('j.status = ?'); args.push(opt.status); }
     if (opt.project === '-') conds.push("COALESCE(j.project,'') = ''"); else if (opt.project) { conds.push('j.project = ?'); args.push(String(opt.project)); }
     if (opt.chat) { conds.push('j.chat_id = ?'); args.push(String(opt.chat)); }

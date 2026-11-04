@@ -118,6 +118,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
       if (/^\/id(@\w+)?$/i.test(text)) return 'ID Telegram của bạn: ' + uid;
       return null;
     }
+    if (projects && projects.noteName) { try { projects.noteName(chatId, [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || msg.from.username); } catch (e) { /* tên chỉ để dễ nhìn */ } }
     // Chỉ nhận chat riêng với người được phép (không nhận trong nhóm).
     if (msg.chat.type && msg.chat.type !== 'private') return null;
     // Ảnh, video, album, tài liệu: tải về, trích khung hình + lời nói (video), gắn đường dẫn vào câu lệnh rồi xử lý như tin chữ (chú thích = yêu cầu).

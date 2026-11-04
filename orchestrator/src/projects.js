@@ -82,7 +82,7 @@ function createProjects(o) {
     name = String(name || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim();
     if (name.length < 2 || name.length > 60) throw new Error('Tên dự án dài 2–60 ký tự.');
     if (load().list.some((p) => !p.deleted && p.id !== id && p.name.toLowerCase() === name.toLowerCase())) throw new Error('Đã có dự án tên "' + name + '".');
-    return update(id, (p) => { p.name = name; });          // mã/thư mục giữ nguyên để tệp và lịch sử không đứt
+    return update(id, (p) => { p.name = name; p.nameAuto = false; });          // mã/thư mục giữ nguyên để tệp và lịch sử không đứt
   }
   const archive = (id, on) => update(id, (p) => { p.archived = on !== false; });
   function setEngine(id, eng) { return update(id, (p) => { p.engine = eng ? String(eng) : null; }); }
@@ -175,6 +175,17 @@ function createProjects(o) {
       return pub(p);
     } catch (e) { log('dự án tổng ' + c + ' lỗi: ' + e.message); return null; }
   }
+  // Đặt tên dự án tổng theo tên Telegram ("Nguyễn Văn A (ID)") — chỉ khi chủ máy chưa tự đổi tên (rename() tắt nameAuto); mỗi ID chỉ tra một lần mỗi lần khởi động
+  const noted = new Set();
+  function noteName(chatId, tg) {
+    const c = String(chatId); tg = String(tg || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!tg || noted.has(c + '|' + tg) || !homeEnabled()) return;
+    noted.add(c + '|' + tg);
+    const h = homeOf(c); if (!h) return;
+    const want = tg + ' (' + c + ')';
+    if (h.name === want || h.nameAuto === false || (h.nameAuto !== true && h.name !== 'Tổng · ' + c)) return;
+    update(h.id, (p) => { p.name = want; p.nameAuto = true; });
+  }
   function active(chatId) {
     const id = db.kvGet(kActive(chatId));
     if (id) { const p = get(id); if (p && !p.archived) return p; db.kvDel(kActive(chatId)); }
@@ -201,7 +212,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

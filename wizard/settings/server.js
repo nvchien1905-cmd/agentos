@@ -614,7 +614,7 @@ function createSettings(o) {
     async 'GET /api/audit'(b, ctx) { return withRoDb((db) => { const g = (k) => ctx.query.get(k) || ''; const a = createAuditLog({ db, projects: projectsLib() }); let sched = []; try { sched = (JSON.parse(db.kvGet('sched') || 'null') || {}).jobs || []; } catch (e) { /* hỏng: bỏ */ }
       const schedules = sched.map((j) => ({ scope: '', projectName: '', id: j.id, time: j.time, days: [], text: String(j.text || '').slice(0, 400), paused: !!j.paused, last: j.last || '' }));
       for (const p of projectsLib().list({ all: true })) for (const j of p.schedule || []) schedules.push({ scope: p.id, projectName: p.name, id: j.id, time: j.time, days: j.days || [], text: String(j.text || '').slice(0, 400), paused: !!j.paused, last: j.last || '' });
-      return { list: a.list({ days: g('days'), q: g('q'), status: g('status'), project: g('project'), denied: g('denied') === '1', limit: g('limit') }), week: a.week(7), schedules, projects: projectsLib().list().map((p) => ({ id: p.id, name: p.name })) }; }); },
+      return { active: a.list({ active: true, limit: 60 }), list: a.list({ days: g('days'), q: g('q'), status: g('status'), project: g('project'), denied: g('denied') === '1', limit: g('limit') }), week: a.week(7), schedules, projects: projectsLib().list().map((p) => ({ id: p.id, name: p.name })) }; }); },
     // Điều khiển từng việc / việc định kỳ: thả tệp yêu cầu cho bộ điều phối (control.js) — trang này chỉ đọc cơ sở dữ liệu nên không sửa trực tiếp
     async 'POST /api/control'(b) {
       const action = String((b && b.action) || ''); if (!CONTROL_ACTIONS.includes(action)) throw new Error('Hành động không hợp lệ.');

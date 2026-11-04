@@ -6,11 +6,12 @@ const path = require('path');
 // nó thả một tệp yêu cầu JSON vào thư mục điều khiển; bộ điều phối (người dùng agentos) đọc, thực hiện, rồi xóa tệp. Chỉ nhận danh sách hành động cố định.
 //   job.cancel {id}              hủy việc (đang xếp hàng hoặc đang chạy)
 //   job.hold {id} / job.release {id}   tạm dừng việc đang xếp hàng (giữ lại, không chạy) / cho chạy tiếp
+//   job.rerun {id}               chạy lại việc đã kết thúc (tạo việc mới cùng nội dung)
 //   job.project {id, project}    đổi dự án của việc chưa chạy hoặc đã xong ('' = bỏ dự án)
 //   sched.pause {scope, id} / sched.resume {scope, id} / sched.remove {scope, id}   việc định kỳ: tạm dừng / bật lại / xóa
 //   sched.project {id, project}  chuyển việc hẹn giờ chung vào một dự án
 //   sched.removeMatching {text}  xóa việc định kỳ có nội dung chứa đoạn chữ này và hủy các việc đang chờ/chạy cùng nội dung
-const ACTIONS = ['job.cancel', 'job.hold', 'job.release', 'job.project', 'sched.pause', 'sched.resume', 'sched.remove', 'sched.project', 'sched.removeMatching'];
+const ACTIONS = ['job.cancel', 'job.hold', 'job.release', 'job.project', 'job.rerun', 'sched.pause', 'sched.resume', 'sched.remove', 'sched.project', 'sched.removeMatching'];
 const MAX_BYTES = 10000;
 
 function createControl(o) {
@@ -28,6 +29,11 @@ function createControl(o) {
       }
       case 'job.hold': return Number.isInteger(id) && db.holdJob(id);
       case 'job.release': { if (!Number.isInteger(id)) return false; const ok = db.releaseJob(id); if (ok && worker) setImmediate(() => worker.wake()); return ok; }
+      case 'job.rerun': {                      // chạy lại: tạo việc MỚI cùng nội dung/dự án/AI (chỉ việc đã kết thúc)
+        if (!Number.isInteger(id)) return false;
+        const j = db.getJob(id); if (!j || !['done', 'error', 'limit', 'cancelled', 'interrupted'].includes(j.status)) return false;
+        db.addJob(j.chat_id, j.prompt, j.engine_pref, j.profile, j.lane === 'bg' ? 'bg' : 'main', j.project, j.council); if (worker) setImmediate(() => worker.wake()); return true;
+      }
       case 'job.project': {
         if (!Number.isInteger(id) || !projectOk(req.project)) return false;
         return db.setJobProject(id, req.project ? projects.get(String(req.project)).id : null);

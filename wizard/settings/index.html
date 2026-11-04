@@ -274,7 +274,19 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         if (j.status === 'running') return b('job.cancel', 'Hủy', 'd');
         if (j.held) return b('job.release', 'Tiếp tục', 'p') + b('job.cancel', 'Hủy', 'd');
         if (j.status === 'queued' || j.status === 'waiting') return b('job.hold', 'Tạm dừng') + b('job.cancel', 'Hủy', 'd');
-        return '';
+        return b('job.rerun', 'Chạy lại');
+      }
+      function badge(j) {
+        var m = { running: ['🟢', 'ok'], queued: ['🕓', ''], waiting: ['⏳', ''], done: ['✅', 'ok'], error: ['❌', 'bad'], limit: ['⚠️', 'bad'], cancelled: ['⛔', 'mute'], interrupted: ['⚠️', 'bad'] }[j.status] || ['', ''];
+        return '<b class="' + (j.held ? 'mute' : m[1]) + '">' + (j.held ? '⏸' : m[0]) + ' ' + esc(j.statusText) + '</b>';
+      }
+      function activeHtml(r) {
+        var A = r.active || [];
+        var h = '<div class="card"><h3>Lệnh đang chạy / đang chờ</h3>';
+        if (!A.length) return h + '<p class="mute">Hiện không có lệnh nào đang chạy hay đang chờ. Lệnh mới sẽ hiện ở đây (tự làm mới mỗi 5 giây) kèm nút Tạm dừng / Hủy.</p></div>';
+        h += '<table class="t"><tr><th>#</th><th>Lúc</th><th>Người nhắn</th><th>Dự án</th><th>Trạng thái</th><th>Nội dung</th><th>Điều khiển</th></tr>';
+        A.forEach(function (j) { h += '<tr><td>' + j.id + '</td><td>' + esc(j.at) + '</td><td>' + esc(j.who) + '</td><td>' + projSel(j, r.projects) + '</td><td>' + badge(j) + '</td><td>' + esc(j.prompt) + '</td><td>' + ctl(j) + '</td></tr>'; });
+        return h + '</table></div>';
       }
       function schedHtml(r) {
         var L = r.schedules || [];
@@ -291,12 +303,12 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       }
       function draw(r) {
         var w = r.week, st = {}; w.byStatus.forEach(function (x) { st[x.status] = x.n; });
-        var h = '<h2>Nhật ký</h2>' + schedHtml(r) + '<div class="card"><p>7 ngày qua: <b>' + w.total + '</b> việc (' + (st.done || 0) + ' xong, ' + (st.error || 0) + ' lỗi) · AI xin dùng công cụ: ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'allow' ? x.n : 0); }, 0) + ' được phép, ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'deny' ? x.n : 0); }, 0) + ' bị từ chối.</p>' +
+        var h = '<h2>Nhật ký</h2>' + activeHtml(r) + schedHtml(r) + '<div class="card"><p>7 ngày qua: <b>' + w.total + '</b> việc (' + (st.done || 0) + ' xong, ' + (st.error || 0) + ' lỗi) · AI xin dùng công cụ: ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'allow' ? x.n : 0); }, 0) + ' được phép, ' + w.decisions.reduce(function (s, x) { return s + (x.decision === 'deny' ? x.n : 0); }, 0) + ' bị từ chối.</p>' +
           '<div class="row"><select id="aud-d"><option value="1">Hôm nay</option><option value="7">7 ngày</option><option value="30">30 ngày</option><option value="90">90 ngày</option></select>' +
           '<select id="aud-s"><option value="">Mọi trạng thái</option><option value="done">Xong</option><option value="error">Lỗi</option><option value="cancelled">Đã hủy</option></select>' +
           '<label class="mute"><input type="checkbox" id="aud-x"> chỉ việc có công cụ bị từ chối</label><input id="aud-q" placeholder="Tìm trong nội dung" style="flex:1;min-width:140px"><button class="b p" id="aud-go">Lọc</button><button class="b" id="aud-csv">Xuất CSV</button></div>' +
           '<table class="t"><tr><th>#</th><th>Lúc</th><th>Người nhắn</th><th>Dự án</th><th>AI</th><th>Kết quả</th><th>Giây</th><th>Công cụ</th><th>Nội dung</th><th>Điều khiển</th></tr>' +
-          r.list.map(function (j) { return '<tr data-j="' + j.id + '" style="cursor:pointer"><td>' + j.id + '</td><td>' + esc(j.at) + '</td><td>' + esc(j.who) + '</td><td>' + projSel(j, r.projects) + '</td><td>' + esc(j.engine || '') + '</td><td>' + esc(j.statusText) + '</td><td>' + (j.secs == null ? '' : j.secs) + '</td><td>' + j.tools + (j.denied ? ' <b class="bad">(' + j.denied + ' từ chối)</b>' : '') + '</td><td>' + esc(j.prompt) + '</td><td>' + ctl(j) + '</td></tr>'; }).join('') + '</table><div id="aud-det"></div></div>';
+          r.list.map(function (j) { return '<tr data-j="' + j.id + '" style="cursor:pointer"><td>' + j.id + '</td><td>' + esc(j.at) + '</td><td>' + esc(j.who) + '</td><td>' + projSel(j, r.projects) + '</td><td>' + esc(j.engine || '') + '</td><td>' + badge(j) + '</td><td>' + (j.secs == null ? '' : j.secs) + '</td><td>' + j.tools + (j.denied ? ' <b class="bad">(' + j.denied + ' từ chối)</b>' : '') + '</td><td>' + esc(j.prompt) + '</td><td>' + ctl(j) + '</td></tr>'; }).join('') + '</table><div id="aud-det"></div></div>';
         set(h);
         document.getElementById('aud-d').value = String(f.days); document.getElementById('aud-s').value = f.status; document.getElementById('aud-x').checked = f.denied; document.getElementById('aud-q').value = f.q;
         on('aud-go', function () { f.days = Number(document.getElementById('aud-d').value); f.status = document.getElementById('aud-s').value; f.denied = document.getElementById('aud-x').checked; f.q = document.getElementById('aud-q').value; load(); });
@@ -308,8 +320,13 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         [].forEach.call(main.querySelectorAll('tr[data-j]'), function (tr) { tr.onclick = function () { api('GET', 'audit/job?id=' + tr.getAttribute('data-j')).then(function (d) {
           document.getElementById('aud-det').innerHTML = '<h3>Việc #' + d.id + ' · ' + esc(d.statusText) + (d.council ? ' · hội đồng AI' : '') + '</h3><p class="mute">' + esc(d.who) + ' · ' + esc(d.at) + (d.engine ? ' · AI: ' + esc(d.engine) : '') + (d.projectName ? ' · dự án: ' + esc(d.projectName) : '') + '</p><p><b>Yêu cầu:</b></p><pre style="white-space:pre-wrap">' + esc(d.prompt.slice(0, 3000)) + '</pre><p><b>Kết quả:</b></p><pre style="white-space:pre-wrap">' + esc((d.result || d.error || '').slice(0, 4000)) + '</pre><p><b>Công cụ AI đã xin (' + d.tools.length + '):</b></p><ul>' + d.tools.map(function (t) { return '<li>' + esc(t.at) + ' ' + (t.decision === 'allow' ? '✅' : '⛔') + ' ' + esc(t.tool) + ' (' + esc(t.source || '') + ') ' + esc(t.summary) + '</li>'; }).join('') + '</ul>'; }).catch(fail); }; });
       }
-      function load() { api('GET', 'audit?' + qs()).then(draw).catch(function (e) { set('<h2>Nhật ký</h2><p class="bad">' + esc(e.message) + '</p>'); }); }
+      var sig = ''; function load(auto) { api('GET', 'audit?' + qs()).then(function (r) { var n = JSON.stringify([r.active, r.list.slice(0, 8), r.schedules]); if (auto === true && n === sig) return; sig = n; draw(r); }).catch(function (e) { set('<h2>Nhật ký</h2><p class="bad">' + esc(e.message) + '</p>'); }); }
       load();
+      var tick = setInterval(function () {     // tự làm mới mỗi 5 giây khi đang xem Nhật ký (không làm mới lúc đang mở ô chọn/gõ chữ)
+        if (!document.getElementById('aud-d')) { clearInterval(tick); return; }
+        var a = document.activeElement; if (a && (a.tagName === 'SELECT' || a.tagName === 'INPUT')) return;
+        load(true);
+      }, 5000);
     },
     usg: function () {
       var days = 30;

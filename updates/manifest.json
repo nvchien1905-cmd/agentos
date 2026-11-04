@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.34",
-  "file": "agentos-update-2026.10.28.34.tar.gz",
-  "size": 349852,
-  "sha256": "3328a7c9ea7e3796ce56d8bae21f1f5b0979557a0123e1e1cce3a88f03c490bc",
+  "version": "2026.10.28.35",
+  "file": "agentos-update-2026.10.28.35.tar.gz",
+  "size": 350936,
+  "sha256": "5168335981c17416f05e75a0b734eef76a6d04996f0aad59b6dc8f3e9511f050",
   "date": "2026-11-04",
-  "notes": "Hộp thư ra riêng từng ID Telegram (không gửi nhầm tệp giữa các ID)"
+  "notes": "Dự án tổng đặt tên theo người; Nhật ký có trạng thái trực tiếp, nút Tạm dừng/Hủy/Chạy lại"
 }

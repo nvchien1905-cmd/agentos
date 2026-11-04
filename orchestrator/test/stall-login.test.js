@@ -51,7 +51,7 @@ test('đăng nhập: AI in "CẦN ĐĂNG NHẬP" → câu trả lời kèm cách
   db.addJob('7', 'thống kê hàng hóa', null, null, 'main', null); await worker.wake();
   const all = msgs.join('\n');
   assert.match(all, /CẦN ĐĂNG NHẬP: KiotViet/);
-  assert.match(all, /\/mo webbot/); assert.match(all, /\/dong webbot/); assert.doesNotMatch(all, /\/hanghoa|\/doanhso/);
+  assert.match(all, /\/mo webbot/); assert.match(all, /\/dong webbot/); assert.match(all, /\/hanghoa|\/doanhso/);
 });
 
 test('trình duyệt: chỉ dùng Google Chrome đã cài (không Chromium), bỏ ảnh khỏi phiên AI; thứ tự IPv4 do gai.conf', () => {
@@ -70,12 +70,12 @@ test('trình duyệt: chỉ dùng Google Chrome đã cài (không Chromium), b�
   assert.match(fs.readFileSync(path.join(root, 'orchestrator', 'src', 'index.js'), 'utf8'), /setDefaultResultOrder\('verbatim'\)/);
 });
 
-test('KiotViet đã gỡ khỏi hệ điều hành: không biểu tượng/lệnh/khóa; vào KiotViet bằng Chrome (đăng nhập, lưu mật khẩu, giữ phiên)', () => {
+test('KiotViet: không biểu tượng/khóa trên giao diện; số liệu lấy bằng API (/doanhso /ton), vào web bằng Chrome (lưu mật khẩu, giữ phiên)', () => {
   const root = path.join(__dirname, '..', '..');
   assert.ok(!fs.existsSync(path.join(root, 'iso', 'config', 'includes.chroot', 'usr', 'share', 'applications', 'agentos-kiotviet.desktop')));
   assert.ok(!fs.existsSync(path.join(root, 'scripts', 'dat-khoa-kiotviet.sh')));
   const quick = fs.readFileSync(path.join(root, 'orchestrator', 'src', 'quick.js'), 'utf8');
-  assert.doesNotMatch(quick, /'doanhso'|'hanghoa'|case 'ton'|case 'gia'/);
+  assert.match(quick, /case 'doanhso'/);   // số liệu bán hàng qua API chính thức, không qua web
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'desk', 'server.js'), 'utf8'), /kiotviet:\s*\{/);
   assert.match(fs.readFileSync(path.join(root, 'update', 'apply.sh'), 'utf8'), /agentos-kiotviet/);
   const pol = JSON.parse(fs.readFileSync(path.join(root, 'iso', 'config', 'includes.chroot', 'etc', 'opt', 'chrome', 'policies', 'managed', 'agentos.json'), 'utf8'));

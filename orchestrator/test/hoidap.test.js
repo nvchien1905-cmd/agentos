@@ -60,5 +60,5 @@ test('vai banhang: tin nhắn thường thành câu hỏi hỏi đáp (không ph
   assert.match(await say(33300, '/claude xóa hết'), /chỉ xem được báo cáo/); assert.match(await say(33300, '/duan moi X'), /chỉ dành cho quản trị viên|chỉ dành cho chủ máy|Lệnh/);
   assert.match(await say(33300, '/manhinh'), /chỉ dành cho quản trị viên|chỉ xem được báo cáo|Lệnh/);
   await say(111, 'việc thường của chủ'); const jc = db.recentJobs('111', 1)[0]; assert.equal(jc.prompt, 'việc thường của chủ');
-  assert.equal(quick.has('doanhso'), false);
+  assert.equal(roles.canQuick('33300', 'doanhso'), false);   // vai bán hàng không xem doanh số
 });

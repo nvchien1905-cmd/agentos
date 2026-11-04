@@ -7,7 +7,7 @@ const NL = String.fromCharCode(10);
 const pad = (n) => String(n).padStart(2, '0');
 // AI gặp trang đòi đăng nhập thì dừng và in "CẦN ĐĂNG NHẬP: ..." (xem LOGIN_HINT): bot báo thẳng chủ máy cách đăng nhập thay vì để việc im lặng.
 const LOGIN_RE = /CẦN ĐĂNG NHẬP/;
-const loginNote = (t) => LOGIN_RE.test(String(t || '')) ? NL + NL + '🔐 Trình duyệt của bot chưa đăng nhập trang này. Cách làm (một lần): 1) gõ /mo webbot, trình duyệt của bot mở trên màn hình máy; 2) anh tự đăng nhập trang đó (bot không bao giờ tự nhập mật khẩu); 3) gõ /dong webbot rồi nhắn "làm tiếp".' : '';
+const loginNote = (t) => LOGIN_RE.test(String(t || '')) ? NL + NL + '🔐 Trình duyệt của bot chưa đăng nhập trang này. Cách làm (một lần): 1) gõ /mo webbot, trình duyệt của bot mở trên màn hình máy; 2) anh tự đăng nhập trang đó (bot không bao giờ tự nhập mật khẩu); 3) gõ /dong webbot rồi nhắn "làm tiếp".' + (/kiotviet/i.test(String(t)) ? NL + '📦 Với KiotViet không cần đăng nhập web: gõ /doanhso (doanh số, thêm tên chi nhánh để lọc), /ton <tên> (tồn kho), /hanghoa (thống kê hàng hóa) để lấy thẳng qua API.' : '') : '';
 function fmtTime(ms) {
   const d = new Date(ms);
   return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ' ' + pad(d.getDate()) + '/' + pad(d.getMonth() + 1);

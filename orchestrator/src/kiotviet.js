@@ -25,6 +25,27 @@ function parseRange(arg, nowMs) {
   return null;
 }
 
+// Các nhóm dữ liệu AI được ĐỌC qua API (không có ghi/sửa/xóa: chỉ GET)
+const READ_PATHS = new Set(['invoices', 'products', 'customers', 'branches', 'categories', 'orders', 'purchaseorders', 'returns', 'suppliers', 'users', 'pricebooks', 'transfers', 'trademarks', 'salechannels', 'vouchers', 'cashflow', 'surchages', 'bankaccounts', 'productattributes']);
+function checkReadPath(raw) {
+  const s = String(raw || '').trim();
+  if (!s.startsWith('/') || s.startsWith('//') || /\.\.|[\s\\]/.test(s) || /^\/[a-z]+:/i.test(s)) return { ok: false, error: 'Đường dẫn KiotViet không hợp lệ: ' + s.slice(0, 80) + ' (ví dụ /invoices?pageSize=20)' };
+  const seg = s.slice(1).split(/[/?]/)[0].toLowerCase();
+  if (!READ_PATHS.has(seg)) return { ok: false, error: 'Nhóm "' + seg + '" không nằm trong danh sách được đọc: ' + [...READ_PATHS].join(', ') };
+  return { ok: true, path: s };
+}
+
+// Câu hỏi doanh số tự nhiên ("báo cáo doanh thu từng chi nhánh Tulibaby hôm nay") -> khoảng thời gian + từ khóa lọc chi nhánh
+const RANGE_RE = /\b(hom nay|hom qua|tuan nay|thang nay|today|yesterday|tuan|thang)\b/;
+const FILLER = new Set('doanh thu so bao cao kiem tra cua tung moi cac chi nhanh ngay em anh cho va nhe giup xem lay tat ca tong ket hom nay qua'.split(' '));
+function splitRevenueQuery(arg) {
+  const t = noAccent(arg);
+  const m = t.match(RANGE_RE);
+  const rest = t.replace(RANGE_RE, ' ').split(' ').filter((w) => w && !FILLER.has(w));
+  if (!m && rest.some((w) => /^\d+$/.test(w) || w === 'nam' || w === 'ngoai')) return { range: t, filter: '' };   // khoảng thời gian không hỗ trợ: để parseRange báo không hiểu
+  return { range: m ? m[1] : '', filter: rest.join(' ') };
+}
+
 function createKiotViet(o) {
   o = o || {};
   const f = o.fetch || fetch;
@@ -51,9 +72,17 @@ function createKiotViet(o) {
     configured: () => !!(cfg.id && cfg.secret && cfg.retailer),
     parseRange,
 
+    // Đọc thẳng một đường dẫn API công khai (CHỈ phương thức GET, chỉ các nhóm dữ liệu trong READ_PATHS) cho AI dùng thay vì đăng nhập web KiotViet.
+    async rawGet(pathAndQuery) {
+      const p = checkReadPath(pathAndQuery);
+      if (!p.ok) throw new Error(p.error);
+      return get(p.path);
+    },
+
     async revenue(arg, nowMs) {
-      const range = parseRange(arg, nowMs);
-      if (!range) return 'Khoảng thời gian không hiểu được. Gõ: /doanhso (hôm nay), /doanhso hôm qua, /doanhso tuần, /doanhso tháng';
+      const q = splitRevenueQuery(arg);
+      const range = parseRange(q.range, nowMs);
+      if (!range) return 'Khoảng thời gian không hiểu được. Gõ: /doanhso (hôm nay), /doanhso hôm qua, /doanhso tuần, /doanhso tháng; thêm tên chi nhánh để lọc, ví dụ /doanhso hôm nay tulibaby';
       const all = [];
       for (let cur = 0; cur < 20000; cur += 100) {
         const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), fromPurchaseDate: range.from, toPurchaseDate: range.to, orderBy: 'purchaseDate', orderDirection: 'Asc' });
@@ -63,7 +92,13 @@ function createKiotViet(o) {
         if (items.length < 100 || all.length >= (d.total || 0)) break;
       }
       // KiotViet có thể trả cả ngày kế tiếp ở biên: lọc lại theo ngày mua
-      const inRange = all.filter((i) => { const day = String(i.purchaseDate || '').slice(0, 10); return day >= range.from && day < range.to; });
+      let inRange = all.filter((i) => { const day = String(i.purchaseDate || '').slice(0, 10); return day >= range.from && day < range.to; });
+      if (q.filter) {                                                       // lọc theo tên chi nhánh / thương hiệu (không dấu, mọi từ phải có trong tên chi nhánh)
+        const words = q.filter.split(' ');
+        const names = [...new Set(inRange.map((i) => i.branchName || 'Chi nhánh ?'))];
+        inRange = inRange.filter((i) => { const b = noAccent(i.branchName); return words.every((w) => b.includes(w)); });
+        if (!inRange.length) return '📊 Doanh số ' + range.title + ': không có hóa đơn nào ở chi nhánh khớp "' + q.filter + '".' + (names.length ? ' Hôm đó KiotViet này có hóa đơn ở: ' + names.join(', ') + '.' : '');
+      }
       const done = inRange.filter((i) => i.status === STATUS_DONE);
       const cancelled = inRange.filter((i) => i.status !== STATUS_DONE).length;
       if (!done.length) return '📊 Doanh số ' + range.title + ': chưa có hóa đơn hoàn thành nào.' + (cancelled ? ' (' + cancelled + ' hóa đơn đã hủy/chưa hoàn thành)' : '');
@@ -123,6 +158,33 @@ function createKiotViet(o) {
     },
 
 
+    // Thống kê hàng hóa (chỉ số lượng, KHÔNG giá vốn): số mã đang bán, còn/hết hàng, tồn theo chi nhánh, 10 mã tồn nhiều nhất. arg = lọc theo tên/mã (tùy chọn).
+    async catalog(arg) {
+      const q = String(arg || '').trim();
+      const all = [];
+      for (let cur = 0; cur < 30000; cur += 100) {
+        const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), includeInventory: 'true', isActive: 'true' });
+        if (q) qs.set('name', q);
+        const d = await get('/products?' + qs.toString());
+        const items = d.data || [];
+        all.push(...items);
+        if (items.length < 100 || all.length >= (d.total || 0)) break;
+      }
+      if (!all.length) return 'Không có sản phẩm nào' + (q ? ' khớp "' + q + '"' : '') + '.';
+      const byBranch = new Map(); let inStock = 0, totalQty = 0; const rows = [];
+      for (const p of all) {
+        const inv = p.inventories || []; let sum = 0;
+        for (const x of inv) { const n = Number(x.onHand) || 0; sum += n; if (n > 0) { const b = byBranch.get(x.branchName || '?') || { qty: 0, skus: 0 }; b.qty += n; b.skus++; byBranch.set(x.branchName || '?', b); } }
+        if (sum > 0) inStock++; totalQty += sum; rows.push({ name: p.name || '?', code: p.code || '?', sum });
+      }
+      rows.sort((a, b) => b.sum - a.sum);
+      const lines = ['📦 Hàng hóa KiotViet' + (q ? ' "' + q + '"' : '') + ': ' + all.length + ' mã đang bán',
+        '• Còn hàng: ' + inStock + ' mã · hết hàng ở mọi chi nhánh: ' + (all.length - inStock) + ' mã · tổng tồn ' + totalQty.toLocaleString('vi-VN') + ' cái',
+        '• Tồn theo chi nhánh:'].concat([...byBranch.entries()].sort((a, b) => b[1].qty - a[1].qty).map(([n, b]) => '   – ' + n + ': ' + b.qty.toLocaleString('vi-VN') + ' cái (' + b.skus + ' mã)'),
+        ['• 10 mã tồn nhiều nhất:'], rows.slice(0, 10).map((r) => '   – ' + r.name + ' (' + r.code + '): ' + r.sum));
+      return lines.join(String.fromCharCode(10));
+    },
+
     // Danh sách sản phẩm có giá + tồn theo chi nhánh (dùng cho hỏi đáp bán hàng)
     async products(query, limit) {
       const q = String(query || '').trim(); if (q.length < 2) return [];
@@ -154,4 +216,4 @@ function createKiotViet(o) {
   };
 }
 
-module.exports = { createKiotViet, parseRange, vnDate, noAccent, money };
+module.exports = { createKiotViet, splitRevenueQuery, parseRange, vnDate, noAccent, money, checkReadPath };

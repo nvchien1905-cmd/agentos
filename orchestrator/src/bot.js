@@ -167,7 +167,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
 
     // Địa chỉ đăng nhập OneDrive dán thẳng (không có lệnh): chuyển cho lệnh /onedrive
     const pending = quick && quick.match && quick.match(text);
-    if (pending) return isAdmin(uid) ? quick.run(pending.name, pending.arg) : 'Lệnh /' + pending.name + ' chỉ dành cho quản trị viên.';
+    if (pending && !(pending.soft && !isAdmin(uid))) return isAdmin(uid) ? quick.run(pending.name, pending.arg) : 'Lệnh /' + pending.name + ' chỉ dành cho quản trị viên.';
 
     // "#tên-dự-án câu hỏi": hỏi một lần trong dự án đó (không đổi dự án đang chọn)
     if (projects) {

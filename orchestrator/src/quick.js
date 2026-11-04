@@ -3,8 +3,9 @@ const { noAccent } = require('./kiotviet');
 
 // LỆNH NHANH: chạy ngay, KHÔNG qua AI (nhanh, không tốn hạn mức, không bị lừa bằng nội dung web). Chỉ dành cho quản trị viên.
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
+//   /doanhso [hôm nay|hôm qua|tuần|tháng] [tên chi nhánh]  /ton <sản phẩm>  /hanghoa  -> KiotViet API chính thức, chỉ đọc (cả khi hỏi bằng câu thường: "doanh thu hôm nay")
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
 
 const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
@@ -83,6 +84,10 @@ function createQuick(o) {
             await od.disconnect(); return '✅ Đã ngắt kết nối OneDrive. Muốn nối lại: /onedrive ketnoi.';
           }
           return 'Cách dùng: /onedrive (tình trạng) · /onedrive ketnoi · /onedrive dongbo · /onedrive thumuc · /onedrive ngat co';
+        }
+        case 'doanhso': case 'ton': case 'hanghoa': case 'gia': {
+          if (!kv || !kv.configured()) return '⚠️ Chưa cấu hình KiotViet. Thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào /etc/agentos/orchestrator.env rồi khởi động lại bộ điều phối.';
+          return name === 'doanhso' ? await kv.revenue(arg) : name === 'hanghoa' ? await kv.catalog(arg) : await kv.stock(arg);
         }
         case 'baocao': case 'hen': return sched ? await sched.command(name, arg, ctx) : '⚠️ Máy này chưa có tính năng hẹn giờ.';
         case 'tailscale': {
@@ -282,7 +287,18 @@ function createQuick(o) {
   }
 
   // Tin nhắn không có dấu "/" nhưng là đáp án của một lệnh đang chờ (địa chỉ đăng nhập OneDrive chủ máy dán lại)
-  const match = (text) => (od && od.looksLikeAuthResponse(text) ? { name: 'onedrive', arg: String(text).trim() } : null);
+  // Câu hỏi số liệu bán hàng viết thường ("em báo cáo doanh thu từng chi nhánh hôm nay"): trả lời thẳng từ API KiotViet, KHÔNG qua AI (AI hay đi mở web KiotViet rồi kẹt đăng nhập). soft = chỉ áp cho quản trị viên, người khác vẫn đi đường cũ.
+  const salesIntent = (text) => {
+    const t = noAccent(text);
+    if (!t || t.length > 160 || String(text).trim().startsWith('/')) return null;
+    if (/\b(sua|xoa|tao|gui|ghi|nhap|dang nhap|mo trang|trinh duyet|chrome|excel|file|tep|hen gio|moi ngay)\b/.test(t)) return null;   // việc khác có nhắc doanh thu: để AI làm
+    if (/\bdoanh (thu|so)\b/.test(t)) return { name: 'doanhso', arg: String(text).trim(), soft: true };
+    const m = t.match(/\b(?:ton kho|con bao nhieu|con hang khong|kiem tra ton)\b\s*(.*)$/);
+    const what = m ? m[1].replace(/^kho\b\s*/, '').trim() : '';
+    if (what.length >= 2) return { name: 'ton', arg: String(text).trim().split(/\s+/).slice(-what.split(' ').length).join(' '), soft: true };   // lấy lại chữ CÓ DẤU của tên sản phẩm
+    return null;
+  };
+  const match = (text) => (od && od.looksLikeAuthResponse(text) ? { name: 'onedrive', arg: String(text).trim() } : salesIntent(text));
   return { names: NAMES, has: (n) => NAMES.includes(n), run, match, appKey };
 }
 

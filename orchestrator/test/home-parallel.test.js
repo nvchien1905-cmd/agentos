@@ -103,3 +103,15 @@ test('Telegram: việc mới của mỗi ID tự gắn vào dự án tổng củ
   await say(111, '/duan thoat'); await say(111, 'về tổng'); assert.equal(db.recentJobs('111', 1)[0].project, 'tong-111');
   await say(222, 'vẫn của tôi'); assert.equal(db.recentJobs('222', 1)[0].project, 'tong-222');
 });
+
+test('hộp thư ra riêng từng ID: chỉ quét thư mục của chat của việc, không thấy tệp của ID khác hay tệp dùng chung', () => {
+  const { createOutbox } = require('../src/outbox');
+  const out = tmp(), dirFor = (c) => path.join(out, String(c));
+  for (const c of ['1', '2']) { fs.mkdirSync(path.join(dirFor(c), 'browser'), { recursive: true }); fs.writeFileSync(path.join(dirFor(c), 'browser', 'anh-' + c + '.png'), 'x'); }
+  fs.writeFileSync(path.join(out, 'chung.png'), 'x');
+  const box = createOutbox(out, null, dirFor);
+  assert.deepEqual(box(0, { chat_id: '1' }).map((f) => f.name), ['anh-1.png']);
+  assert.deepEqual(box(0, { chat_id: '2' }).map((f) => f.name), ['anh-2.png']);
+  assert.deepEqual(box(0, { chat_id: '3' }), []);
+  assert.deepEqual(createOutbox(out)(0).map((f) => f.name).sort(), ['anh-1.png', 'anh-2.png', 'chung.png'], 'không có dirFor thì giữ cách cũ');
+});

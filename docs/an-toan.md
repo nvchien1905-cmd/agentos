@@ -395,3 +395,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Hàng đợi chính chạy SONG SONG theo ID: mỗi ID vẫn làm tuần tự, các ID khác nhau không phải đợi nhau (mặc định 3 việc cùng lúc, đổi bằng `PARALLEL_CHATS`, tối đa 8). Việc /web dùng chung một hồ sơ Chrome đã đăng nhập nên chỉ một việc /web chạy một lúc (việc thường của ID khác vẫn chạy).
 - Lần cập nhật đầu, cuộc trò chuyện hiện tại của mỗi ID chuyển sang dự án tổng nên AI bắt đầu phiên mới (ghi nhớ lâu dài chung và sổ tay chung vẫn dùng chung cho mọi ID). `/hen` vẫn là lịch chung của ID đó, việc hẹn giờ chạy trong dự án tổng của ID.
 - Giới hạn: hộp thư ra (`work/out`, ảnh chụp trình duyệt) dùng chung — khi nhiều ID cùng làm việc, tệp AI lưu ở đó có thể gửi nhầm cho ID kia; nên bảo AI lưu kết quả trong thư mục dự án (KET-QUA).
+
+## 2026.10.28.34 — Hộp thư ra riêng từng ID
+- Trình duyệt của mỗi việc lưu ảnh vào `work/out/<ID Telegram>/browser` và bộ điều phối chỉ quét `work/out/<ID>` của chat đó để gửi tệp về Telegram → hai ID làm cùng lúc không nhận nhầm tệp của nhau. Tệp để thẳng ở gốc `work/out` không còn được tự gửi (AI hãy lưu kết quả vào thư mục dự án KET-QUA hoặc `out/<ID>`).

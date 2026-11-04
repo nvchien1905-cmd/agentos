@@ -48,7 +48,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   async function sendOutputs(job) {
     if (!outbox || !sendFile) return;
     let files = [];
-    try { files = outbox(job.started_at || 0); } catch (e) { log('quét hộp thư ra lỗi: ' + e.message); return; }
+    try { files = outbox(job.started_at || 0, job); } catch (e) { log('quét hộp thư ra lỗi: ' + e.message); return; }
     for (const f of files) {
       try { await sendFile(job.chat_id, f); } catch (e) { log('gửi file ' + f.name + ' lỗi: ' + e.message); }
     }

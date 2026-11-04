@@ -37,8 +37,9 @@ function scan(dir, since, opts) {
     .reverse(); // gửi theo thứ tự thời gian
 }
 
-function createOutbox(dir, opts) {
-  return (since) => scan(dir, since, opts);
+// `dirFor(chatId)` (tùy chọn): mỗi ID Telegram có thư mục ra riêng; có thì chỉ quét thư mục của chat của việc (không quét tệp dùng chung ở gốc).
+function createOutbox(dir, opts, dirFor) {
+  return (since, job) => scan(dirFor && job ? dirFor(job.chat_id) : dir, since, opts);
 }
 
 module.exports = { scan, createOutbox, LIMITS };

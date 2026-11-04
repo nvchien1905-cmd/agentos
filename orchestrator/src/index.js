@@ -145,6 +145,10 @@ async function main() {
     vars: { DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath },
   });
   if (tools.errors.length) { tools.errors.forEach((e) => console.error('LỖI CẤU HÌNH CÔNG CỤ: ' + e)); process.exit(1); }
+  // Hộp thư ra RIÊNG từng ID: trình duyệt của việc lưu ảnh vào out/<ID>/browser và chỉ quét out/<ID> để gửi, nên ID này không nhận nhầm tệp của ID kia
+  const chatOutDir = (chatId) => path.join(outDir, String(chatId).replace(/[^\w.-]/g, '_'));
+  const swapOut = (v, from, to) => (typeof v === 'string' ? v.split(from).join(to) : Array.isArray(v) ? v.map((x) => swapOut(x, from, to)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, swapOut(x, from, to)])) : v);
+  const perChatServers = (servers, job) => swapOut(servers || {}, path.join(outDir, 'browser'), path.join(chatOutDir(job.chat_id), 'browser'));
   const jobDir = path.join(dataDir, 'jobs');
   fs.rmSync(jobDir, { recursive: true, force: true });       // file cấu hình tạm của lần chạy trước (có token cổng)
   fs.mkdirSync(jobDir, { recursive: true, mode: 0o700 });
@@ -183,7 +187,7 @@ async function main() {
   // File cấu hình riêng cho từng lần chạy: máy chủ MCP của bộ công cụ + cổng duyệt, và hook PreToolUse.
   function gateFiles(job, profile) {
     const env = { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(job.id) };
-    const mcpServers = Object.assign({}, tools.mcpServersFor(profile), {
+    const mcpServers = Object.assign({}, perChatServers(tools.mcpServersFor(profile), job), {
       agentos_gate: { command: process.execPath, args: [path.join(__dirname, 'gate-mcp.js')], env },
     });
     const waitSec = Math.ceil(cfg.approvalTimeoutMs / 1000) + 30;
@@ -223,7 +227,7 @@ async function main() {
       const kenv = keyEnv(name);
       if (jobFull(job)) {
         const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
-        fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: tools.mcpServersFor(allMcp()) }), { mode: 0o600 });
+        fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: perChatServers(tools.mcpServersFor(allMcp()), job) }), { mode: 0o600 });
         let gf = null;
         if (guardOn()) { try { gate.begin(job, { policy: {} }, { guard: true }); gf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được hàng rào cho việc #' + job.id + ': ' + e.message); } }
         const h = startClaude({
@@ -324,7 +328,7 @@ async function main() {
   const exclusiveProfiles = Object.keys(tools.profiles).filter((n) => (tools.profiles[n].mcp || []).includes('browser'));
   const makeMain = () => createWorker({
     db, log, notify, engines, ui: live, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
-    outbox: createOutbox(outDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
+    outbox: createOutbox(outDir, null, chatOutDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
     retryDelaysMs: cfg.retryDelaysMs, perChat: true, exclusiveProfiles,
     // Ổ đĩa gần đầy thì không nhận việc (Chromium/AI ghi nhiều file tạm; đầy đĩa làm hỏng cả cơ sở dữ liệu).

@@ -37,7 +37,7 @@ function checkReadPath(raw) {
 
 // Câu hỏi doanh số tự nhiên ("báo cáo doanh thu từng chi nhánh Tulibaby hôm nay") -> khoảng thời gian + từ khóa lọc chi nhánh
 const RANGE_RE = /\b(hom nay|hom qua|tuan nay|thang nay|today|yesterday|tuan|thang)\b/;
-const FILLER = new Set('doanh thu so bao cao kiem tra cua tung moi cac chi nhanh ngay em anh cho va nhe giup xem lay tat ca tong ket hom nay qua'.split(' '));
+const FILLER = new Set('doanh thu so bao cao kiem tra cua tung moi cac chi nhanh ngay em anh cho va nhe giup xem lay tat ca tong ket hom nay qua biet hay la nao xin dum minh toi voi theo bao nhieu thi ra the nhi di'.split(' '));
 function splitRevenueQuery(arg) {
   const t = noAccent(arg);
   const m = t.match(RANGE_RE);
@@ -93,11 +93,14 @@ function createKiotViet(o) {
       }
       // KiotViet có thể trả cả ngày kế tiếp ở biên: lọc lại theo ngày mua
       let inRange = all.filter((i) => { const day = String(i.purchaseDate || '').slice(0, 10); return day >= range.from && day < range.to; });
-      if (q.filter) {                                                       // lọc theo tên chi nhánh / thương hiệu (không dấu, mọi từ phải có trong tên chi nhánh)
-        const words = q.filter.split(' ');
-        const names = [...new Set(inRange.map((i) => i.branchName || 'Chi nhánh ?'))];
-        inRange = inRange.filter((i) => { const b = noAccent(i.branchName); return words.every((w) => b.includes(w)); });
-        if (!inRange.length) return '📊 Doanh số ' + range.title + ': không có hóa đơn nào ở chi nhánh khớp "' + q.filter + '".' + (names.length ? ' Hôm đó KiotViet này có hóa đơn ở: ' + names.join(', ') + '.' : '');
+      let note = '';
+      if (q.filter) {
+        // Chỉ những từ THẬT SỰ có trong tên chi nhánh mới dùng để lọc (từ thừa như "biết", "giúp" bị bỏ qua, không làm mất kết quả).
+        const branchWords = new Set(inRange.flatMap((i) => noAccent(i.branchName).split(' ')));
+        const words = q.filter.split(' ').filter((w) => branchWords.has(w));
+        const unknown = q.filter.split(' ').filter((w) => !branchWords.has(w));
+        if (words.length) inRange = inRange.filter((i) => { const b = noAccent(i.branchName); return words.every((w) => b.includes(w)); });
+        else if (unknown.length) note = 'ℹ️ Không có chi nhánh nào tên "' + unknown.join(' ') + '", nên hiện tất cả chi nhánh.\n';
       }
       const done = inRange.filter((i) => i.status === STATUS_DONE);
       const cancelled = inRange.filter((i) => i.status !== STATUS_DONE).length;
@@ -106,7 +109,7 @@ function createKiotViet(o) {
       for (const i of done) { const k = i.branchName || 'Chi nhánh ?'; const e = by.get(k) || { n: 0, sum: 0 }; e.n += 1; e.sum += Number(i.total) || 0; by.set(k, e); }
       const rows = [...by.entries()].sort((a, b) => b[1].sum - a[1].sum).map(([k, e]) => '• ' + k + ': ' + e.n + ' hóa đơn · ' + money(e.sum));
       const total = done.reduce((s, i) => s + (Number(i.total) || 0), 0);
-      return ['📊 Doanh số ' + range.title, ...rows, 'Tổng: ' + done.length + ' hóa đơn · ' + money(total) + (cancelled ? '  (không tính ' + cancelled + ' hóa đơn hủy/chưa hoàn thành)' : ''),
+      return [note + '📊 Doanh số ' + range.title, ...rows, 'Tổng: ' + done.length + ' hóa đơn · ' + money(total) + (cancelled ? '  (không tính ' + cancelled + ' hóa đơn hủy/chưa hoàn thành)' : ''),
         'Tính theo tiền hàng sau giảm giá của hóa đơn hoàn thành.'].join('\n');
     },
 

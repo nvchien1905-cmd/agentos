@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.38",
-  "file": "agentos-update-2026.10.28.38.tar.gz",
-  "size": 360933,
-  "sha256": "58a72b5cf62401837ad7857d2c4ddcabe97655f12c04aec066ca0805d70ad5c0",
+  "version": "2026.10.28.39",
+  "file": "agentos-update-2026.10.28.39.tar.gz",
+  "size": 361187,
+  "sha256": "8a2041a52eb44820cf0bbd18b962acd66bf3be5803ea74750d58954c6f7906fd",
   "date": "2026-11-05",
-  "notes": "Sửa Zalo (và các ứng dụng web) bị trắng màn hình: tắt tăng tốc đồ họa của Chrome"
+  "notes": "Sửa doanh số hiểu nhầm từ thừa thành tên chi nhánh; lỗi mô hình quá tải tự chuyển sang AI khác"
 }

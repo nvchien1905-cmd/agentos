@@ -122,7 +122,17 @@ test('/doanhso lọc theo tên chi nhánh; chưa cấu hình thì chỉ cách kh
   const now = Date.UTC(2026, 10, 5, 5);
   const r = await kv.revenue('doanh thu từng chi nhánh Tulibaby hôm nay', now);
   assert.match(r, /Tulibaby Phương Đình: 1 hóa đơn · 100\.000đ/); assert.match(r, /Tổng: 2 hóa đơn · 150\.000đ/); assert.doesNotMatch(r, /Huyền Anh/);
-  assert.match(await kv.revenue('hôm nay mamakids', now), /không có hóa đơn nào ở chi nhánh khớp "mamakids".*Huyền Anh Sơn Đồng/);
+  const un = await kv.revenue('hôm nay mamakids', now);                       // tên không có thật → hiện tất cả kèm ghi chú, không báo "không có"
+  assert.match(un, /Không có chi nhánh nào tên "mamakids"/); assert.match(un, /Tổng: 3 hóa đơn/);
+  const biet = await kv.revenue('cho anh biết doanh thu của từng chi nhánh hôm nay', now);   // từ thừa như "biết" không làm mất kết quả
+  assert.match(biet, /Tổng: 3 hóa đơn/); assert.doesNotMatch(biet, /Không có chi nhánh/);
   const q = createQuick({ kiotviet: createKiotViet({}) });
   assert.match(await q.run('doanhso', 'hôm nay'), /Chưa cấu hình KiotViet/);
+});
+
+test('limits: "Selected model is at capacity" → coi là chạm giới hạn, AI nghỉ ngắn 10 phút để việc chuyển sang AI khác', () => {
+  const { classifyFailure, parseResetTime } = require('../src/limits');
+  const msg = 'Selected model is at capacity. Please try a different model.';
+  assert.equal(classifyFailure(msg).limit, true);
+  assert.equal(parseResetTime(msg, 1000000), 1000000 + 10 * 60 * 1000);
 });

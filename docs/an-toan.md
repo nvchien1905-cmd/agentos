@@ -417,3 +417,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.38 — Zalo không còn trắng màn hình
 - Sự cố (05/11/2026): trên máy thật (Intel HD 630, Chrome 157) cửa sổ Zalo (`agentos-app zalo`) hiện TRẮNG sau khi đăng nhập. Thử cùng hồ sơ: bật tăng tốc đồ họa → trắng; thêm `--disable-gpu` → hiện bình thường. Sửa: `agentos-app` (mọi ứng dụng web: Zalo, Claude, ChatGPT, DeepSeek, Office) chạy Chrome với `--disable-gpu`.
+
+## 2026.10.28.39 — Doanh số không bị từ ngữ thừa làm hỏng; mô hình quá tải thì chuyển AI
+- `/doanhso` và câu hỏi doanh thu: chỉ những từ có thật trong tên chi nhánh mới dùng để lọc. Sự cố 05/11: "cho anh biết doanh thu của từng chi nhánh Tulibaby hôm qua" bị hiểu "biết" là tên chi nhánh → báo "không có hóa đơn". Giờ từ thừa bị bỏ qua; tên chi nhánh không tồn tại thì hiện TẤT CẢ kèm ghi chú.
+- Lỗi "Selected model is at capacity. Please try a different model." (Codex) được coi là chạm giới hạn: AI đó nghỉ 10 phút và việc tự chuyển sang AI kế tiếp thay vì báo lỗi.

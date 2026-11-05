@@ -433,3 +433,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Điểm chặn duy nhất khi bắt đầu việc (`engines[e].start`, index.js): nếu việc của CHỦ MÁY (không phải hook/sự kiện) có chữ về doanh thu/hóa đơn/tồn kho/KiotViet/chi nhánh, bot lấy sẵn bằng API chính thức (kvcontext.js): doanh số hôm nay + hôm qua (thêm tuần/tháng nếu nhắc) theo từng chi nhánh, đúng gian hàng nếu nêu tên, và tồn kho nếu hỏi "tồn kho <tên>", rồi đính khối `[DỮ LIỆU KIOTVIET …]` vào câu hỏi gửi cho AI. Áp dụng cho Claude, Codex, Gemini, DeepSeek, ở cả chế độ Bảo vệ lẫn Toàn quyền — AI không cần chạy lệnh, không cần mạng trong sandbox, không cần hiểu cách dùng kvcli. Lỗi KiotViet thì khối ghi rõ lỗi để AI nói thật. Nhớ theo việc 10 phút (đổi AI không gọi lại). AI có công cụ vẫn tra thêm bằng kvcli.
 - Sửa lỗi chọn gian: đại từ "anh" trong "cho anh biết…" bị tưởng là tên gian "Huyền Anh" nên hỏi cả hai gian (ảnh hưởng cả `/doanhso`). Từ thường (FILLER) bị bỏ khi so tên gian.
 - Giới hạn: chỉ nhận câu có từ khóa; câu hỏi lạ không có từ khóa vẫn phải dựa vào kvcli của AI (Claude; Codex/Gemini khi Toàn quyền).
+
+## 2026.10.28.43 — KiotViet báo 429 (gọi quá nhanh): tự chờ và thử lại
+- Triệu chứng: gian Huyền Anh báo "KiotViet lỗi 429" (giới hạn tốc độ) vì bot, tự chẩn đoán và hỏi doanh thu cùng gọi một lúc.
+- Sửa: mỗi gian gọi từng yêu cầu một (cách nhau 0,25 giây); gặp 429 thì chờ (theo Retry-After, nếu không thì 2/5/12/25 giây) rồi thử lại; lấy token cũng thử lại; kết quả giống nhau trong 60 giây dùng lại, không gọi lần nữa.
+- Vẫn 429 sau mọi lần thử thì báo rõ "bị giới hạn tốc độ, đã thử lại nhiều lần". Test: wizard/test/kiotviet-shops.test.js.

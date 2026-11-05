@@ -100,6 +100,25 @@ test('tự chẩn đoán KiotViet: gọi thật từng gian; khóa hỏng của 
   assert.ok((await createSelfTest({ kiotviet: good, db: null }).light).toString().length > 0);
 });
 
+test('KiotViet báo 429: tự chờ rồi thử lại, kết quả được dùng lại; 429 mãi thì báo rõ', async () => {
+  let calls = 0, fail = 2;
+  const f = async (url, opt) => {
+    url = String(url);
+    if (url.includes('token')) return { ok: true, status: 200, json: async () => ({ access_token: 't', expires_in: 3600 }) };
+    calls++;
+    if (fail-- > 0) return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({ data: [], total: 0 }) };
+  };
+  const waits = [];
+  const kv = createMultiKiotViet([SHOPS[0]], { fetch: f, sleep: async (ms) => { waits.push(ms); }, gapMs: 0 });
+  const r = await kv.rawGet('/invoices?pageSize=1');
+  assert.equal(r.total, 0); assert.equal(calls, 3); assert.deepEqual(waits.slice(0, 2), [2000, 5000]);
+  await kv.rawGet('/invoices?pageSize=1'); assert.equal(calls, 3);     // lần hai dùng bộ nhớ đệm
+  const always = async (url) => String(url).includes('token') ? { ok: true, status: 200, json: async () => ({ access_token: 't', expires_in: 3600 }) } : { ok: false, status: 429, headers: { get: () => null } };
+  const kv2 = createMultiKiotViet([SHOPS[0]], { fetch: always, sleep: async () => {}, gapMs: 0 });
+  await assert.rejects(() => kv2.rawGet('/invoices?pageSize=1'), /429.*giới hạn tốc độ/);
+});
+
 test('chọn gian: đại từ "anh" không làm bot tưởng đang nhắc gian "Huyền Anh"', async () => {
   const kv = createMultiKiotViet(SHOPS, { fetch: fakeFetch(DATA) });
   assert.deepEqual(kv.pick('cho anh biết doanh thu Tulibaby hôm qua'), ['Tulibaby']);

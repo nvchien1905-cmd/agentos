@@ -54,18 +54,44 @@ function createKiotViet(o) {
 
   async function getToken() {
     if (token && Date.now() < tokenExp) return token;
-    const r = await f(TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ scopes: 'PublicApi.Access', grant_type: 'client_credentials', client_id: cfg.id, client_secret: cfg.secret }) });
+    let r;
+    for (let i = 0; ; i++) {
+      r = await f(TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ scopes: 'PublicApi.Access', grant_type: 'client_credentials', client_id: cfg.id, client_secret: cfg.secret }) });
+      if (r.status === 429 && i < 3) { await sleep([2000, 5000, 12000][i]); continue; }
+      break;
+    }
     if (!r.ok) throw new Error('KiotViet từ chối đăng nhập API (HTTP ' + r.status + '). Kiểm tra KIOTVIET_CLIENT_ID / KIOTVIET_CLIENT_SECRET.');
     const d = await r.json();
     token = d.access_token; tokenExp = Date.now() + ((d.expires_in || 3600) - 120) * 1000;
     return token;
   }
-  async function get(pathAndQuery, retried) {
-    const r = await f(API + pathAndQuery, { headers: { Authorization: 'Bearer ' + (await getToken()), Retailer: cfg.retailer } });
-    if (r.status === 401 && !retried) { token = null; return get(pathAndQuery, true); }
-    if (!r.ok) throw new Error('KiotViet lỗi ' + r.status + ' khi đọc ' + pathAndQuery.split('?')[0]);
-    return r.json();
+  // KiotViet giới hạn tốc độ (429): gọi từng yêu cầu một, cách nhau một chút, gặp 429 thì chờ rồi thử lại; kết quả giống nhau trong 60 giây dùng lại
+  const sleep = o.sleep || ((ms) => new Promise((res) => setTimeout(res, ms)));
+  const GAP_MS = o.gapMs === undefined ? 250 : o.gapMs, RETRY_WAITS = o.retryWaits || [2000, 5000, 12000, 25000];
+  const cache = new Map();
+  let chain = Promise.resolve();
+  const queued = (fn) => { const p = chain.then(fn, fn); chain = p.then(() => sleep(GAP_MS), () => sleep(GAP_MS)); return p; };
+  async function fetchOnce(pathAndQuery) {
+    let tokenRetried = false;
+    for (let i = 0; ; i++) {
+      const r = await f(API + pathAndQuery, { headers: { Authorization: 'Bearer ' + (await getToken()), Retailer: cfg.retailer } });
+      if (r.status === 401 && !tokenRetried) { tokenRetried = true; token = null; continue; }
+      if (r.status === 429 && i < RETRY_WAITS.length) {
+        const ra = Number(r.headers && r.headers.get && r.headers.get('retry-after'));
+        await sleep(ra > 0 && ra <= 60 ? ra * 1000 : RETRY_WAITS[i]); continue;
+      }
+      if (!r.ok) throw new Error('KiotViet lỗi ' + r.status + (r.status === 429 ? ' (bị giới hạn tốc độ, đã thử lại nhiều lần)' : '') + ' khi đọc ' + pathAndQuery.split('?')[0]);
+      return r.json();
+    }
+  }
+  async function get(pathAndQuery) {
+    const hit = cache.get(pathAndQuery);
+    if (hit && Date.now() - hit.at < 60000) return hit.v;
+    const v = await queued(() => fetchOnce(pathAndQuery));
+    cache.set(pathAndQuery, { at: Date.now(), v });
+    if (cache.size > 200) for (const k of cache.keys()) { if (Date.now() - cache.get(k).at > 60000) cache.delete(k); }
+    return v;
   }
 
   return {
@@ -226,7 +252,7 @@ function createMultiKiotViet(shops, o) {
   o = o || {};
   const list = (shops || []).filter((s) => s && s.clientId && s.clientSecret && s.retailer).map((s, i) => {
     const name = String(s.name || s.retailer).trim();
-    return { name, retailer: s.retailer, words: noAccent(name + ' ' + s.retailer).split(' ').filter(Boolean), api: createKiotViet({ clientId: s.clientId, clientSecret: s.clientSecret, retailer: s.retailer, fetch: o.fetch }), idx: i };
+    return { name, retailer: s.retailer, words: noAccent(name + ' ' + s.retailer).split(' ').filter(Boolean), api: createKiotViet({ clientId: s.clientId, clientSecret: s.clientSecret, retailer: s.retailer, fetch: o.fetch, sleep: o.sleep, gapMs: o.gapMs, retryWaits: o.retryWaits }), idx: i };
   });
   const multi = list.length > 1;
   const names = () => list.map((s) => s.name).join(', ');

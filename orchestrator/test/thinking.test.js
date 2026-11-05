@@ -136,3 +136,9 @@ test('limits: "Selected model is at capacity" → coi là chạm giới hạn, A
   assert.equal(classifyFailure(msg).limit, true);
   assert.equal(parseResetTime(msg, 1000000), 1000000 + 10 * 60 * 1000);
 });
+
+test('index.js: Codex và Gemini ở chế độ Toàn quyền cũng nhận cổng KiotViet (kvcli), xong thì gỡ cổng', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
+  assert.match(src, /withKv\(job, keyEnv\('codex'\)/); assert.match(src, /withKv\(job, keyEnv\('gemini'\)/);
+  assert.match(src, /gate\.end\(job\.id\); return r;/);
+});

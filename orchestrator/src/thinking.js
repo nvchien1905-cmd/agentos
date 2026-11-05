@@ -15,7 +15,7 @@ const THINK_HINT = 'TƯ DUY TRƯỚC KHI LÀM (bắt buộc, ưu tiên hơn mọ
   '(7) KẾT THÚC: nói thật đã làm gì, đã kiểm chứng chưa, còn gì dở; không báo "xong" khi chưa kiểm.';
 
 // Quy tắc riêng cho KiotViet: API trước, web sau cùng. `configured` = máy đã khai khóa API KiotViet.
-// `canCli` = AI này chạy được lệnh API (chỉ Claude có cổng nội bộ); AI khác chỉ được dặn không bấm web.
+// `canCli` = AI này chạy được lệnh API (Claude, và Codex/Gemini ở chế độ Toàn quyền, có cổng nội bộ); còn lại chỉ được dặn không bấm web.
 function kiotvietHint(configured, canCli) {
   if (canCli === false) {
     return 'KIOTVIET: KHÔNG đăng nhập/bấm trang web KiotViet để lấy số liệu và không nhập/sửa dữ liệu trên đó. Cần doanh số hoặc tồn kho thì bảo chủ máy gõ /doanhso hoặc /ton <tên> (dùng API chính thức) hoặc nhờ lại bằng Claude.';

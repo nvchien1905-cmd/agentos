@@ -421,3 +421,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.10.28.39 — Doanh số không bị từ ngữ thừa làm hỏng; mô hình quá tải thì chuyển AI
 - `/doanhso` và câu hỏi doanh thu: chỉ những từ có thật trong tên chi nhánh mới dùng để lọc. Sự cố 05/11: "cho anh biết doanh thu của từng chi nhánh Tulibaby hôm qua" bị hiểu "biết" là tên chi nhánh → báo "không có hóa đơn". Giờ từ thừa bị bỏ qua; tên chi nhánh không tồn tại thì hiện TẤT CẢ kèm ghi chú.
 - Lỗi "Selected model is at capacity. Please try a different model." (Codex) được coi là chạm giới hạn: AI đó nghỉ 10 phút và việc tự chuyển sang AI kế tiếp thay vì báo lỗi.
+
+## 2026.10.28.40 — Codex/Gemini (Toàn quyền) cũng đọc được KiotViet bằng API
+- Sự cố 05/11: hỏi bot bằng câu không khớp lệnh nhanh thì việc giao cho Codex; Codex chạy được lệnh nhưng bot chỉ đưa cổng KiotViet nội bộ cho Claude nên Codex không có đường dùng API ("em chưa tìm được cách dùng cấu hình đó"). Sửa: ở chế độ Toàn quyền, việc của chủ máy chạy bằng Codex/Gemini được đăng ký với cổng (gate.begin) và nhận AGENTOS_GATE_URL/TOKEN/JOB_ID + chỉ dẫn dùng `kvcli.js`; xong việc thì gỡ cổng. Chế độ Bảo vệ (sandbox) vẫn chỉ được dặn dùng /doanhso, /ton.
+- Chưa kiểm với Codex thật: test chỉ kiểm nối dây trong mã nguồn.

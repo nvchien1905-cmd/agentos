@@ -256,16 +256,27 @@ async function main() {
       const cleanup = () => { gate.end(job.id); for (const f of [files.mcpConfig, files.settings]) fs.rmSync(f, { force: true }); };
       return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
   };
+  // Codex/Gemini ở chế độ TOÀN QUYỀN cũng được đọc KiotViet qua kvcli (cổng nội bộ chỉ đọc, như Claude): đăng ký việc với cổng, đặt biến môi trường, xong thì gỡ.
+  // Trước đây chỉ Claude có cổng này nên Codex gặp câu hỏi doanh thu là bó tay rồi đi đăng nhập web.
+  const withKv = (job, env, run) => {
+    if (!KV_ON || !kvForAi.allowed(job)) return run(env, false);
+    let on = false;
+    try { gate.begin(job, { policy: {} }, {}); on = true; } catch (e) { log('không mở được cổng KiotViet cho việc #' + job.id + ': ' + e.message); }
+    const kv = on ? { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(job.id) } : {};
+    let h;
+    try { h = run(Object.assign({}, env, kv), on); } catch (e) { if (on) gate.end(job.id); throw e; }
+    return on ? { kill: h.kill, done: h.done.then((r) => { gate.end(job.id); return r; }, (e) => { gate.end(job.id); throw e; }) } : h;
+  };
   const factories = {
     claude: (a) => claudeRun('claude', a),
     deepseekapi: (a) => claudeRun('deepseekapi', a),
     // Codex KHÔNG đi qua cổng duyệt -> chỉ chạy bộ công cụ cho phép (engines) và sandbox chỉ đọc.
     codex: ({ job, prompt, resumeId, onProgress }) => {
       if (jobFull(job)) {
-        return startCodex({
-          bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job), prompt: '[' + fullHint(false) + ']\n\n' + prompt, resumeId,
-          sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), images: imagePaths(prompt), timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: keyEnv('codex'), onProgress,   // không sandbox
-        });
+        return withKv(job, keyEnv('codex'), (env, kv) => startCodex({
+          bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job), prompt: '[' + fullHint(kv) + ']\n\n' + prompt, resumeId,
+          sandbox: 'danger-full-access', extraArgs: tools.codexArgs(allMcp()), images: imagePaths(prompt), timeoutMs: timeoutFor(job), idleMs: idleFor(job), env, onProgress,   // không sandbox
+        }));
       }
       const p = tools.profile(job.profile);
       return startCodex({
@@ -279,7 +290,7 @@ async function main() {
     gemini: ({ job, prompt, resumeId }) => {
       try { apikeys.setGeminiAuthType(process.env.HOME || require('os').homedir(), cfg.apiKeys.gemini ? 'gemini-api-key' : 'oauth-personal'); } catch (e) { log('không đặt được kiểu đăng nhập Gemini: ' + e.message); }
       if (jobFull(job)) {
-        return startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job), prompt: '[' + fullHint(false) + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: keyEnv('gemini') });
+        return withKv(job, keyEnv('gemini'), (env, kv) => startGemini({ bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job), prompt: '[' + fullHint(kv) + ']\n\n' + atImages(prompt), resumeId, mode: 'yolo', model: cfg.geminiModel, timeoutMs: timeoutFor(job), idleMs: idleFor(job), env }));
       }
       const p = tools.profile(job.profile);
       const note = 'Bạn đang ở chế độ CHỈ ĐỌC (không ghi tệp, không chạy lệnh): nếu cần lưu kết quả, hãy đưa nội dung vào câu trả lời để chủ máy lưu.';

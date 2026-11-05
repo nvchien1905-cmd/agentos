@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.39",
-  "file": "agentos-update-2026.10.28.39.tar.gz",
-  "size": 361187,
-  "sha256": "8a2041a52eb44820cf0bbd18b962acd66bf3be5803ea74750d58954c6f7906fd",
+  "version": "2026.10.28.40",
+  "file": "agentos-update-2026.10.28.40.tar.gz",
+  "size": 361483,
+  "sha256": "9cbe84e0be6ab7748195a25bfd531f5f42e036869433126cf7dbf25fa1d71c89",
   "date": "2026-11-05",
-  "notes": "Sửa doanh số hiểu nhầm từ thừa thành tên chi nhánh; lỗi mô hình quá tải tự chuyển sang AI khác"
+  "notes": "Codex/Gemini ở chế độ Toàn quyền cũng đọc KiotViet bằng API (kvcli), không đi mở web"
 }

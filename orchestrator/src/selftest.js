@@ -142,8 +142,8 @@ function createSelfTest(o) {
       const kv = o.kiotviet;
       if (!kv || !kv.configured || !kv.configured()) return R('kiotviet', 'KiotViet API', 'ok', 'chưa khai khóa (nếu cần: Cài đặt AgentOS → KiotViet)');
       const rows = await kv.health();
-      const bad = rows.filter((r) => !r.ok);
-      return R('kiotviet', 'KiotViet API', bad.length ? 'fail' : 'ok', rows.map((r) => r.name + (r.ok ? ': ' + r.detail : ' LỖI — ' + r.detail)).join(' · '));
+      const bad = rows.filter((r) => !r.ok), hard = bad.filter((r) => !r.soft);   // 429 / mạng chập chờn chỉ là cảnh báo nhẹ, không báo "sự cố"
+      return R('kiotviet', 'KiotViet API', hard.length ? 'fail' : bad.length ? 'warn' : 'ok', rows.map((r) => r.name + (r.ok ? ': ' + r.detail : ' LỖI — ' + r.detail)).join(' · '));
     }),
 
     queue: () => safe('queue', 'Hàng đợi việc', async () => {

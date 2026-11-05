@@ -442,3 +442,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.10.28.44 — "Đang làm… 2 giây" đứng im
 - Nguyên nhân: tin trạng thái chỉ sửa khi AI báo bước mới; lúc bot lấy sẵn số liệu KiotViet chưa có bước nào nên đồng hồ đứng. Câu hỏi dạng "danh sách sản phẩm bán 15 ngày nhưng hết hàng" cũng bị lấy sẵn doanh thu hôm nay/qua của cả hai gian dù không cần → chậm.
 - Sửa: tin trạng thái tự đếm giây mỗi 4 giây; câu hỏi phức tạp (danh sách, N ngày, lọc, so sánh, sản phẩm) bỏ lấy sẵn để AI tự tra bằng kvcli; lấy sẵn tối đa 35 giây rồi giao việc cho AI với phần đã có. Test: wizard/test/live-tick.test.js, kvcontext.test.js.
+
+## 2026.10.28.45 — KiotViet 429 / mạng chập chờn không còn báo "sự cố"
+- Tự chẩn đoán: 429 (giới hạn tốc độ) hoặc "fetch failed" chỉ là cảnh báo nhẹ (warn), không gửi tin "phát hiện sự cố" lên Telegram; khóa sai/Retailer sai vẫn là lỗi thật. Test: wizard/test/kiotviet-shops.test.js.

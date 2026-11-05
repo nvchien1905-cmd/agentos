@@ -287,7 +287,7 @@ function createMultiKiotViet(shops, o) {
         const inv = await api.rawGet('/invoices?' + new URLSearchParams({ pageSize: '1', fromPurchaseDate: from, toPurchaseDate: to }).toString());
         return { branches: (b.data || []).length, invoicesToday: Number(inv.total) || 0 };
       });
-      return res.map((r) => r.err ? { name: r.s.name, ok: false, detail: r.err } : { name: r.s.name, ok: true, detail: r.v.branches + ' chi nhánh, hôm nay ' + r.v.invoicesToday + ' hóa đơn' });
+      return res.map((r) => r.err ? { name: r.s.name, ok: false, soft: /429|giới hạn tốc độ|fetch failed|ETIMEDOUT|ECONNRESET|EAI_AGAIN/i.test(String(r.err)), detail: r.err } : { name: r.s.name, ok: true, detail: r.v.branches + ' chi nhánh, hôm nay ' + r.v.invoicesToday + ' hóa đơn' });
     },
 
     async rawGet(pathAndQuery, shop) {

@@ -127,3 +127,12 @@ test('chọn gian: đại từ "anh" không làm bot tưởng đang nhắc gian 
   const r = await kv.revenue('cho anh biết doanh thu của Tulibaby hôm nay', NOW);
   assert.doesNotMatch(r, /Huyền Anh|Phương Đình/);
 });
+
+test('tự chẩn đoán: 429 hoặc mạng chập chờn chỉ là cảnh báo nhẹ; khóa sai vẫn là lỗi', async () => {
+  const { createSelfTest } = require('../../orchestrator/src/selftest');
+  const f429 = async (url) => String(url).includes('token') ? { ok: true, status: 200, json: async () => ({ access_token: 't', expires_in: 3600 }) } : { ok: false, status: 429, headers: { get: () => null } };
+  const kv = createMultiKiotViet([SHOPS[0]], { fetch: f429, sleep: async () => {}, gapMs: 0 });
+  assert.equal((await createSelfTest({ kiotviet: kv }).checks.kiotviet()).status, 'warn');
+  const net = createMultiKiotViet([SHOPS[0]], { fetch: async () => { throw new Error('fetch failed'); }, sleep: async () => {}, gapMs: 0 });
+  assert.equal((await createSelfTest({ kiotviet: net }).checks.kiotviet()).status, 'warn');
+});

@@ -53,7 +53,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     if (!entry) return { ok: false, error: 'Việc không còn chạy.' };
     if (!kv || !kv.api || !kv.api.configured()) return { ok: false, error: 'Chưa cấu hình KiotViet API (KIOTVIET_CLIENT_ID/SECRET/RETAILER).' };
     if (kv.allowed && !kv.allowed(entry.job)) return { ok: false, error: 'Việc này không được phép đọc dữ liệu KiotViet.' };
-    try { return { ok: true, data: await kv.api.rawGet(String(body.path || '')) }; } catch (e) { return { ok: false, error: e.message }; }
+    try { return { ok: true, data: await kv.api.rawGet(String(body.path || ''), body.shop ? String(body.shop) : undefined) }; } catch (e) { return { ok: false, error: e.message }; }
   }
 
   function handler(req, res) {

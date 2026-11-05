@@ -13,6 +13,7 @@ const nm = require('../lib/nm');
 const tgLib = require('../lib/telegram');
 const engines = require('../lib/engines');
 const apikeys = require('../lib/apikeys');
+const kvLib = require('../lib/kiotviet');
 const envfile = require('../lib/envfile');
 const fullaccess = require('../lib/fullaccess');
 const odauth = require('../lib/odauth');
@@ -282,6 +283,30 @@ function createSettings(o) {
       if (b.action !== 'reboot' && b.action !== 'poweroff') throw new Error('Thao tác không hợp lệ');
       setTimeout(() => { run('systemctl', [b.action]); }, 2000);
       return { ok: true, after: 2 };
+    },
+
+    // ----- KiotViet: nhiều gian hàng (mỗi gian một cửa hàng KiotViet với khóa API riêng) -----
+    async 'GET /api/kiotviet'() { return { shops: kvLib.view(readEnv() || ''), configured: readEnv() != null }; },
+    async 'POST /api/kiotviet/save'(b) {
+      const text = needEnv();
+      let u;
+      // sửa gian đã có mà để trống khóa thì giữ khóa cũ: kiểm bằng khóa đã lưu
+      const cur = kvLib.shopsFromEnv(text).find((x) => x.retailer.toLowerCase() === String(b.retailer || '').trim().toLowerCase());
+      const probe = { retailer: String(b.retailer || '').trim(), clientId: String(b.clientId || '').trim() || (cur && cur.clientId) || '', clientSecret: String(b.clientSecret || '').trim() || (cur && cur.clientSecret) || '' };
+      const r = await kvLib.check(probe, fetchImpl);
+      if (!r.ok) throw new Error(r.detail);
+      u = kvLib.upsert(text, b);
+      saveEnv(u.text); await restart('agentos-orchestrator');
+      return { saved: true, detail: r.detail, shop: { name: u.shop.name || u.shop.retailer, retailer: u.shop.retailer } };
+    },
+    async 'POST /api/kiotviet/test'(b) {
+      const cur = kvLib.shopsFromEnv(readEnv() || '').find((x) => x.retailer.toLowerCase() === String(b.retailer || '').trim().toLowerCase());
+      if (!cur) throw new Error('Không có gian hàng này.');
+      return kvLib.check(cur, fetchImpl);
+    },
+    async 'POST /api/kiotviet/delete'(b) {
+      saveEnv(kvLib.remove(needEnv(), b.retailer)); await restart('agentos-orchestrator');
+      return { deleted: true };
     },
 
     // ----- Ứng dụng -----

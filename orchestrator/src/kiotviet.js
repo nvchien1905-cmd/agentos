@@ -216,4 +216,112 @@ function createKiotViet(o) {
   };
 }
 
-module.exports = { createKiotViet, splitRevenueQuery, parseRange, vnDate, noAccent, money, checkReadPath };
+// NHIỀU GIAN HÀNG KiotViet (mỗi gian = một cửa hàng KiotViet riêng: Retailer + khóa API riêng, ví dụ Tulibaby và Huyền Anh).
+// shops: [{ name, retailer, clientId, clientSecret }]. Cùng giao diện với createKiotViet nên chỗ khác trong bot dùng y hệt.
+// Câu hỏi có tên gian ("doanh thu Tulibaby hôm nay") thì chỉ hỏi gian đó; không nêu tên thì hỏi tất cả và ghi rõ từng gian.
+function createMultiKiotViet(shops, o) {
+  o = o || {};
+  const list = (shops || []).filter((s) => s && s.clientId && s.clientSecret && s.retailer).map((s, i) => {
+    const name = String(s.name || s.retailer).trim();
+    return { name, retailer: s.retailer, words: noAccent(name + ' ' + s.retailer).split(' ').filter(Boolean), api: createKiotViet({ clientId: s.clientId, clientSecret: s.clientSecret, retailer: s.retailer, fetch: o.fetch }), idx: i };
+  });
+  const multi = list.length > 1;
+  const names = () => list.map((s) => s.name).join(', ');
+
+  // Tách từ khóa chọn gian ra khỏi câu: trả { chosen: [gian], rest: phần còn lại }
+  function choose(text) {
+    const ws = noAccent(text).split(' ').filter(Boolean);
+    const hit = list.filter((s) => s.words.some((w) => w.length >= 3 && ws.includes(w)));
+    if (!hit.length) return { chosen: list, rest: String(text || ''), named: false };
+    const used = new Set(); hit.forEach((s) => s.words.forEach((w) => used.add(w)));
+    return { chosen: hit, rest: ws.filter((w) => !used.has(w)).join(' '), named: true };
+  }
+  // chạy fn trên từng gian, lỗi một gian không làm hỏng các gian khác
+  async function each(chosen, fn) {
+    const out = [];
+    for (const s of chosen) { try { out.push({ s, v: await fn(s.api, s) }); } catch (e) { out.push({ s, err: e.message }); } }
+    return out;
+  }
+  const head = (s) => '🏬 ' + s.name;
+
+  return {
+    configured: () => list.length > 0,
+    shops: () => list.map((s) => ({ name: s.name, retailer: s.retailer })),
+    parseRange,
+
+    async rawGet(pathAndQuery, shop) {
+      if (!list.length) throw new Error('Chưa cấu hình KiotViet.');
+      let s;
+      if (shop) { const c = choose(shop); s = c.named ? c.chosen[0] : null; if (!s) throw new Error('Không có gian hàng "' + shop + '". Đang có: ' + names()); }
+      else if (list.length === 1) s = list[0];
+      else throw new Error('Có ' + list.length + ' gian hàng KiotViet (' + names() + '): phải nói rõ gian nào (thêm --shop <tên>).');
+      return s.api.rawGet(pathAndQuery);
+    },
+
+    async revenue(arg, nowMs) {
+      if (!multi) return list.length ? list[0].api.revenue(arg, nowMs) : 'Chưa cấu hình KiotViet.';
+      const q = splitRevenueQuery(arg);
+      const c = choose(q.filter);
+      const sub = (q.range + ' ' + c.rest).trim();
+      const res = await each(c.chosen, (api) => api.revenue(sub, nowMs));
+      return res.map((r) => head(r.s) + '\n' + (r.err ? '⚠️ ' + r.err : r.v)).join('\n\n');
+    },
+
+    async stock(query) {
+      if (!multi) return list.length ? list[0].api.stock(query) : 'Chưa cấu hình KiotViet.';
+      const c = choose(query);
+      const res = await each(c.chosen, (api) => api.stock(c.rest));
+      return res.map((r) => head(r.s) + '\n' + (r.err ? '⚠️ ' + r.err : r.v)).join('\n\n');
+    },
+
+    async catalog(arg) {
+      if (!multi) return list.length ? list[0].api.catalog(arg) : 'Chưa cấu hình KiotViet.';
+      const c = choose(arg);
+      const res = await each(c.chosen, (api) => api.catalog(c.rest));
+      return res.map((r) => head(r.s) + '\n' + (r.err ? '⚠️ ' + r.err : r.v)).join('\n\n');
+    },
+
+    async products(query, limit) {
+      const res = await each(list, (api) => api.products(query, limit));
+      const out = [];
+      for (const r of res) if (r.v) for (const p of r.v) out.push(multi ? Object.assign({}, p, { name: '[' + r.s.name + '] ' + p.name }) : p);
+      return out;
+    },
+
+    async invoicesToday(nowMs) {
+      const res = await each(list, (api) => api.invoicesToday(nowMs));
+      const out = [];
+      for (const r of res) if (r.v) for (const i of r.v) out.push(multi ? Object.assign({}, i, { id: r.s.idx + ':' + i.id, branchName: r.s.name + ' · ' + (i.branchName || '?') }) : i);
+      return out;
+    },
+
+    async invoiceTotals(from, to) {
+      const res = await each(list, (api) => api.invoiceTotals(from, to));
+      const out = [];
+      for (const r of res) if (r.v) for (const i of r.v) out.push(multi ? Object.assign({}, i, { id: r.s.idx + ':' + i.id, branchName: r.s.name + ' · ' + (i.branchName || '?') }) : i);
+      return out;
+    },
+
+    async lowStock(limit, maxPages) {
+      const res = await each(list, (api) => api.lowStock(limit, maxPages));
+      let total = 0; const items = [];
+      for (const r of res) if (r.v) { total += r.v.total; for (const i of r.v.items) items.push(multi ? Object.assign({}, i, { name: '[' + r.s.name + '] ' + i.name }) : i); }
+      items.sort((a, b) => (a.onHand - a.min) - (b.onHand - b.min));
+      return { total, items: items.slice(0, limit || 15) };
+    },
+  };
+}
+
+// Danh sách gian hàng từ cấu hình: KIOTVIET_SHOPS (JSON một dòng, do trang Cài đặt ghi) + bộ khóa cũ KIOTVIET_CLIENT_ID/SECRET/RETAILER (nếu chưa có trong danh sách).
+function parseShops(env) {
+  env = env || {};
+  let arr = [];
+  try { const j = JSON.parse(env.KIOTVIET_SHOPS || '[]'); if (Array.isArray(j)) arr = j; } catch (e) { arr = []; }
+  const out = arr.map((s) => ({ name: String((s && s.name) || '').trim(), retailer: String((s && s.retailer) || '').trim(), clientId: String((s && s.clientId) || '').trim(), clientSecret: String((s && s.clientSecret) || '').trim() })).filter((s) => s.retailer && s.clientId && s.clientSecret);
+  if (env.KIOTVIET_CLIENT_ID && env.KIOTVIET_CLIENT_SECRET && env.KIOTVIET_RETAILER && !out.some((s) => s.retailer.toLowerCase() === String(env.KIOTVIET_RETAILER).toLowerCase())) {
+    out.unshift({ name: '', retailer: env.KIOTVIET_RETAILER, clientId: env.KIOTVIET_CLIENT_ID, clientSecret: env.KIOTVIET_CLIENT_SECRET });
+  }
+  return out;
+}
+
+module.exports = { createKiotViet, createMultiKiotViet, parseShops, splitRevenueQuery, parseRange, vnDate, noAccent, money, checkReadPath };

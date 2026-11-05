@@ -86,7 +86,7 @@ function createQuick(o) {
           return 'Cách dùng: /onedrive (tình trạng) · /onedrive ketnoi · /onedrive dongbo · /onedrive thumuc · /onedrive ngat co';
         }
         case 'doanhso': case 'ton': case 'hanghoa': case 'gia': {
-          if (!kv || !kv.configured()) return '⚠️ Chưa cấu hình KiotViet. Thêm KIOTVIET_CLIENT_ID, KIOTVIET_CLIENT_SECRET, KIOTVIET_RETAILER vào /etc/agentos/orchestrator.env rồi khởi động lại bộ điều phối.';
+          if (!kv || !kv.configured()) return '⚠️ Chưa cấu hình KiotViet. Mở Cài đặt AgentOS (biểu tượng ⚙ "Cài đặt" trên màn hình máy, hoặc lệnh agentos-settings) → mục 🏬 KiotViet → thêm từng gian hàng (tên, Retailer, Client ID, Secret). Khóa nhập ở đó, đừng gửi vào chat.';
           return name === 'doanhso' ? await kv.revenue(arg) : name === 'hanghoa' ? await kv.catalog(arg) : await kv.stock(arg);
         }
         case 'baocao': case 'hen': return sched ? await sched.command(name, arg, ctx) : '⚠️ Máy này chưa có tính năng hẹn giờ.';

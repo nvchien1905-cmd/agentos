@@ -5,25 +5,27 @@
 //   node kvcli.js ton "nồi chiên"      (tồn kho + giá theo tên hoặc mã)
 const MAX = 60000;
 
-async function call(path) {
+async function call(path, shop) {
   const url = process.env.AGENTOS_GATE_URL, token = process.env.AGENTOS_GATE_TOKEN, jobId = process.env.AGENTOS_JOB_ID;
   if (!url || !token || !jobId) throw new Error('Thiếu thông tin cổng nội bộ (chỉ chạy được bên trong một việc của bot).');
-  const r = await fetch(url + '/kiotviet', { method: 'POST', headers: { 'content-type': 'application/json', 'x-gate-token': token }, body: JSON.stringify({ jobId: Number(jobId), path }) });
+  const r = await fetch(url + '/kiotviet', { method: 'POST', headers: { 'content-type': 'application/json', 'x-gate-token': token }, body: JSON.stringify({ jobId: Number(jobId), path, shop: shop || undefined }) });
   const d = await r.json();
   if (!d.ok) throw new Error(d.error || 'KiotViet lỗi');
   return d.data;
 }
 
 async function main(argv) {
+  argv = argv.slice(); let shop = '';
+  const si = argv.indexOf('--shop'); if (si >= 0) { shop = String(argv[si + 1] || ''); argv.splice(si, 2); }
   const [cmd, ...rest] = argv;
   let path;
   if (cmd === 'get' && rest[0]) path = rest[0];
   else if (cmd === 'ton' && rest.length) path = '/products?' + new URLSearchParams({ name: rest.join(' '), includeInventory: 'true', pageSize: '10' }).toString();
   else {
-    console.log('Cách dùng (CHỈ ĐỌC, qua API chính thức của KiotViet):\n  get "/invoices?pageSize=20&fromPurchaseDate=2026-11-01"\n  ton <tên hoặc mã sản phẩm>\nNhóm được đọc: invoices, products, customers, branches, categories, orders, purchaseorders, returns, suppliers, users, pricebooks, transfers...\nPhân trang: pageSize (tối đa 100) + currentItem. Muốn ghi/sửa/xóa: KHÔNG làm được ở đây, hãy báo chủ máy.');
+    console.log('Cách dùng (CHỈ ĐỌC, qua API chính thức của KiotViet):\n  get "/invoices?pageSize=20&fromPurchaseDate=2026-11-01"\n  ton <tên hoặc mã sản phẩm>\nCó nhiều gian hàng KiotViet (ví dụ Tulibaby, Huyền Anh) thì thêm --shop <tên gian> vào MỖI lệnh, ví dụ: get "/branches" --shop tulibaby\nNhóm được đọc: invoices, products, customers, branches, categories, orders, purchaseorders, returns, suppliers, users, pricebooks, transfers...\nPhân trang: pageSize (tối đa 100) + currentItem. Muốn ghi/sửa/xóa: KHÔNG làm được ở đây, hãy báo chủ máy.');
     return 2;
   }
-  const out = JSON.stringify(await call(path));
+  const out = JSON.stringify(await call(path, shop));
   console.log(out.length > MAX ? out.slice(0, MAX) + '\n…(đã cắt, còn ' + (out.length - MAX) + ' ký tự: thu hẹp bằng pageSize / khoảng ngày / tên)' : out);
   return 0;
 }

@@ -17,7 +17,7 @@ test('thinking: KiotViet — có khóa thì chỉ lệnh API, không có khóa h
   const on = kiotvietHint(true, true);
   assert.match(on, /kvcli\.js/); assert.match(on, /KHÔNG mở trang web KiotViet/); assert.match(on, /KHÔNG ghi được/);
   assert.doesNotMatch(kiotvietHint(false, true), /kvcli\.js/);
-  assert.match(kiotvietHint(false, true), /KIOTVIET_CLIENT_ID/);
+  assert.match(kiotvietHint(false, true), /Cài đặt AgentOS → KiotViet/);
   const other = kiotvietHint(true, false);
   assert.doesNotMatch(other, /kvcli\.js/); assert.match(other, /KHÔNG đăng nhập/);
 });

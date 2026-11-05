@@ -23,10 +23,11 @@ function kiotvietHint(configured, canCli) {
   if (configured) {
     return 'KIOTVIET: LUÔN dùng API chính thức (chỉ đọc), tuyệt đối KHÔNG mở trang web KiotViet rồi đăng nhập/bấm để lấy số liệu. ' +
       'Lệnh: `' + KV_CLI + ' get "/invoices?pageSize=20&fromPurchaseDate=2026-11-01"` (hóa đơn), `' + KV_CLI + ' ton <tên hoặc mã>` (tồn kho + giá), `get "/customers?name=..."`, `get "/products?name=...&includeInventory=true"`, `get "/branches"`... ' +
+      'Có thể có NHIỀU gian hàng KiotViet (mỗi gian một cửa hàng riêng, vd Tulibaby và Huyền Anh): thêm `--shop <tên gian>` vào lệnh để chọn gian; không thêm mà có nhiều gian thì lệnh báo lỗi kèm danh sách tên. ' +
       'Phân trang bằng pageSize (tối đa 100) + currentItem; khoảng ngày bằng fromPurchaseDate/toPurchaseDate; kết quả lớn thì thu hẹp rồi tự tính tổng bằng jq/python, đừng đoán. ' +
       'API này KHÔNG ghi được: việc cần sửa/tạo/xóa dữ liệu KiotViet thì nói rõ với chủ máy là cần thao tác tay hoặc xin cách khác, KHÔNG tự đăng nhập web để sửa.';
   }
-  return 'KIOTVIET: máy chưa khai khóa API KiotViet. Cần số liệu thì báo chủ máy khai KIOTVIET_CLIENT_ID/KIOTVIET_CLIENT_SECRET/KIOTVIET_RETAILER (Cài đặt), ' +
+  return 'KIOTVIET: máy chưa khai khóa API KiotViet. Cần số liệu thì báo chủ máy khai khóa ở Cài đặt AgentOS → KiotViet (khóa KHÔNG dán cho AI, không nhập vào mục khóa AI), ' +
     'đừng tự đăng nhập web KiotViet rồi bấm để lấy số liệu và không nhập/sửa dữ liệu trên đó.';
 }
 

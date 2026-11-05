@@ -33,7 +33,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -163,6 +163,32 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         [].forEach.call(main.querySelectorAll('button[data-lg]'), function (b) { b.onclick = function () { startPhoneLogin(b.getAttribute('data-lg')); }; });
         if (loginEngine) pollPhoneLogin(loginEngine);
         on('so', function () { var order = []; [].forEach.call(main.querySelectorAll('input[data-en]'), function (c) { if (c.checked) order.push(c.getAttribute('data-en')); }); api('POST', 'ai/order', { order: order }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
+      }).catch(fail);
+    },
+    kv: function () {
+      api('GET', 'kiotviet').then(function (r) {
+        var h = '<h2>KiotViet</h2>' + (r.configured ? '' : '<div class="banner">Máy chưa cấu hình xong, chưa lưu được khóa. Hoàn tất trình hướng dẫn lần đầu.</div>') +
+          '<p class="mute">Mỗi <b>gian hàng</b> là một cửa hàng KiotViet riêng (khóa API riêng), ví dụ Tulibaby và Huyền Anh. Bot đọc doanh số, tồn kho qua API chính thức (chỉ đọc, không ghi/sửa gì). Hỏi "doanh thu Tulibaby hôm nay" thì bot chỉ hỏi gian Tulibaby; không nêu tên thì hỏi tất cả.</p>';
+        r.shops.forEach(function (s) {
+          h += '<div class="card"><div class="row"><h3 class="grow" style="margin:0">🏬 ' + esc(s.name) + '</h3><button class="b" data-t="' + esc(s.retailer) + '">Thử kết nối</button><button class="b d" data-d="' + esc(s.retailer) + '">Xóa</button></div>' +
+            '<p class="mute" style="margin:6px 0">Retailer: <b>' + esc(s.retailer) + '</b> · Client ID: ' + esc(s.clientId) + ' · Secret: ' + esc(s.clientSecret) + '</p><div class="mute" id="t-' + esc(s.retailer) + '"></div></div>';
+        });
+        if (!r.shops.length) h += '<div class="card"><p class="mute">Chưa có gian hàng nào. Thêm bên dưới.</p></div>';
+        h += '<div class="card"><h3>Thêm hoặc sửa gian hàng</h3><p class="mute">Lấy ở KiotViet: <b>Thiết lập cửa hàng → Thiết lập kết nối API</b> (Client ID, Client Secret). Retailer là tên cửa hàng ở đầu địa chỉ KiotViet (ví dụ <b>tongkhohuyenanh01</b>). Nhập lại Retailer đã có để đổi khóa (để trống khóa = giữ khóa cũ).</p>' +
+          '<div class="row"><input type="text" id="kn" placeholder="Tên gọi, ví dụ: Tulibaby"><input type="text" id="kr" placeholder="Retailer, ví dụ: tulibaby"></div>' +
+          '<div class="row" style="margin-top:8px"><input type="text" id="ki" placeholder="Client ID" autocomplete="off"><input type="password" id="ks" placeholder="Client Secret" autocomplete="off"><button class="b p" id="kadd">Kiểm tra và lưu</button></div></div>';
+        set(h);
+        on('kadd', function () {
+          var v = function (id) { return document.getElementById(id).value.trim(); };
+          if (!v('kr')) return toast('Chưa nhập Retailer', true);
+          toast('Đang kiểm với KiotViet...');
+          api('POST', 'kiotviet/save', { name: v('kn'), retailer: v('kr'), clientId: v('ki'), clientSecret: v('ks') }).then(function (j) { toast('✔ ' + j.detail); render(); }).catch(fail);
+        });
+        [].forEach.call(main.querySelectorAll('button[data-t]'), function (b) { b.onclick = function () {
+          var rt = b.getAttribute('data-t'), box = document.getElementById('t-' + rt); box.textContent = 'Đang thử...';
+          api('POST', 'kiotviet/test', { retailer: rt }).then(function (j) { box.innerHTML = j.ok ? '<span class="ok">✓ ' + esc(j.detail) + '</span>' : '<span class="bad">✗ ' + esc(j.detail) + '</span>'; }).catch(function (e) { box.innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; });
+        }; });
+        [].forEach.call(main.querySelectorAll('button[data-d]'), function (b) { b.onclick = function () { if (ask('Xóa gian hàng này khỏi bot? (Không ảnh hưởng dữ liệu trên KiotViet.)')) api('POST', 'kiotviet/delete', { retailer: b.getAttribute('data-d') }).then(render).catch(fail); }; });
       }).catch(fail);
     },
     bot: function () {

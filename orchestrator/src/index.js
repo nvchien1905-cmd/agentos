@@ -22,7 +22,7 @@ const { createHealth } = require('./health');
 const { createSandbox } = require('./sandbox');
 const maint = require('./maintenance');
 const { createDeskClient } = require('./desk');
-const { createKiotViet } = require('./kiotviet');
+const { createMultiKiotViet } = require('./kiotviet');
 const { THINK_HINT, kiotvietHint } = require('./thinking');
 const { createQuick } = require('./quick');
 const { createOneDrive } = require('./onedrive');
@@ -124,7 +124,7 @@ async function main() {
     'Ngắn gọn, đủ ý: nói đã làm gì, kết quả ra sao, và điều chưa làm được/cần chủ máy quyết (nếu có). Dùng Markdown đơn giản: **đậm** cho ý chính, gạch đầu dòng cho danh sách, `mã` cho lệnh/đường dẫn/tên tệp, khối ``` cho đoạn mã hoặc kết quả lệnh. ' +
     'KHÔNG dùng bảng nhiều cột (điện thoại hẹp, bảng bị vỡ): liệt kê bằng gạch đầu dòng, mỗi mục một dòng "**tên** — thông tin". Không bịa số liệu; chưa kiểm chứng thì nói rõ. Xưng "em", gọi chủ máy theo cách họ tự xưng.';
   // Tư duy trước khi làm + quy tắc KiotViet (API trước, web sau cùng): gắn vào mọi lần chạy AI (thinking.js)
-  const KV_ON = !!(cfg.kiotviet.clientId && cfg.kiotviet.clientSecret && cfg.kiotviet.retailer);
+  const KV_ON = cfg.kiotviet.shops.length > 0;
   const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON);
   const LOGIN_HINT ='TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập, mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
   const fullHint = (canCli) => 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
@@ -357,7 +357,7 @@ async function main() {
     engineStatus: () => worker.engineStatus(),
     async stop() { await Promise.all(allWorkers.map((w) => w.stop())); },
   };
-  const kiotviet = createKiotViet({ clientId: cfg.kiotviet.clientId, clientSecret: cfg.kiotviet.clientSecret, retailer: cfg.kiotviet.retailer });
+  const kiotviet = createMultiKiotViet(cfg.kiotviet.shops);
   kvForAi.api = kiotviet;
   // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });

@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.36",
-  "file": "agentos-update-2026.10.28.36.tar.gz",
-  "size": 356239,
-  "sha256": "044a6361a8f8fdf37a68fff05c98a579993f25a447307b0b9ea70d265cd44e15",
-  "date": "2026-11-04",
-  "notes": "Bot nghĩ trước khi làm; khôi phục /doanhso /ton /hanghoa và trả lời doanh thu/tồn kho thẳng từ API KiotViet (không mở web); AI đọc KiotViet qua kvcli"
+  "version": "2026.10.28.37",
+  "file": "agentos-update-2026.10.28.37.tar.gz",
+  "size": 360870,
+  "sha256": "675036e3a00dc0263abdae8ebdae7a8fc642b2bfd8d6a93554644eab4368f3bf",
+  "date": "2026-11-05",
+  "notes": "KiotViet nhiều gian hàng (Tulibaby, Huyền Anh) và mục nhập khóa trong Cài đặt → KiotViet; bot hỏi đúng gian theo tên"
 }

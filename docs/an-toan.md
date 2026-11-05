@@ -445,3 +445,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.45 — KiotViet 429 / mạng chập chờn không còn báo "sự cố"
 - Tự chẩn đoán: 429 (giới hạn tốc độ) hoặc "fetch failed" chỉ là cảnh báo nhẹ (warn), không gửi tin "phát hiện sự cố" lên Telegram; khóa sai/Retailer sai vẫn là lỗi thật. Test: wizard/test/kiotviet-shops.test.js.
+
+## 2026.11.05.1 — đặt tên bản theo ngày
+- Từ nay phiên bản dạng NĂM.THÁNG.NGÀY.SỐ-BẢN-TRONG-NGÀY (vd 2026.11.05.1, 2026.11.05.2). Không có thay đổi chức năng so với 2026.10.28.45; so sánh phiên bản theo từng số nên bản mới vẫn lớn hơn bản cũ.

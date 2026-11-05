@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.45",
-  "file": "agentos-update-2026.10.28.45.tar.gz",
+  "version": "2026.11.05.1",
+  "file": "agentos-update-2026.11.05.1.tar.gz",
   "size": 364459,
-  "sha256": "41652f420a52062a8e07a9032382e35c891648bc941fee4fb89282784454d918",
+  "sha256": "acd52f3848c593068b083f40e6662b11d0a36262ecd251fcd47de5c579f96da1",
   "date": "2026-11-05",
-  "notes": "KiotViet 429/mạng chập chờn chỉ cảnh báo nhẹ, không báo sự cố"
+  "notes": "Đổi cách đặt tên bản theo ngày (nội dung như .28.45: KiotViet tự thử lại khi 429, không báo sự cố giả)"
 }

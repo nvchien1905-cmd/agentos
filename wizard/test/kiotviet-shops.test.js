@@ -85,3 +85,17 @@ test('kvLib.check: khóa sai, sai Retailer, đúng (liệt kê chi nhánh), lỗ
   assert.deepEqual([net.ok, net.network], [false, true]);
   assert.equal((await kvLib.check({ retailer: '', clientId: 'a', clientSecret: 'b' }, f)).ok, false);
 });
+
+test('tự chẩn đoán KiotViet: gọi thật từng gian; khóa hỏng của một gian → báo lỗi nêu đúng tên gian', async () => {
+  const { createSelfTest } = require('../../orchestrator/src/selftest');
+  const good = createMultiKiotViet(SHOPS, { fetch: fakeFetch(DATA) });
+  const h = await good.health(NOW);
+  assert.deepEqual(h.map((x) => [x.name, x.ok]), [['Tulibaby', true], ['Huyền Anh', true]]);
+  assert.match(h[0].detail, /2 chi nhánh, hôm nay 2 hóa đơn/);
+  const st = createSelfTest({ kiotviet: good });
+  const ok = await st.checks.kiotviet(); assert.equal(ok.status, 'ok');
+  const bad = createSelfTest({ kiotviet: createMultiKiotViet([{ name: 'Hỏng', retailer: 'hong', clientId: 'bad1', clientSecret: 'x' }, SHOPS[1]], { fetch: fakeFetch(DATA) }) });
+  const r = await bad.checks.kiotviet(); assert.equal(r.status, 'fail'); assert.match(r.detail, /Hỏng LỖI — KiotViet từ chối/); assert.match(r.detail, /Huyền Anh: 1 chi nhánh/);
+  assert.equal((await createSelfTest({ kiotviet: createMultiKiotViet([]) }).checks.kiotviet()).status, 'ok');
+  assert.ok((await createSelfTest({ kiotviet: good, db: null }).light).toString().length > 0);
+});

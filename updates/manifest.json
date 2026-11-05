@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.40",
-  "file": "agentos-update-2026.10.28.40.tar.gz",
-  "size": 361483,
-  "sha256": "9cbe84e0be6ab7748195a25bfd531f5f42e036869433126cf7dbf25fa1d71c89",
+  "version": "2026.10.28.41",
+  "file": "agentos-update-2026.10.28.41.tar.gz",
+  "size": 361900,
+  "sha256": "5e72d5dbead7611969dfc6bf2856e1cd5a87223c1d4122dc007f4ecc7b933fe3",
   "date": "2026-11-05",
-  "notes": "Codex/Gemini ở chế độ Toàn quyền cũng đọc KiotViet bằng API (kvcli), không đi mở web"
+  "notes": "Bot tự kiểm KiotViet API từng gian và báo Telegram khi hỏng"
 }

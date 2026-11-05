@@ -137,6 +137,15 @@ function createSelfTest(o) {
       return R('backup', 'Sao lưu ra ổ ngoài', 'ok', 'lần cuối ' + s.at + ' (' + o.backup.human(s.bytes) + ')');
     }),
 
+    // KiotViet API: gọi thật từng gian hàng (khóa sai/hết hạn/KiotViet lỗi → báo ngay, không đợi đến lúc hỏi doanh thu mới biết)
+    kiotviet: () => safe('kiotviet', 'KiotViet API', async () => {
+      const kv = o.kiotviet;
+      if (!kv || !kv.configured || !kv.configured()) return R('kiotviet', 'KiotViet API', 'ok', 'chưa khai khóa (nếu cần: Cài đặt AgentOS → KiotViet)');
+      const rows = await kv.health();
+      const bad = rows.filter((r) => !r.ok);
+      return R('kiotviet', 'KiotViet API', bad.length ? 'fail' : 'ok', rows.map((r) => r.name + (r.ok ? ': ' + r.detail : ' LỖI — ' + r.detail)).join(' · '));
+    }),
+
     queue: () => safe('queue', 'Hàng đợi việc', async () => {
       if (!o.db) return R('queue', 'Hàng đợi việc', 'ok', '');
       const waiting = o.db.waitingCount ? o.db.waitingCount() : 0, queued = o.db.queuedCount();
@@ -144,8 +153,8 @@ function createSelfTest(o) {
     }),
   };
 
-  const LIGHT = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'queue'];
-  const FULL = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'queue'];
+  const LIGHT = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'kiotviet', 'queue'];
+  const FULL = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'kiotviet', 'queue'];
 
   async function runList(ids) { const out = []; for (const id of ids) out.push(await checks[id]()); return out; }
 

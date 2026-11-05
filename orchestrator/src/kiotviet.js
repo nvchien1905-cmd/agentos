@@ -252,6 +252,17 @@ function createMultiKiotViet(shops, o) {
     shops: () => list.map((s) => ({ name: s.name, retailer: s.retailer })),
     parseRange,
 
+    // Kiểm THẬT từng gian: đăng nhập API, đọc chi nhánh, đọc hóa đơn hôm nay. Dùng cho tự chẩn đoán (báo Telegram khi hỏng) và /tuchan.
+    async health(nowMs) {
+      const res = await each(list, async (api) => {
+        const b = await api.rawGet('/branches?pageSize=100');
+        const from = vnDate(0, nowMs).iso, to = vnDate(1, nowMs).iso;
+        const inv = await api.rawGet('/invoices?' + new URLSearchParams({ pageSize: '1', fromPurchaseDate: from, toPurchaseDate: to }).toString());
+        return { branches: (b.data || []).length, invoicesToday: Number(inv.total) || 0 };
+      });
+      return res.map((r) => r.err ? { name: r.s.name, ok: false, detail: r.err } : { name: r.s.name, ok: true, detail: r.v.branches + ' chi nhánh, hôm nay ' + r.v.invoicesToday + ' hóa đơn' });
+    },
+
     async rawGet(pathAndQuery, shop) {
       if (!list.length) throw new Error('Chưa cấu hình KiotViet.');
       let s;

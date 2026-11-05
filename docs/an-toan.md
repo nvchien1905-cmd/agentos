@@ -425,3 +425,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.10.28.40 — Codex/Gemini (Toàn quyền) cũng đọc được KiotViet bằng API
 - Sự cố 05/11: hỏi bot bằng câu không khớp lệnh nhanh thì việc giao cho Codex; Codex chạy được lệnh nhưng bot chỉ đưa cổng KiotViet nội bộ cho Claude nên Codex không có đường dùng API ("em chưa tìm được cách dùng cấu hình đó"). Sửa: ở chế độ Toàn quyền, việc của chủ máy chạy bằng Codex/Gemini được đăng ký với cổng (gate.begin) và nhận AGENTOS_GATE_URL/TOKEN/JOB_ID + chỉ dẫn dùng `kvcli.js`; xong việc thì gỡ cổng. Chế độ Bảo vệ (sandbox) vẫn chỉ được dặn dùng /doanhso, /ton.
 - Chưa kiểm với Codex thật: test chỉ kiểm nối dây trong mã nguồn.
+
+## 2026.10.28.41 — Bot tự kiểm KiotViet API và báo khi hỏng
+- Tự chẩn đoán có thêm mục "KiotViet API": gọi THẬT từng gian hàng (đăng nhập, đọc chi nhánh, đọc hóa đơn hôm nay). Nằm trong kiểm tra nhanh chạy định kỳ của healthmon nên khóa sai/hết hạn/KiotViet lỗi được báo Telegram kèm tên gian, không phải đợi đến lúc hỏi doanh thu mới biết. `/tuchan` xem ngay. Máy chưa khai KiotViet thì mục này luôn ✅ (không báo phiền).

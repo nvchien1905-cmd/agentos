@@ -508,7 +508,7 @@ async function main() {
     engines: cfg.engineOrder.filter((e) => ENGINE_INFO[e]).map((e) => Object.assign({ name: e }, ENGINE_INFO[e])),
     diskFreeMb: () => maint.diskFreeMb(cfg.workdir), minFreeMb: cfg.minFreeMb,
     writable: { 'thư mục làm việc': cfg.workdir, 'thư mục OneDrive': path.join(cfg.oneDriveDir, 'AgentOS'), 'điểm khôi phục': path.join(dataDir, 'snapshots') },
-    currentJob: () => crew.currentJobId(),
+    currentJob: () => crew.currentJobId(), kiotviet,
   });
   const doctor = createDoctor({ selftest, db, log });
   const monitor = createHealthMon({ selftest, db, notify, admins: [...cfg.adminUserIds], log, doctor });

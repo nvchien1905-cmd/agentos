@@ -12,4 +12,5 @@ case "$1" in
 esac
 BROWSER=/usr/bin/google-chrome-stable; [ -x "$BROWSER" ] || BROWSER=/usr/bin/chromium
 # Mỗi ứng dụng một hồ sơ riêng: đăng nhập giữ lại, không lẫn với trình duyệt thường
-exec "$BROWSER" --app="$URL" --user-data-dir="$HOME/.config/agentos-app-$NAME" --password-store=basic --no-first-run --no-default-browser-check --lang=vi "$@"
+# --disable-gpu: Chrome 157 trên máy thật (Intel HD 630) vẽ TRẮNG trang Zalo sau khi đăng nhập; tắt tăng tốc đồ họa thì hiện bình thường (đã thử 05/11/2026)
+exec "$BROWSER" --app="$URL" --user-data-dir="$HOME/.config/agentos-app-$NAME" --password-store=basic --no-first-run --no-default-browser-check --disable-gpu --lang=vi "$@"

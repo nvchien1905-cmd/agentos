@@ -414,3 +414,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Lưu ở `KIOTVIET_SHOPS` (JSON một dòng) trong orchestrator.env (0600); bộ khóa cũ `KIOTVIET_CLIENT_ID/SECRET/RETAILER` vẫn chạy và được gộp vào danh sách ở lần lưu đầu. Khóa hiển thị đã che.
 - Bot (`createMultiKiotViet`): hỏi có tên gian ("doanh thu Tulibaby hôm nay", `/ton nồi chiên huyền anh`) thì chỉ hỏi gian đó; không nêu tên thì hỏi tất cả và ghi rõ từng gian (🏬 tên); một gian lỗi không làm mất kết quả gian kia. Cảnh báo/sự kiện hóa đơn gộp mọi gian, tên chi nhánh có tiền tố gian. AI (Claude) đọc API bằng `kvcli.js get "…" --shop <tên>`; nhiều gian mà không nêu gian thì lệnh báo lỗi kèm danh sách.
 - Máy chỉ có một gian: chạy y như cũ.
+
+## 2026.10.28.38 — Zalo không còn trắng màn hình
+- Sự cố (05/11/2026): trên máy thật (Intel HD 630, Chrome 157) cửa sổ Zalo (`agentos-app zalo`) hiện TRẮNG sau khi đăng nhập. Thử cùng hồ sơ: bật tăng tốc đồ họa → trắng; thêm `--disable-gpu` → hiện bình thường. Sửa: `agentos-app` (mọi ứng dụng web: Zalo, Claude, ChatGPT, DeepSeek, Office) chạy Chrome với `--disable-gpu`.

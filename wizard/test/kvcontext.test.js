@@ -52,3 +52,12 @@ test('index.js: mọi AI đều đi qua lớp lấy sẵn dữ liệu KiotViet, 
   assert.match(src, /kvctx\.prefix\(a\.job, a\.job\.prompt\)/); assert.match(src, /kvForAi\.allowed\(a\.job\)/);
   assert.match(src, /for \(const e of cfg\.engineOrder\) engines\[e\] = \{ start: \(a\) => \{\s*if \(fbRelease\.fn\) fbRelease\.fn\(\);\s*if \(!KV_ON/);
 });
+
+test('câu hỏi phức tạp (danh sách sản phẩm, N ngày) không lấy sẵn doanh thu hôm nay/qua — để AI tự tra', async () => {
+  const { build } = require('../../orchestrator/src/kvcontext');
+  let called = 0;
+  const kv = { configured: () => true, pick: () => [], revenue: async () => { called++; return 'x'; }, stock: async () => { called++; return 'y'; } };
+  assert.equal(await build(kv, 'Lọc cho anh danh sách sản phẩm có bán ra trong 15 ngày qua nhưng đang hết hàng tại 3 chi nhánh', Date.now()), '');
+  assert.equal(called, 0);
+  assert.match(await build(kv, 'doanh thu hôm qua các chi nhánh', Date.now()), /DỮ LIỆU KIOTVIET/);
+});

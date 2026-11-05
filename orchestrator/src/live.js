@@ -9,7 +9,7 @@ function createLive(o) {
   const tg = o.tg, log = o.log || (() => {});
   const now = o.now || Date.now;
   const setT = o.setTimeout || setTimeout, clearT = o.clearTimeout || clearTimeout, setI = o.setInterval || setInterval, clearI = o.clearInterval || clearInterval;
-  const throttleMs = o.throttleMs === undefined ? 2500 : o.throttleMs, showAfterMs = o.showAfterMs === undefined ? 1800 : o.showAfterMs, typingMs = o.typingMs || 4500, maxSteps = o.maxSteps || 4;
+  const throttleMs = o.throttleMs === undefined ? 2500 : o.throttleMs, showAfterMs = o.showAfterMs === undefined ? 1800 : o.showAfterMs, typingMs = o.typingMs || 4500, maxSteps = o.maxSteps || 4, tickMs = o.tickMs || 4000;
   const jobs = new Map();
 
   function render(st) {
@@ -41,7 +41,8 @@ function createLive(o) {
       Promise.resolve(tg.sendChatAction(st.chat, 'typing')).catch(() => {});
       st.typing = setI(() => { Promise.resolve(tg.sendChatAction(st.chat, 'typing')).catch(() => {}); }, typingMs);
       st.show = setT(() => { st.visible = true; schedule(st); }, showAfterMs);
-      for (const t of [st.typing, st.show]) if (t && t.unref) t.unref();
+      st.tick = setI(() => { if (st.visible) schedule(st); }, tickMs);   // đồng hồ chạy tiếp cả khi chưa có bước nào (vd bot đang lấy dữ liệu)
+      for (const t of [st.typing, st.show, st.tick]) if (t && t.unref) t.unref();
     },
     step(job, ev) {
       const st = jobs.get(job.id); if (!st || st.ended) return;
@@ -58,6 +59,7 @@ function createLive(o) {
       st.ended = true; jobs.delete(job.id);
       for (const t of [st.timer, st.show]) if (t) clearT(t);
       if (st.typing) clearI(st.typing);
+      if (st.tick) clearI(st.tick);
       if (st.msgId) { try { await tg.deleteMessage(st.chat, st.msgId); } catch (e) { /* bỏ qua */ } }
       return { secs: Math.max(0, Math.round((now() - st.start) / 1000)), steps: st.steps.filter((x) => !x.startsWith('💬 ')).length };
     },

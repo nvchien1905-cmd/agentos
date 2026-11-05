@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.43",
-  "file": "agentos-update-2026.10.28.43.tar.gz",
-  "size": 364048,
-  "sha256": "1f6981e46d049681381155ecee30c4f08c35f7d51039e039aacadf00f3449afe",
+  "version": "2026.10.28.44",
+  "file": "agentos-update-2026.10.28.44.tar.gz",
+  "size": 364352,
+  "sha256": "852dfe1b10cbc8edf9345088e9074c3756eec6a9ec83a13f8498ebd4cd16f9d0",
   "date": "2026-11-05",
-  "notes": "KiotViet 429: tự chờ và thử lại, dùng lại kết quả 60 giây"
+  "notes": "Tin Đang làm tự đếm giây; câu hỏi phức tạp không lấy sẵn doanh thu; giới hạn 35 giây"
 }

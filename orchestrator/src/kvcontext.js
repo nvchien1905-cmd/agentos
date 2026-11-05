@@ -6,6 +6,9 @@ const { noAccent } = require('./kiotviet');
 
 const WANT = /\b(doanh thu|doanh so|ban duoc|hoa don|ton kho|con hang|het hang|hang ton|kiotviet|chi nhanh|nhap hang|khach mua)\b/;
 const FETCH_TIMEOUT_MS = 40000;
+const TOTAL_MS = 35000;   // tổng thời gian lấy sẵn: quá thì giao việc cho AI luôn với phần đã có
+// Câu hỏi phức tạp (danh sách, N ngày, lọc, so sánh…): doanh thu hôm nay/qua không giúp gì, chỉ làm chậm → để AI tự tra bằng kvcli
+const COMPLEX = /\b(\d+ ngay|danh sach|loc|liet ke|so sanh|top \d*|tung san pham|san pham)\b/;
 const CACHE_MS = 10 * 60 * 1000;
 const STOCK_RE = /\b(?:ton kho|con hang|het hang|hang ton|ton)\s+(?:cua\s+|san pham\s+|mon\s+)?([a-z0-9][a-z0-9 ._-]{1,60})/;
 const STOCK_STOP = new Set('khong nao the nhieu bao nhieu hom nay qua cac chi nhanh khong gi va'.split(' '));
@@ -25,10 +28,12 @@ const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeo
 async function build(kv, text, nowMs) {
   try {
     if (!kv || !kv.configured || !kv.configured() || !wants(text)) return '';
-    const t = noAccent(text);
+    const t = noAccent(text), t0 = Date.now();
+    if (COMPLEX.test(t)) return '';
     const shopArg = kv.pick ? kv.pick(text).join(' ') : '';
     const blocks = [];
     for (const r of ranges(t)) {
+      if (Date.now() - t0 > TOTAL_MS) { blocks.push('⚠️ Quá thời gian lấy sẵn, chưa có doanh số ' + r + '.'); continue; }
       try { blocks.push(await withTimeout(kv.revenue((r + ' ' + shopArg).trim(), nowMs), FETCH_TIMEOUT_MS)); }
       catch (e) { blocks.push('⚠️ Không lấy được doanh số ' + r + ': ' + e.message); }
     }

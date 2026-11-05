@@ -18,7 +18,7 @@ const THINK_HINT = 'TƯ DUY TRƯỚC KHI LÀM (bắt buộc, ưu tiên hơn mọ
 // `canCli` = AI này chạy được lệnh API (Claude, và Codex/Gemini ở chế độ Toàn quyền, có cổng nội bộ); còn lại chỉ được dặn không bấm web.
 function kiotvietHint(configured, canCli) {
   if (canCli === false) {
-    return 'KIOTVIET: KHÔNG đăng nhập/bấm trang web KiotViet để lấy số liệu và không nhập/sửa dữ liệu trên đó. Cần doanh số hoặc tồn kho thì bảo chủ máy gõ /doanhso hoặc /ton <tên> (dùng API chính thức) hoặc nhờ lại bằng Claude.';
+    return 'KIOTVIET: nếu câu hỏi có khối [DỮ LIỆU KIOTVIET] thì đó là số liệu thật bot đã lấy bằng API: dùng nó. KHÔNG đăng nhập/bấm trang web KiotViet để lấy số liệu và không nhập/sửa dữ liệu trên đó. Cần doanh số hoặc tồn kho thì bảo chủ máy gõ /doanhso hoặc /ton <tên> (dùng API chính thức) hoặc nhờ lại bằng Claude.';
   }
   if (configured) {
     return 'KIOTVIET: LUÔN dùng API chính thức (chỉ đọc), tuyệt đối KHÔNG mở trang web KiotViet rồi đăng nhập/bấm để lấy số liệu. ' +

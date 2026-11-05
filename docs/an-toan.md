@@ -428,3 +428,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.10.28.41 — Bot tự kiểm KiotViet API và báo khi hỏng
 - Tự chẩn đoán có thêm mục "KiotViet API": gọi THẬT từng gian hàng (đăng nhập, đọc chi nhánh, đọc hóa đơn hôm nay). Nằm trong kiểm tra nhanh chạy định kỳ của healthmon nên khóa sai/hết hạn/KiotViet lỗi được báo Telegram kèm tên gian, không phải đợi đến lúc hỏi doanh thu mới biết. `/tuchan` xem ngay. Máy chưa khai KiotViet thì mục này luôn ✅ (không báo phiền).
+
+## 2026.10.28.42 — MỌI AI đều có số liệu KiotViet (lấy sẵn bằng API)
+- Điểm chặn duy nhất khi bắt đầu việc (`engines[e].start`, index.js): nếu việc của CHỦ MÁY (không phải hook/sự kiện) có chữ về doanh thu/hóa đơn/tồn kho/KiotViet/chi nhánh, bot lấy sẵn bằng API chính thức (kvcontext.js): doanh số hôm nay + hôm qua (thêm tuần/tháng nếu nhắc) theo từng chi nhánh, đúng gian hàng nếu nêu tên, và tồn kho nếu hỏi "tồn kho <tên>", rồi đính khối `[DỮ LIỆU KIOTVIET …]` vào câu hỏi gửi cho AI. Áp dụng cho Claude, Codex, Gemini, DeepSeek, ở cả chế độ Bảo vệ lẫn Toàn quyền — AI không cần chạy lệnh, không cần mạng trong sandbox, không cần hiểu cách dùng kvcli. Lỗi KiotViet thì khối ghi rõ lỗi để AI nói thật. Nhớ theo việc 10 phút (đổi AI không gọi lại). AI có công cụ vẫn tra thêm bằng kvcli.
+- Sửa lỗi chọn gian: đại từ "anh" trong "cho anh biết…" bị tưởng là tên gian "Huyền Anh" nên hỏi cả hai gian (ảnh hưởng cả `/doanhso`). Từ thường (FILLER) bị bỏ khi so tên gian.
+- Giới hạn: chỉ nhận câu có từ khóa; câu hỏi lạ không có từ khóa vẫn phải dựa vào kvcli của AI (Claude; Codex/Gemini khi Toàn quyền).

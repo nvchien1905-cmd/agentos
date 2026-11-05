@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.28.41",
-  "file": "agentos-update-2026.10.28.41.tar.gz",
-  "size": 361900,
-  "sha256": "5e72d5dbead7611969dfc6bf2856e1cd5a87223c1d4122dc007f4ecc7b933fe3",
+  "version": "2026.10.28.42",
+  "file": "agentos-update-2026.10.28.42.tar.gz",
+  "size": 363529,
+  "sha256": "124f0671ff20a9e306a0c7b1c61d5fb219542fd38b97bcd666f7ad274fa2d484",
   "date": "2026-11-05",
-  "notes": "Bot tự kiểm KiotViet API từng gian và báo Telegram khi hỏng"
+  "notes": "Mọi AI đều có số liệu KiotViet: bot lấy sẵn bằng API đính vào câu hỏi; sửa chọn gian bị nhầm chữ anh"
 }

@@ -99,3 +99,12 @@ test('tự chẩn đoán KiotViet: gọi thật từng gian; khóa hỏng của 
   assert.equal((await createSelfTest({ kiotviet: createMultiKiotViet([]) }).checks.kiotviet()).status, 'ok');
   assert.ok((await createSelfTest({ kiotviet: good, db: null }).light).toString().length > 0);
 });
+
+test('chọn gian: đại từ "anh" không làm bot tưởng đang nhắc gian "Huyền Anh"', async () => {
+  const kv = createMultiKiotViet(SHOPS, { fetch: fakeFetch(DATA) });
+  assert.deepEqual(kv.pick('cho anh biết doanh thu Tulibaby hôm qua'), ['Tulibaby']);
+  assert.deepEqual(kv.pick('cho anh biết doanh thu hôm qua'), []);
+  assert.deepEqual(kv.pick('doanh thu huyền anh'), ['Huyền Anh']);
+  const r = await kv.revenue('cho anh biết doanh thu của Tulibaby hôm nay', NOW);
+  assert.doesNotMatch(r, /Huyền Anh|Phương Đình/);
+});

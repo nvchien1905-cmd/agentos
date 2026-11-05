@@ -24,6 +24,7 @@ const maint = require('./maintenance');
 const { createDeskClient } = require('./desk');
 const { createMultiKiotViet } = require('./kiotviet');
 const { THINK_HINT, kiotvietHint } = require('./thinking');
+const { createKvContext } = require('./kvcontext');
 const { createQuick } = require('./quick');
 const { createOneDrive } = require('./onedrive');
 const { createVoice } = require('./voice');
@@ -296,7 +297,7 @@ async function main() {
       const note = 'Bạn đang ở chế độ CHỈ ĐỌC (không ghi tệp, không chạy lệnh): nếu cần lưu kết quả, hãy đưa nội dung vào câu trả lời để chủ máy lưu.';
       return startGemini({
         bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job),
-        prompt: '[' + [p.hint, THINK_HINT, STYLE_HINT, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + atImages(prompt), resumeId,
+        prompt: '[' + [p.hint, THINK_HINT, kiotvietHint(KV_ON, false), STYLE_HINT, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + atImages(prompt), resumeId,
         mode: 'plan', model: cfg.geminiModel, timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: sandbox.wrap, env: keyEnv('gemini'),
       });
     },
@@ -304,7 +305,20 @@ async function main() {
   const engines = {};
   // Trợ lý Facebook giữ MỘT tab Messenger mở sẵn (khóa hồ sơ trình duyệt của bot): trước khi BẤT KỲ AI nào bắt đầu việc phải nhả ra để trình duyệt của AI không bị "hồ sơ đang được dùng".
   const fbRelease = { fn: null };
-  for (const e of cfg.engineOrder) engines[e] = { start: (a) => { if (fbRelease.fn) fbRelease.fn(); return factories[e](a); } };
+  // MỌI AI nhận số liệu KiotViet lấy sẵn bằng API (kvcontext.js) khi chủ máy hỏi doanh thu/tồn kho…: không phụ thuộc AI có chạy được lệnh hay có mạng trong sandbox.
+  const kvProxy = { configured: () => !!(kvForAi.api && kvForAi.api.configured()), shops: () => kvForAi.api.shops(), pick: (x) => kvForAi.api.pick(x), revenue: (...x) => kvForAi.api.revenue(...x), stock: (...x) => kvForAi.api.stock(...x) };   // api gắn sau (kvForAi.api)
+  const kvctx = createKvContext({ kiotviet: kvProxy });
+  for (const e of cfg.engineOrder) engines[e] = { start: (a) => {
+    if (fbRelease.fn) fbRelease.fn();
+    if (!KV_ON || !kvForAi.allowed(a.job) || !kvctx.wants(a.job.prompt)) return factories[e](a);
+    let h = null, killed = false;
+    const done = kvctx.prefix(a.job, a.job.prompt).then((pre) => {
+      if (killed) return { ok: false, cancelled: true, error: 'đã hủy' };
+      h = factories[e](Object.assign({}, a, { prompt: pre + a.prompt }));
+      return h.done;
+    });
+    return { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, done };
+  } };
 
   // Việc "hệ thống" chạy ngầm (chat_id bắt đầu bằng "sys:", ví dụ soạn trả lời khách fanpage): không nhắn Telegram, không hiện tin trạng thái; kết quả đọc thẳng từ cơ sở dữ liệu.
   // Việc "yên lặng" (câu lệnh bắt đầu bằng [YÊN LẶNG], ví dụ kiểm tin nhắn Facebook định kỳ): không hiện "Đang làm…", và nếu AI trả "KHÔNG CÓ TIN MỚI" thì không nhắn gì.

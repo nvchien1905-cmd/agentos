@@ -234,9 +234,9 @@ function createMultiKiotViet(shops, o) {
   // Tách từ khóa chọn gian ra khỏi câu: trả { chosen: [gian], rest: phần còn lại }
   function choose(text) {
     const ws = noAccent(text).split(' ').filter(Boolean);
-    const hit = list.filter((s) => s.words.some((w) => w.length >= 3 && ws.includes(w)));
+    const hit = list.filter((s) => s.words.some((w) => w.length >= 3 && !FILLER.has(w) && ws.includes(w)));   // bỏ từ thường như "anh" (đại từ) khỏi so khớp tên gian
     if (!hit.length) return { chosen: list, rest: String(text || ''), named: false };
-    const used = new Set(); hit.forEach((s) => s.words.forEach((w) => used.add(w)));
+    const used = new Set(); hit.forEach((s) => s.words.forEach((w) => { if (!FILLER.has(w)) used.add(w); }));
     return { chosen: hit, rest: ws.filter((w) => !used.has(w)).join(' '), named: true };
   }
   // chạy fn trên từng gian, lỗi một gian không làm hỏng các gian khác
@@ -250,6 +250,7 @@ function createMultiKiotViet(shops, o) {
   return {
     configured: () => list.length > 0,
     shops: () => list.map((s) => ({ name: s.name, retailer: s.retailer })),
+    pick: (text) => { const c = choose(text); return c.named ? c.chosen.map((s) => s.name) : []; },   // tên các gian được nêu trong câu (rỗng = không nêu)
     parseRange,
 
     // Kiểm THẬT từng gian: đăng nhập API, đọc chi nhánh, đọc hóa đơn hôm nay. Dùng cho tự chẩn đoán (báo Telegram khi hỏng) và /tuchan.

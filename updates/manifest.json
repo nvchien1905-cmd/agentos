@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.9",
-  "file": "agentos-update-2026.11.06.9.tar.gz",
-  "size": 396347,
-  "sha256": "7f1e089525e6d50f5eb67babb311b78815161e290ed83dcde114827b255f8e79",
+  "version": "2026.11.06.10",
+  "file": "agentos-update-2026.11.06.10.tar.gz",
+  "size": 407355,
+  "sha256": "f784595c769b6190d159432f679b062b0dbd99cd27366bccd5c54237cb1bfc5a",
   "date": "2026-11-06",
-  "notes": "Nhiều cuộc trò chuyện chạy song song; một Chrome dùng chung, mỗi AI một tab riêng (không đè nhau); Chrome riêng cho từng ID"
+  "notes": "Bảng phiên (/phien) có trạng thái + nút Xem/Tiếp tục/Dừng; chế độ quyền + luật cho/hỏi/cấm theo dự án (/cheodo, /duan luat); ghép ID bằng mã (/ghepdoi)"
 }

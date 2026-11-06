@@ -33,7 +33,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -213,6 +213,16 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           var key = b.getAttribute('data-mus'), inp = [].filter.call(main.querySelectorAll('input[data-mu]'), function (x) { return x.getAttribute('data-mu') === key; })[0];
           api('POST', 'machine-access/set', { name: key, users: inp ? inp.value : '' }).then(function (j) { toast('✔ ' + (key === '@local' ? 'Màn hình máy này' : key) + ': ' + (j.users.length ? j.users.join(', ') : 'chỉ chủ máy')); render(); }).catch(fail); }; });
         [].forEach.call(main.querySelectorAll('button[data-vd]'), function (b) { b.onclick = function () { if (ask('Xóa máy này khỏi kho mật khẩu?')) api('POST', 'vault/delete', { name: b.getAttribute('data-vd') }).then(function () { toast('Đã xóa'); render(); }).catch(fail); }; });
+      }).catch(fail);
+    },
+    sess: function () {
+      api('GET', 'sessions').then(function (r) {
+        var MODE = { hoi: 'Hỏi từng lần', tusua: 'Tự sửa trong dự án', kehoach: 'Chỉ lập kế hoạch', chay: 'Chạy thẳng' };
+        var h = '<h2>Phiên</h2><p class="mute">Mỗi cuộc trò chuyện (chat + dự án) là một phiên; trạng thái suy ra từ bảng việc. Trên Telegram: <b>/phien</b> (xem nhanh, tiếp tục, dừng), <b>/cheodo</b> (chế độ quyền), <b>/duan luat</b> (luật cho/hỏi/cấm). Chế độ và luật sửa ở mục Dự án.</p>';
+        if (!r.sessions.length) h += '<div class="card"><p class="mute">Chưa có phiên nào.</p></div>';
+        else h += '<div class="card"><table><tr><th></th><th>Cuộc trò chuyện</th><th>Chat</th><th>Trạng thái</th><th>Chế độ quyền</th><th>Việc gần nhất</th></tr>' + r.sessions.map(function (x) {
+          return '<tr><td>' + esc(x.icon) + '</td><td>' + esc(x.name) + '</td><td class="mute">' + esc(x.chat) + '</td><td>' + esc(x.label) + '</td><td class="mute">' + esc(MODE[x.mode] || x.mode) + '</td><td class="mute">#' + x.lastId + ' ' + esc(x.prompt) + '</td></tr>'; }).join('') + '</table></div>';
+        set(h);
       }).catch(fail);
     },
     bot: function () {
@@ -424,6 +434,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         var h = '<h2>Dự án</h2><div class="card"><p class="mute">Mỗi dự án có <b>thư mục tệp</b>, <b>chỉ dẫn</b>, <b>sổ tay</b> và <b>lịch sử</b> riêng. Dữ liệu do AgentOS giữ nên mọi AI (Claude, Codex, Gemini, DeepSeek) dùng chung: Claude hết hạn mức thì Codex làm tiếp đúng dự án đó. Trên Telegram: /duan, /duan &lt;tên&gt;, #tên-dự-án &lt;việc&gt;.</p>' +
           '<div class="row"><input id="pn" placeholder="Tên dự án mới, ví dụ Kế toán 2026" style="flex:1;min-width:180px"><button class="b p" id="pc">Tạo dự án</button></div><p class="mute">Thư mục: ' + esc(r.root) + '</p></div>';
         if (!r.list.length) h += '<div class="card"><p class="mute">Chưa có dự án nào.</p></div>';
+        var PMODES = [['hoi', 'Hỏi từng lần (mặc định)'], ['tusua', 'Tự sửa trong thư mục dự án'], ['kehoach', 'Chỉ lập kế hoạch (không sửa/chạy gì)'], ['chay', 'Chạy thẳng (chỉ chủ máy, cần hộp cô lập)']];
         var live = r.list.filter(function (p) { return !p.mergedInto; });
         function organizeNote(p) {
           if (p.pendingOrganize) return '<span class="mute">⏳ AI đang sắp xếp lại sổ tay…</span>';
@@ -445,6 +456,9 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
             '<div class="row"><label class="mute" style="flex:1;min-width:220px">Tên dự án <input id="pnm' + i + '" value="' + esc(p.name) + '" maxlength="60" style="width:100%;box-sizing:border-box"></label></div>' +
             '<p class="mute">' + p.usage.docs + ' tài liệu · ' + p.usage.results + ' kết quả · sổ tay ' + p.book.entries + ' mục / ' + p.book.chapters + ' chương · mã <code>' + esc(p.id) + '</code> · ' + esc(p.dir) + '</p>' + (organizeNote(p) ? '<p>' + organizeNote(p) + '</p>' : '') +
             '<div class="row"><label class="mute">AI ưu tiên <select id="pe' + i + '">' + opts + '</select></label><label class="mute"><input type="checkbox" id="pc' + i + '"' + (p.chungtu ? ' checked' : '') + '> Đọc chứng từ tự động (hóa đơn, phiếu) → sổ Excel</label><label class="mute"><input type="checkbox" id="ph' + i + '"' + (p.hoidap ? ' checked' : '') + '> Kho kiến thức hỏi đáp cho nhân viên bán hàng</label><label class="mute">Người được dùng (ID Telegram, cách nhau dấu phẩy) <input id="pu' + i + '" value="' + esc(p.users.join(', ')) + '"></label></div>' +
+            '<div class="row"><label class="mute">🛡 Chế độ quyền <select id="pm' + i + '">' + PMODES.map(function (m) { return '<option value="' + m[0] + '"' + ((p.mode || 'hoi') === m[0] ? ' selected' : '') + '>' + esc(m[1]) + '</option>'; }).join('') + '</select></label></div>' +
+            '<p class="mute" style="margin:6px 0 2px">Luật riêng của dự án — mỗi dòng một luật, dạng <code>Công_cụ</code> hoặc <code>Công_cụ(mẫu*)</code>, ví dụ <code>Bash(git push*)</code>, <code>Write(*.xlsx)</code>. CẤM thắng mọi chế độ; HỎI buộc hỏi; CHO tự cho phép việc đang phải hỏi.</p>' +
+            '<div class="row"><label class="mute grow">🚫 CẤM<textarea id="prd' + i + '" rows="3" style="width:100%;box-sizing:border-box">' + esc(((p.rules || {}).deny || []).join('\n')) + '</textarea></label><label class="mute grow">❓ HỎI<textarea id="prk' + i + '" rows="3" style="width:100%;box-sizing:border-box">' + esc(((p.rules || {}).ask || []).join('\n')) + '</textarea></label><label class="mute grow">✅ CHO<textarea id="pra' + i + '" rows="3" style="width:100%;box-sizing:border-box">' + esc(((p.rules || {}).allow || []).join('\n')) + '</textarea></label></div>' +
             '<p class="mute" style="margin:8px 0 2px">⏰ Lịch tự làm (giờ Việt Nam; kết quả gửi về Telegram của chủ máy):</p><ul>' + (p.schedule && p.schedule.length ? p.schedule.map(function (j) { return '<li>' + esc(j.time) + ' · ' + (j.days && j.days.length && j.days.length < 7 ? j.days.map(function (d) { return ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'][d]; }).join(',') : 'mỗi ngày') + ' · ' + esc(j.text.slice(0, 120)) + ' <button class="b" data-sd="' + i + ':' + j.id + '">Xóa</button></li>'; }).join('') : '<li class="mute">(chưa có)</li>') + '</ul>' +
             '<div class="row"><input id="st' + i + '" type="time" value="08:00"><input id="sw' + i + '" placeholder="Thứ (để trống = mỗi ngày): 1,2,3,4,5 = T2–T6" style="width:210px"><input id="sx' + i + '" placeholder="Việc giao cho AI, ví dụ: lập báo cáo doanh số hôm qua" style="flex:1;min-width:200px"><button class="b" data-sa="' + i + '">Thêm lịch</button></div>' +
             '<p class="mute" style="margin:8px 0 2px">Chỉ dẫn cho AI (mọi AI đều đọc; không ghi mật khẩu):</p><textarea id="pi' + i + '" rows="5" style="width:100%;box-sizing:border-box">' + esc(p.instructions) + '</textarea>' +
@@ -461,7 +475,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         });
         [].forEach.call(main.querySelectorAll('button[data-ps]'), function (b) { b.onclick = function () {
           var i = b.getAttribute('data-ps'), p = r.list[i];
-          api('POST', 'projects/update', { id: p.id, name: document.getElementById('pnm' + i).value, engine: document.getElementById('pe' + i).value || null, chungtu: document.getElementById('pc' + i).checked, hoidap: document.getElementById('ph' + i).checked, users: document.getElementById('pu' + i).value })
+          api('POST', 'projects/update', { id: p.id, name: document.getElementById('pnm' + i).value, mode: document.getElementById('pm' + i).value, rules: { deny: document.getElementById('prd' + i).value, ask: document.getElementById('prk' + i).value, allow: document.getElementById('pra' + i).value }, engine: document.getElementById('pe' + i).value || null, chungtu: document.getElementById('pc' + i).checked, hoidap: document.getElementById('ph' + i).checked, users: document.getElementById('pu' + i).value })
             .then(function () { return api('POST', 'projects/instructions', { id: p.id, text: document.getElementById('pi' + i).value }); }).then(function () { toast('Đã lưu'); }).catch(fail); }; });
         [].forEach.call(main.querySelectorAll('button[data-sa]'), function (b) { b.onclick = function () {
           var i = b.getAttribute('data-sa'), p = r.list[i], d = document.getElementById('sw' + i).value.split(/[^1-7]+/).filter(Boolean).map(Number);

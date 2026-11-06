@@ -71,7 +71,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   function waitCancellable(job, ms) {
     return new Promise((resolve) => {
       const t = setTimeout(() => { current = null; resolve(false); }, ms);
-      current = { jobId: job.id, chatId: job.chat_id, kill: () => { clearTimeout(t); current = null; resolve(true); } };
+      current = { jobId: job.id, chatId: job.chat_id, project: job.project || '', kill: () => { clearTimeout(t); current = null; resolve(true); } };
     });
   }
 
@@ -82,7 +82,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       try { h = engines[eng].start({ job, prompt: buildPrompt(job, !!resumeId, eng), resumeId, onProgress: ui ? (ev) => ui.step(job, ev) : undefined }); } catch (e) {
         return { ok: false, limit: false, error: 'Không khởi động được ' + name(eng) + ': ' + e.message };
       }
-      current = { jobId: job.id, chatId: job.chat_id, kill: h.kill };
+      current = { jobId: job.id, chatId: job.chat_id, project: job.project || '', kill: h.kill };
       const res = await h.done;
       current = null;
       if (res.ok || !res.transient || n >= retryDelaysMs.length || stopped) return res;
@@ -272,8 +272,9 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   return {
     wake() { return loop(); },
     // Hủy việc đang chạy của chat này (nếu có). Trả true nếu có việc bị hủy.
-    cancelRunning(chatId) {
-      if (current && String(current.chatId) === String(chatId)) { current.kill('cancelled'); return true; }
+    // project (tùy chọn): chỉ hủy việc của đúng cuộc trò chuyện đó ('' = chế độ chung); bỏ trống = mọi việc của chat
+    cancelRunning(chatId, project) {
+      if (current && String(current.chatId) === String(chatId) && (project === undefined || current.project === String(project))) { current.kill('cancelled'); return true; }
       return false;
     },
     // Hủy ĐÚNG việc đang chạy có mã này (trang Cài đặt → Nhật ký)

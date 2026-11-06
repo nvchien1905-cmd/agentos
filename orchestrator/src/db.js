@@ -151,6 +151,12 @@ function openDb(file) {
       } catch (e) { return []; }
     },
     ftsAvailable() { return hasFts; },
+    // ---- PHIÊN (cuộc trò chuyện = chat + dự án) ----
+    // Mỗi phiên: việc gần nhất, số việc đang chạy/chờ. chatId trống = mọi chat (trang Cài đặt). Mới làm gần nhất đứng đầu.
+    sessions(chatId, limit) { return require('./sessions').queryRows(db, chatId, limit); },
+    runningInChat(chatId) { return db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE chat_id = ? AND status = 'running'").get(String(chatId)).n; },
+    // Hủy các việc đang chờ của MỘT cuộc trò chuyện (chat + dự án). project '' = chế độ chung.
+    cancelQueuedScope(chatId, project) { return db.prepare("UPDATE jobs SET status = 'cancelled', run_after = NULL, finished_at = ? WHERE chat_id = ? AND COALESCE(project,'') = ? AND status IN ('queued','waiting')").run(now(), String(chatId), String(project || '')).changes; },
     lastJobId(scope) { const [c, p] = splitScope(scope); return q.lastId.get(c, p).n; },
     queuedCount() { return q.countQueued.get().n; },
     waitingCount() { return q.countWaiting.get().n; },

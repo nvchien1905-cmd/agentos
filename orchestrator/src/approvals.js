@@ -62,6 +62,7 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat 
       for (const [id, p] of [...pending]) if (p.job.id === jobId) finish(id, false, false, 'cancel', null, '🚫 Việc đã dừng.');
     },
     pendingCount() { return pending.size; },
+    pendingJobIds() { return new Set([...pending.values()].map((p) => p.job.id)); },          // việc đang chờ chủ máy bấm duyệt (trạng thái "cần anh trả lời" của phiên)
     now,
   };
 }

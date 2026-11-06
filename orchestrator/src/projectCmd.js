@@ -90,6 +90,29 @@ function createProjectCommands(o) {
         if (!engines().includes(k)) return '⚠️ AI "' + rest + '" chưa bật trên máy. Có: ' + engines().join(', ') + '.';
         projects.setEngine(t.p.id, k); return '✅ ' + label(t.p) + ' ưu tiên ' + ENGINES[k] + ' (hết hạn mức thì tự chuyển sang AI khác, dùng chung dữ liệu dự án).';
       }
+      case 'luat': case 'rule': {                                 // luật cho/hỏi/cấm của dự án: /duan luat · /duan luat cam|hoi|cho <Công cụ(mẫu)> · /duan luat bo <mẫu>
+        const t = target(''); if (t.err) return t.err;
+        const KIND = { cam: 'deny', hoi: 'ask', cho: 'allow' }, VN = { deny: '🚫 CẤM', ask: '❓ HỎI', allow: '✅ CHO' };
+        const cur = Object.assign({ allow: [], ask: [], deny: [] }, t.p.rules || {});
+        const m2 = rest.match(/^(\S+)\s*([\s\S]*)$/), k2 = m2 ? na(m2[1]) : '', pat = m2 ? m2[2].trim() : '';
+        if (!k2) {
+          const lines = ['deny', 'ask', 'allow'].flatMap((k) => cur[k].map((r) => VN[k] + ' ' + r));
+          return '🛡 Luật của ' + label(t.p) + ' (chế độ: ' + (t.p.mode || 'hoi') + '):\n' + (lines.length ? lines.join('\n') : '(chưa có luật nào)') +
+            '\n\nThêm: /duan luat cam Bash(rm *) · /duan luat hoi Write(*.xlsx) · /duan luat cho Bash(git status*)\nBỏ: /duan luat bo <đúng nội dung luật>. CẤM thắng mọi chế độ; HỎI buộc hỏi; CHO tự cho phép việc đang phải hỏi. Đổi chế độ: /cheodo';
+        }
+        const e = need(); if (e) return e;
+        if (['bo', 'xoa', 'go'].includes(k2)) {
+          if (!pat) return 'Cách dùng: /duan luat bo <đúng nội dung luật>';
+          let n = 0; for (const k of ['deny', 'ask', 'allow']) { const before = cur[k].length; cur[k] = cur[k].filter((r) => r.toLowerCase() !== pat.toLowerCase()); n += before - cur[k].length; }
+          if (!n) return 'Không có luật "' + pat + '". Gõ /duan luat để xem.';
+          projects.setRules(t.p.id, cur); return '🗑 Đã bỏ ' + n + ' luật khỏi ' + label(t.p) + '.';
+        }
+        if (!KIND[k2]) return 'Cách dùng: /duan luat cam|hoi|cho <Công cụ hoặc Công cụ(mẫu)>, ví dụ /duan luat cam Bash(rm *)';
+        const added = require('./projectPerms').cleanRules([pat]);
+        if (!added.length) return '⚠️ Luật không hợp lệ. Dạng đúng: Công_cụ hoặc Công_cụ(mẫu*), ví dụ Bash(git push*), Write(*.xlsx), mcp__browser__*';
+        const kind = KIND[k2]; cur[kind] = [...new Set([...cur[kind], added[0]])];
+        projects.setRules(t.p.id, cur); return VN[kind] + ' đã thêm cho ' + label(t.p) + ': ' + added[0];
+      }
       case 'chungtu': {                                          // chế độ xử lý chứng từ tự động của dự án
         const e = need(); if (e) return e; const t = target(''); if (t.err) return t.err;
         const k = na(rest);

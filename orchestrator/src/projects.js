@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { cleanRules, MODES: PERM_MODES } = require('./projectPerms');
 
 // DỰ ÁN (giống Projects của Claude / Codex): mỗi dự án có thư mục riêng, chỉ dẫn riêng, sổ tay riêng, lịch sử + phiên riêng.
 // Quan trọng: dữ liệu của dự án do AgentOS giữ (thư mục tệp, CHI-DAN.md, SO-TAY, tóm tắt hội thoại) chứ KHÔNG nằm trong phiên của một AI nào,
@@ -113,6 +114,16 @@ function createProjects(o) {
     return update(id, (p) => { p.name = name; p.nameAuto = false; p.autoTitle = false; });          // mã/thư mục giữ nguyên để tệp và lịch sử không đứt
   }
   const archive = (id, on) => update(id, (p) => { p.archived = on !== false; });
+  // Chế độ quyền + luật cho/hỏi/cấm của dự án (projectPerms.js): hoi | tusua | kehoach | chay
+  function setMode(id, mode) {
+    const m = String(mode || '').trim().toLowerCase();
+    if (!PERM_MODES.includes(m)) throw new Error('Chế độ phải là: ' + PERM_MODES.join(', ') + '.');
+    return update(id, (p) => { p.mode = m; });
+  }
+  // rules: { allow: [..]|chữ nhiều dòng, ask: .., deny: .. } — thay hẳn các nhóm được truyền
+  function setRules(id, rules) {
+    return update(id, (p) => { const cur = Object.assign({ allow: [], ask: [], deny: [] }, p.rules || {}); for (const k of ['allow', 'ask', 'deny']) if (rules && rules[k] !== undefined) cur[k] = cleanRules(rules[k]); p.rules = cur; });
+  }
   function setEngine(id, eng) { return update(id, (p) => { p.engine = eng ? String(eng) : null; }); }
   const setChungTu = (id, on) => update(id, (p) => { p.chungtu = !!on; });
   // Dự án làm kho kiến thức cho hỏi đáp nhân viên bán hàng (chỉ một dự án: bật dự án này thì dự án khác tự tắt)
@@ -245,7 +256,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { setMode, setRules, markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

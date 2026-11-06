@@ -35,6 +35,7 @@ const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
 const { createSummarizer } = require('../../orchestrator/src/summarizer');
 const { createBook } = require('../../orchestrator/src/book');
+const { createSessions } = require('../../orchestrator/src/sessions');
 
 const PORT = 8089;
 const SERVICES = { orchestrator: 'agentos-orchestrator', deskd: 'agentos-deskd', onedrive: 'onedrive-agentos', tailscale: 'tailscaled', cups: 'cups', network: 'NetworkManager', capnhat: 'agentos-update.path', saoluu: 'agentos-sao-luu.timer' };
@@ -695,6 +696,17 @@ function createSettings(o) {
     async 'POST /api/diskbackup/run'() { if (busy()) throw new Error('Đang có một công việc khác chạy.'); return { job: startJob('Sao lưu ra ổ ngoài', [[backupBin, ['run']]], { keepGoing: false }) }; },
     async 'POST /api/diskbackup/verify'() { if (busy()) throw new Error('Đang có một công việc khác chạy.'); return { job: startJob('Kiểm tra khôi phục từ ổ ngoài', [[backupBin, ['verify']]]) }; },
     async 'POST /api/diskbackup/off'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = await run(backupBin, ['off']); if (r.code !== 0) throw new Error(String(r.err || r.out).slice(-200)); return { ok: true }; },
+    // ---- Bảng phiên: mọi cuộc trò chuyện (chat + dự án) với trạng thái suy ra từ bảng việc (chỉ đọc)
+    async 'GET /api/sessions'() {
+      return withRoDb((db) => {
+        const P = projectsLib(), S = createSessions({ db: null, projects: P });
+        const rows = S.rowsFor(db.raw, null, 120).map((r) => {
+          const p = r.project ? P.get(r.project) : null, st = S.stateOf(r);
+          return { chat: r.chat, project: r.project, name: r.project ? (p ? (p.home ? 'Chung (dự án tổng)' : p.name) : r.project + ' (đã xóa)') : 'Chế độ chung', mode: (p && p.mode) || 'hoi', state: st.key, icon: st.icon, label: st.label, running: r.running, queued: r.queued, total: r.total, lastId: r.last_id, prompt: r.last ? String(r.last.prompt || '').slice(0, 160) : '', at: r.last ? (r.last.finished_at || r.last.started_at || r.last.created_at) : 0 };
+        });
+        return { sessions: rows };
+      });
+    },
     // ---- Dự án (projects.js dùng chung với bộ điều phối; danh sách nằm ở tệp .du-an.json trong thư mục dự án)
     async 'GET /api/projects'() {
       const text = readEnv() || '';
@@ -722,6 +734,8 @@ function createSettings(o) {
       if (b.engine !== undefined) P.setEngine(id, b.engine || null);
       if (b.users !== undefined) P.setUsers(id, Array.isArray(b.users) ? b.users : String(b.users || '').split(/[\s,;]+/));
       if (b.archived !== undefined) P.archive(id, !!b.archived);
+      if (b.mode !== undefined) P.setMode(id, b.mode);
+      if (b.rules !== undefined) P.setRules(id, b.rules);
       if (b.hoidap !== undefined) P.setHoiDap(id, !!b.hoidap);
       if (b.chungtu !== undefined) { P.setChungTu(id, !!b.chungtu); if (b.chungtu) { try { fs.mkdirSync(path.join(P.dirOf(id), 'CHUNG-TU-MOI'), { recursive: true }); } catch (e) { /* bỏ qua */ } } }
       fixProjectOwner(P.get(id)); return { project: P.get(id) };

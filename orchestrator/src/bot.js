@@ -2,6 +2,7 @@
 const { fmtTime } = require('./worker');
 const { createProjectCommands } = require('./projectCmd');
 const { createProjectFlow } = require('./projectFlow');
+const { createSessions } = require('./sessions');
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
@@ -47,6 +48,7 @@ function helpText(profiles) {
     '/toanquyen - bật chế độ TOÀN QUYỀN: AI tự làm một mạch, không hỏi xin phép, có sudo (chỉ quản trị viên)\n' +
     '/baove - quay về chế độ bảo vệ: AI hỏi trước khi ghi file/chạy lệnh (chỉ quản trị viên)\n' +
     '/moi - bắt đầu cuộc trò chuyện mới (quên ngữ cảnh cũ, GIỮ ghi nhớ lâu dài)\n' +
+    '/phien - bảng các cuộc trò chuyện: đang làm / cần duyệt / xong, nút Xem · Tiếp tục · Dừng · /cheodo - chế độ quyền của dự án (hỏi từng lần · tự sửa · chỉ lập kế hoạch · chạy thẳng) · /duan luat - luật cho/hỏi/cấm · /ghepdoi - người lạ nhắn bot nhận mã, chủ máy bấm Cho phép (chủ máy)\n' +
     '/nho <điều cần nhớ> · /quen <từ khóa> · /trinho · /trinho tim <từ khóa> - SỔ TAY LÂU DÀI như cuốn sách (Phần › Chương › Mục, có số), dùng chung cho mọi AI. /moi = cuộc trò chuyện mới là DỰ ÁN mới (sổ tay riêng, không mất cuộc cũ; gộp ở Cài đặt → Dự án); /moi tiep chỉ mở phiên AI mới; /moi xoa quên hẳn ngữ cảnh\n' +
     '📷 Gửi ảnh, nhiều ảnh (album), video hoặc tài liệu kèm chú thích: bot tải về, trích khung hình + lời nói trong video rồi giao AI xem (tệp tối đa 20 MB)\n' +
     '/id - xem ID Telegram của bạn';
@@ -61,7 +63,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
 const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien', 'vao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -114,7 +116,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
 
   function handle(msg) {
     if (!msg || !msg.from || !msg.chat) return null;
-    if (!flow && pcmd) flow = createProjectFlow({ db, projects, isAdmin, now, submit, send });
+    if (!flow && pcmd) flow = createProjectFlow({ db, projects, isAdmin, now, submit, send, worker, sessions: createSessions({ db, projects, approvals, now }) });
     const text = String(msg.text || msg.caption || '').trim();
     const uid = String(msg.from.id);
     const chatId = String(msg.chat.id);
@@ -122,7 +124,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     // Người lạ: chỉ được hỏi ID của chính họ (để quản trị viên điền vào cấu hình). Còn lại im lặng.
     if (!allowed.has(uid)) {
       if (/^\/id(@\w+)?$/i.test(text)) return 'ID Telegram của bạn: ' + uid;
-      return null;
+      return pairing ? pairing.request(msg) : null;                 // ghép ID bằng mã: trả mã cho người lạ + hỏi chủ máy (pairing.js)
     }
     if (projects && projects.noteName) { try { projects.noteName(chatId, [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || msg.from.username); } catch (e) { /* tên chỉ để dễ nhìn */ } }
     // Chỉ nhận chat riêng với người được phép (không nhận trong nhóm).
@@ -296,9 +298,12 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         }
         case 'duan': case 'project': {
           if (!pcmd) return 'Máy này chưa hỗ trợ dự án.';
-          if (!String(cmd[3] || '').trim() && flow) return { text: pcmd.listText(chatId, uid), buttons: flow.listButtons(chatId, uid).rows };       // danh sách + nút "▶️ Tiếp tục" từng dự án + "🆕 Dự án mới"
+          if (!String(cmd[3] || '').trim() && flow) { const b = flow.board(chatId, uid); return { text: b.empty ? pcmd.listText(chatId, uid) : b.text, buttons: b.rows }; }       // bảng phiên: trạng thái + nút Xem/Tiếp tục/Dừng + "🆕 Dự án mới"
           return pcmd.run(chatId, uid, cmd[3]);
         }
+        case 'ghepdoi': return isAdmin(uid) ? (pairing ? pairing.command(cmd[3]) : 'Máy này chưa có ghép ID bằng mã.') : 'Chỉ chủ máy dùng được /ghepdoi.';
+        case 'phien': { if (!flow) return 'Máy này chưa hỗ trợ dự án.'; const b = flow.board(chatId, uid); return { text: b.empty ? 'Chưa có cuộc trò chuyện nào. Nhắn việc hoặc gõ /moi để bắt đầu.' : b.text, buttons: b.rows }; }
+        case 'cheodo': case 'quyen': return flow ? flow.modeCard(chatId, uid) : 'Máy này chưa hỗ trợ dự án.';
         case 'moi': {
           const cur = pcmd ? pcmd.current(chatId, uid) : null;
           const scope = chatId + (cur ? '#' + cur.id : '');            // /moi trong dự án chỉ làm mới cuộc trò chuyện CỦA dự án đó
@@ -436,7 +441,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
   async function handleCallback(cq) {
     if (!cq || !cq.from) return null;
     if (!allowed.has(String(cq.from.id))) return null;           // người lạ bấm nút: bỏ qua
-    if (!flow && pcmd) flow = createProjectFlow({ db, projects, isAdmin, now, submit, send });
+    if (pairing && pairing.isCallback(cq.data)) return pairing.answer(cq.data, cq.from.id);
+    if (!flow && pcmd) flow = createProjectFlow({ db, projects, isAdmin, now, submit, send, worker, sessions: createSessions({ db, projects, approvals, now }) });
     if (flow && flow.isCallback(cq.data)) return flow.callback(cq);
     if (ketnoi && ketnoi.isCallback(cq.data)) return ketnoi.answer(cq.data, cq.from.id, isAdmin);
     if (fanpage && fanpage.isCallback(cq.data)) return isAdmin(String(cq.from.id)) ? fanpage.answerCallback(cq.data) : 'Chỉ chủ máy duyệt được.';

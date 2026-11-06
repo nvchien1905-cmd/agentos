@@ -26,6 +26,8 @@ const { createMultiKiotViet } = require('./kiotviet');
 const { THINK_HINT, kiotvietHint } = require('./thinking');
 const { createKvContext } = require('./kvcontext');
 const { createVault } = require('./vault');
+const { createProjectPerms } = require('./projectPerms');
+const { createPairing } = require('./pairing');
 const { createBrowserHost } = require('./browserHost');
 const { createMachineAccess } = require('./machineAccess');
 const { createQuick } = require('./quick');
@@ -208,7 +210,7 @@ async function main() {
   const fbAllow = { fn: null };                       // facebook.allowInteract (trợ lý trực Messenger: bấm/gõ trong trình duyệt được tự cho phép, có hạn mức), gắn sau khi facebook được tạo
   const chungtuAllow = autoAllowFor(projects);        // dự án bật chế độ chứng từ: ghi sổ không hỏi từng lần (chungtu.js)
   const kvForAi = { api: null, allowed: (job) => cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event' };   // api gắn sau khi createKiotViet
-  const gate = createGate({ db, approvals, workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
+  const gate = createGate({ db, approvals, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 
@@ -359,6 +361,8 @@ async function main() {
   // Tin trạng thái trực tiếp + câu trả lời định dạng đẹp (Markdown -> Telegram) kèm chân trang "— N giây · N bước · AI"
   const live0 = createLive({ tg, log });
   const live = { begin: (job) => (isQuietJob(job) ? undefined : live0.begin(job)), step: (job, ev) => (isQuietJob(job) ? undefined : live0.step(job, ev)), end: async (job) => (isQuietJob(job) ? { secs: 0, steps: 0 } : live0.end(job)) };
+  // Ghi rõ cuộc trò chuyện (dự án) nào đang trả lời khi có nhiều cuộc chạy song song hoặc anh đã chuyển sang cuộc khác
+  const projTag = (job) => { try { const p = job.project ? projects.get(job.project) : null; if (!p || p.home) return ''; const act = projects.active(job.chat_id); return (!act || act.id !== p.id || db.runningInChat(job.chat_id) > 0) ? '📁 ' + p.name + '\n' : ''; } catch (e) { return ''; } };
   const answer = async (job, text, meta) => {
     meta = meta || {};
     if (skipAnswer(job, text)) return;
@@ -367,7 +371,7 @@ async function main() {
     if (meta.secs >= 5 || meta.steps > 0) { bits.push(meta.secs + ' giây'); if (meta.steps > 0) bits.push(meta.steps + ' bước'); }
     if (meta.engine) bits.push(meta.primary && meta.engine !== meta.primary ? 'qua ' + (meta.name || meta.engine) : (meta.name || meta.engine));   // luôn ghi AI nào đã làm (để biết khi có lỗi)
     const head = job.lane === 'bg' ? '🧵 Việc nền #' + job.id + ' xong:\n\n' : job.lane === 'event' ? '⚡ Sự kiện tự kích hoạt — việc #' + job.id + ':\n\n' : job.lane === 'hook' ? '🔔 Webhook — việc #' + job.id + ':\n\n' : '';
-    await tg.sendRich(job.chat_id, head + String(text) + (bits.length ? '\n\n_— ' + bits.join(' · ') + '_' : ''));
+    await tg.sendRich(job.chat_id, projTag(job) + head + String(text) + (bits.length ? '\n\n_— ' + bits.join(' · ') + '_' : ''));
   };
   // Bộ nhớ dùng chung (ghi nhớ lâu dài + tóm tắt cuộn + việc gần nhất + tìm lại FTS5) và nén bằng mô hình rẻ (Gemini/DeepSeek qua khóa API, không có khóa thì cắt gọn)
   // Nén ngữ cảnh bằng Codex (dùng tài khoản Codex đã đăng nhập, không cần khóa API): một lần chạy mới, KHÔNG phiên cũ, KHÔNG công cụ/MCP, sandbox chỉ đọc, 2 phút.
@@ -410,7 +414,7 @@ async function main() {
   const allWorkers = [...mainWorkers, ...bgWorkers];
   const crew = {
     wake() { for (const w of allWorkers) w.wake(); },
-    cancelRunning(chatId) { let any = false; for (const w of allWorkers) if (w.cancelRunning(chatId)) any = true; return any; },
+    cancelRunning(chatId, project) { let any = false; for (const w of allWorkers) if (w.cancelRunning(chatId, project)) any = true; return any; },
     cancelJob(id) { let any = false; for (const w of allWorkers) if (w.cancelJob(id)) any = true; return any; },
     currentJobId() { return allWorkers.map((w) => w.currentJobId()).find(Boolean) || null; },
     engineNames: () => worker.engineNames(),
@@ -586,6 +590,7 @@ async function main() {
         '(3) KHÔNG tự chạy lệnh ghi/sửa hệ thống; được xin chạy lệnh chỉ đọc (systemctl status, journalctl -u <dịch vụ> -n 50, df -h) qua nút duyệt để tìm hiểu thêm. Trả lời ngắn gọn, theo thứ tự ưu tiên.';
       return { bad: nbad || (bad.length ? bad.length : 0), report, prompt };
     },
+    pairing: createPairing({ db, roles, adminIds: [...cfg.adminUserIds], log, send: (chat, r) => (r && typeof r === 'object' && r.buttons ? tg.sendButtons(chat, r.text, r.buttons) : tg.sendMessage(chat, r && typeof r === 'object' ? r.text : r)) }),
     voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
     send: async (chat, reply) => {                          // trả lời cho album (không đi qua vòng nhận tin)
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) { if (reply.buttons) await tg.sendButtons(chat, reply.text, reply.buttons); else await tg.sendMessage(chat, reply.text); } }

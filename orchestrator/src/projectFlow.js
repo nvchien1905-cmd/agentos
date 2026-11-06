@@ -10,6 +10,7 @@ const DEFAULT_IDLE_H = 3;
 
 function createProjectFlow(o) {
   const { db, projects, isAdmin, submit } = o;
+  const sess = o.sessions || null, worker = o.worker || null;
   const now = o.now || Date.now;
   const kHold = (c) => 'pj:hold:' + c, kName = (c) => 'pj:name:' + c, kLast = (c) => 'pj:lastat:' + c;
   const parse = (s) => { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } };
@@ -42,6 +43,26 @@ function createProjectFlow(o) {
     const rows = list.map((p) => [{ text: (cur && cur.id === p.id ? '▶️ ' : '📁 ') + cut(label(p), 26), data: 'pj:info:' + p.id }, { text: '▶️ Tiếp tục', data: 'pj:go:' + p.id }]);
     rows.push([{ text: '🆕 Dự án mới', data: 'pj:new' }]);
     return { rows, list, cur };
+  }
+
+  // BẢNG PHIÊN (/phien, /duan): mỗi cuộc trò chuyện một dòng có trạng thái + nút Xem / Tiếp tục / Dừng (xem sessions.js)
+  function board(chatId, uid) {
+    const cur = projects.active(chatId), rows = sess ? sess.list(chatId, usable(chatId, uid)) : [], shown = rows.slice(0, 8);
+    const btn = shown.map((r) => { const row = [{ text: r.state.icon + ' ' + cut(r.name, 14), data: 'pj:peek:' + r.id }, { text: '▶️ Tiếp tục', data: 'pj:go:' + r.id }]; if (['lam', 'hang', 'cho'].includes(r.state.key)) row.push({ text: '⏹ Dừng', data: 'pj:stop:' + r.id }); return row; });
+    btn.push([{ text: '🆕 Dự án mới', data: 'pj:new' }]);
+    return { empty: !rows.length, rows: btn, text: '📋 Các cuộc trò chuyện của anh (đang làm / cần duyệt lên đầu):\n\n' + shown.map((r) => sess.lineOf(r, cur)).join('\n\n') + (rows.length > 8 ? '\n…còn ' + (rows.length - 8) + ' cuộc nữa' : '') +
+      '\n\nBấm tên để xem nhanh · ▶️ Tiếp tục để làm việc trong cuộc đó · ⏹ Dừng để hủy việc đang chạy/chờ. Chế độ quyền của cuộc hiện tại: /cheodo' };
+  }
+  // /cheodo: thẻ chọn chế độ quyền của dự án đang ở (hỏi từng lần / tự sửa / chỉ lập kế hoạch / chạy thẳng)
+  const MODE_HELP = { hoi: 'mọi việc ghi/chạy lệnh đều hỏi anh qua Telegram', tusua: 'tự sửa tệp trong thư mục dự án; chạy lệnh vẫn hỏi', kehoach: 'chỉ được đọc/xem web, không sửa hay chạy gì — AI trình bày kế hoạch để anh duyệt', chay: 'tự cho phép mọi việc đang phải hỏi (chỉ chủ máy, chỉ khi hộp cô lập đang bật)' };
+  function modeCard(chatId, uid) {
+    const p = projects.active(chatId);
+    if (!p) return { text: 'Anh đang ở chế độ chung, chưa có dự án để đặt chế độ quyền. Gõ /duan để vào một dự án.' };
+    const cur = p.mode || 'hoi', R = p.rules || {}, nr = (R.allow || []).length + (R.ask || []).length + (R.deny || []).length;
+    const names = (sess && sess.MODE_LABEL) || {};
+    const modes = ['hoi', 'tusua', 'kehoach'].concat(isAdmin(uid) ? ['chay'] : []);
+    const rows = []; for (let i = 0; i < modes.length; i += 2) rows.push(modes.slice(i, i + 2).map((m) => ({ text: (cur === m ? '✅ ' : '') + (names[m] || m), data: 'pj:mode:' + m })));
+    return { text: '🛡 Chế độ quyền của ' + label(p) + ': ' + (names[cur] || cur) + '\n' + modes.map((m) => '• ' + (names[m] || m) + ': ' + MODE_HELP[m]).join('\n') + '\n\nLuật riêng: ' + (nr ? nr + ' luật (xem /duan luat)' : 'chưa có (thêm bằng /duan luat cam|hoi|cho …)'), buttons: rows };
   }
 
   function picker(chatId, uid, text) {
@@ -116,6 +137,26 @@ function createProjectFlow(o) {
       await reply('📁 Đã giao cho dự án "' + label(p) + '".' + (r ? '\n' + r : ''));
       return 'Đã chọn ' + cut(label(p), 40);
     }
+    if ((m = d.match(/^pj:(peek|stop):(.+)$/))) {
+      const key = m[2], p = key === '-' ? null : projects.get(key);
+      if (key !== '-' && (!p || !projects.canUse(uid, p, isAdmin))) return 'Dự án này không dùng được nữa.';
+      const r = sess ? sess.list(chatId, p ? [p] : []).find((x) => x.id === key) : null;
+      if (!r) return 'Không thấy cuộc trò chuyện này.';
+      if (m[1] === 'peek') { await reply(sess.peek(r)); return ''; }
+      const proj = key === '-' ? '' : key; let n = db.cancelQueuedScope(chatId, proj);
+      if (worker && worker.cancelRunning(chatId, proj)) n++;
+      await reply(n ? '⏹ Đã dừng cuộc "' + r.name + '" (' + n + ' việc).' : 'Cuộc "' + r.name + '" không có việc nào đang chạy hay chờ.');
+      return n ? 'Đã dừng' : 'Không có việc nào';
+    }
+    if ((m = d.match(/^pj:mode:(\w+)$/))) {
+      const p = projects.active(chatId);
+      if (!p || !projects.canUse(uid, p, isAdmin)) return 'Chưa ở trong dự án nào.';
+      if (m[1] === 'chay' && !isAdmin(uid)) return 'Chỉ chủ máy được bật "chạy thẳng".';
+      try { projects.setMode(p.id, m[1]); } catch (e) { return e.message; }
+      await reply(modeCard(chatId, uid));
+      return 'Đã đổi chế độ';
+    }
+    if (d === 'pj:go:-') { projects.setActive(chatId, null); await reply('▶️ Quay về chế độ chung (không gắn dự án).'); return 'Đã chuyển'; }
     if (d === 'pj:new') {
       const hold = parse(db.kvGet(kHold(chatId)));
       await reply(askNew(chatId, uid, hold ? hold.text : ''));
@@ -134,7 +175,7 @@ function createProjectFlow(o) {
     return null;
   }
 
-  return { touch, gate, listButtons, askNew, createNamed, callback, isCallback, usable, idleMs, label, ago, lastRecap };
+  return { board, modeCard, touch, gate, listButtons, askNew, createNamed, callback, isCallback, usable, idleMs, label, ago, lastRecap };
 }
 
 module.exports = { createProjectFlow, DEFAULT_IDLE_H };

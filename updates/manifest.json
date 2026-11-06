@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.3",
-  "file": "agentos-update-2026.11.06.3.tar.gz",
-  "size": 369068,
-  "sha256": "79f8b045ef4e897ada2ff341bb47c39eea394491b82bb84646268320b38a84ae",
+  "version": "2026.11.06.4",
+  "file": "agentos-update-2026.11.06.4.tar.gz",
+  "size": 370560,
+  "sha256": "19a648624c0d16f15682a90f98cbbcd39f14d7e6eaf4c76f7395c5d44533916b",
   "date": "2026-11-06",
-  "notes": "USB cài máy con Windows: cắm, bấm đúp CAI-MAY-CON.bat là thành máy con"
+  "notes": "Hỏi doanh thu bằng câu thường: AI trả lời trực tiếp, hiểu 'từ 1/11 đến hiện tại' và 'từng ngày' theo chi nhánh"
 }

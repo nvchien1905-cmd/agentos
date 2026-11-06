@@ -465,3 +465,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Chạy windows/TAO-USB.bat trên máy chủ (hoặc `tao-usb.ps1 -Usb E: -TaiSan [-AuthKey tskey-...]`) để chép bộ cài lên USB: CAI-MAY-CON.bat + usb-cai.ps1 + windows\ (cài máy con, fleet.js, tsowner.js) + cai-san\ (Node.js LTS và Tailscale tải từ trang chính thức, cài được khi không có mạng) + HUONG-DAN.txt. Chỉ GHI THÊM trên USB, không xóa gì.
 - Trên máy cần làm máy con: bấm đúp CAI-MAY-CON.bat (tự xin quyền quản trị) → đặt tên máy → cài Node.js, Tailscale (đăng nhập Tailscale bằng trình duyệt một lần; nếu USB có tailscale-authkey.txt thì vào mạng không cần đăng nhập) → cài máy con (cổng 8433 chỉ mạng Tailscale, SSH, RustDesk mật khẩu ngẫu nhiên) → bot Telegram tự hiện thẻ "Kết nối" → /vao <tên máy>.
 - Windows không cho USB tự chạy khi cắm nên phải bấm đúp. Khóa Tailscale (nếu kèm) nằm rõ trên USB: mất USB thì xóa khóa ở trang Tailscale. Test: windows/test/usb.test.js. Chưa chạy thử đầu-cuối trên một máy Windows thật.
+
+## 2026.11.06.4 — Hỏi doanh thu bằng câu thường, AI trả lời trực tiếp (không còn đường tắt lệnh)
+- Câu thường về doanh thu/tồn kho không còn bị bot chặn rồi báo "Khoảng thời gian không hiểu được": AI nhận và trả lời. Bot lấy sẵn số liệu KiotViet (API chính thức, chỉ đọc) đính vào câu hỏi.
+- Hiểu khoảng ngày tùy ý ("từ 1/11/2026 đến hiện tại", "từ 01/11 đến 03/11") và "từng ngày" (mỗi ngày một dòng, chia theo chi nhánh, tối đa 62 ngày). Lệnh /doanhso gõ tay cũng hiểu như vậy. Test: orchestrator/test/thinking.test.js, wizard/test/kvcontext.test.js.

@@ -15,8 +15,24 @@ function vnDate(offsetDays, nowMs) {
   return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate(), dow: d.getUTCDay(), iso: d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()), show: pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear() };
 }
 
-// Hiểu cách người dùng gõ khoảng thời gian: "", "hôm nay", "hôm qua", "tuần", "tháng".
+const DAY_MS = 86400000;
+const dayMs = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
+const isoOf = (ms) => { const d = new Date(ms); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); };
+const showIso = (iso) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4);
+
+// Hiểu cách người dùng gõ khoảng thời gian: "", "hôm nay", "hôm qua", "tuần", "tháng", hoặc khoảng ngày tùy ý (dạng nội bộ "tu20261101den20261106", có thể có tiền tố "tungngay " = hiện từng ngày).
 function parseRange(arg, nowMs) {
+  let a = noAccent(arg), daily = false;
+  if (/^tungngay\b/.test(a)) { daily = true; a = a.replace(/^tungngay\s*/, ''); }
+  const c = a.match(/^tu(\d{8})den(\d{8})$/);
+  let r;
+  if (c) {
+    const f = c[1].slice(0, 4) + '-' + c[1].slice(4, 6) + '-' + c[1].slice(6), e = c[2].slice(0, 4) + '-' + c[2].slice(4, 6) + '-' + c[2].slice(6);
+    r = { key: 'tuychon', title: 'từ ' + showIso(f) + ' đến ' + showIso(e), from: f, to: isoOf(dayMs(e) + DAY_MS) };
+  } else r = parseBasicRange(a, nowMs);
+  return r && daily ? Object.assign(r, { daily: true }) : r;
+}
+function parseBasicRange(arg, nowMs) {
   const a = noAccent(arg);
   if (!a || /^(hom nay|nay|homnay|today)$/.test(a)) { const t = vnDate(0, nowMs); return { key: 'homnay', title: 'hôm nay (' + t.show + ')', from: t.iso, to: vnDate(1, nowMs).iso }; }
   if (/^(hom qua|qua|homqua|yesterday)$/.test(a)) { const t = vnDate(-1, nowMs); return { key: 'homqua', title: 'hôm qua (' + t.show + ')', from: t.iso, to: vnDate(0, nowMs).iso }; }
@@ -37,13 +53,31 @@ function checkReadPath(raw) {
 
 // Câu hỏi doanh số tự nhiên ("báo cáo doanh thu từng chi nhánh Tulibaby hôm nay") -> khoảng thời gian + từ khóa lọc chi nhánh
 const RANGE_RE = /\b(hom nay|hom qua|tuan nay|thang nay|today|yesterday|tuan|thang)\b/;
-const FILLER = new Set('doanh thu so bao cao kiem tra cua tung moi cac chi nhanh ngay em anh cho va nhe giup xem lay tat ca tong ket hom nay qua biet hay la nao xin dum minh toi voi theo bao nhieu thi ra the nhi di'.split(' '));
-function splitRevenueQuery(arg) {
-  const t = noAccent(arg);
+const FILLER = new Set('doanh thu so bao cao kiem tra cua tung moi cac chi nhanh ngay em anh cho va nhe giup xem lay tat ca tong ket hom nay qua biet hay la nao xin dum minh toi voi theo bao nhieu thi ra the nhi di tu den hien tai bay gio hang'.split(' '));
+const DATE_RE = /(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{4}|\d{2}))?(?!\d)/g;
+function splitRevenueQuery(arg, nowMs) {
+  const nowY = vnDate(0, nowMs).y, today = vnDate(0, nowMs).iso;
+  const found = [];
+  const raw = String(arg || '').replace(DATE_RE, (s, d, mo, y) => {   // "1/11/2026", "01-11", "1.11.26"
+    const yy = y ? (y.length === 2 ? 2000 + Number(y) : Number(y)) : nowY, iso = yy + '-' + pad(mo) + '-' + pad(d);
+    if (Number(mo) < 1 || Number(mo) > 12 || Number(d) < 1 || isoOf(dayMs(iso)) !== iso) return s;   // không phải ngày thật (31/02, 13/13)
+    found.push(iso); return ' ';
+  });
+  let t = noAccent(raw);
+  const tok = t.match(/\btu(\d{8})den(\d{8})\b/);   // dạng nội bộ khi gian hàng nhận lại từ bộ chọn nhiều gian
+  if (tok) { t = t.replace(tok[0], ' '); found.push(tok[1].slice(0, 4) + '-' + tok[1].slice(4, 6) + '-' + tok[1].slice(6), tok[2].slice(0, 4) + '-' + tok[2].slice(4, 6) + '-' + tok[2].slice(6)); }
+  const daily = /\b(tung ngay|moi ngay|theo ngay|hang ngay|tungngay)\b/.test(t);
+  t = t.replace(/\btungngay\b/g, ' ');
+  const pre = daily ? 'tungngay ' : '';
   const m = t.match(RANGE_RE);
   const rest = t.replace(RANGE_RE, ' ').split(' ').filter((w) => w && !FILLER.has(w));
+  if (found.length) {
+    let a = found[0], b = found.length > 1 ? found[1] : today;
+    if (b < a) { const x = a; a = b; b = x; }
+    return { range: pre + 'tu' + a.replace(/-/g, '') + 'den' + b.replace(/-/g, ''), filter: rest.filter((w) => !/^\d+$/.test(w)).join(' ') };
+  }
   if (!m && rest.some((w) => /^\d+$/.test(w) || w === 'nam' || w === 'ngoai')) return { range: t, filter: '' };   // khoảng thời gian không hỗ trợ: để parseRange báo không hiểu
-  return { range: m ? m[1] : '', filter: rest.join(' ') };
+  return { range: pre + (m ? m[1] : ''), filter: rest.join(' ') };
 }
 
 function createKiotViet(o) {
@@ -106,9 +140,10 @@ function createKiotViet(o) {
     },
 
     async revenue(arg, nowMs) {
-      const q = splitRevenueQuery(arg);
+      const q = splitRevenueQuery(arg, nowMs);
       const range = parseRange(q.range, nowMs);
-      if (!range) return 'Khoảng thời gian không hiểu được. Gõ: /doanhso (hôm nay), /doanhso hôm qua, /doanhso tuần, /doanhso tháng; thêm tên chi nhánh để lọc, ví dụ /doanhso hôm nay tulibaby';
+      if (!range) return 'Khoảng thời gian không hiểu được. Gõ: /doanhso (hôm nay), /doanhso hôm qua, /doanhso tuần, /doanhso tháng, /doanhso từ 1/11/2026 đến hôm nay, thêm "từng ngày" để xem theo ngày; thêm tên chi nhánh để lọc, ví dụ /doanhso hôm nay tulibaby';
+      if ((dayMs(range.to) - dayMs(range.from)) / DAY_MS > 62) return 'Khoảng thời gian dài quá (tối đa 62 ngày một lần). Anh chia nhỏ ra giúp em, ví dụ từng tháng.';
       const all = [];
       for (let cur = 0; cur < 20000; cur += 100) {
         const qs = new URLSearchParams({ pageSize: '100', currentItem: String(cur), fromPurchaseDate: range.from, toPurchaseDate: range.to, orderBy: 'purchaseDate', orderDirection: 'Asc' });
@@ -135,6 +170,24 @@ function createKiotViet(o) {
       for (const i of done) { const k = i.branchName || 'Chi nhánh ?'; const e = by.get(k) || { n: 0, sum: 0 }; e.n += 1; e.sum += Number(i.total) || 0; by.set(k, e); }
       const rows = [...by.entries()].sort((a, b) => b[1].sum - a[1].sum).map(([k, e]) => '• ' + k + ': ' + e.n + ' hóa đơn · ' + money(e.sum));
       const total = done.reduce((s, i) => s + (Number(i.total) || 0), 0);
+      if (range.daily) {
+        const days = new Map();
+        for (let ms = dayMs(range.from); ms < dayMs(range.to); ms += DAY_MS) days.set(isoOf(ms), new Map());
+        for (const i of done) {
+          const d = days.get(String(i.purchaseDate || '').slice(0, 10)); if (!d) continue;
+          const k = i.branchName || 'Chi nhánh ?'; const e = d.get(k) || { n: 0, sum: 0 }; e.n += 1; e.sum += Number(i.total) || 0; d.set(k, e);
+        }
+        const line = (day, d, detail) => {
+          const sum = [...d.values()].reduce((s, e) => s + e.sum, 0), n = [...d.values()].reduce((s, e) => s + e.n, 0);
+          if (!n) return day.slice(8) + '/' + day.slice(5, 7) + ': chưa có hóa đơn';
+          const per = detail ? [...d.entries()].sort((a, b) => b[1].sum - a[1].sum).map(([k, e]) => k + ' ' + money(e.sum) + ' (' + e.n + ')').join(' · ') + ' → ' : '';
+          return day.slice(8) + '/' + day.slice(5, 7) + ': ' + per + money(sum) + (detail ? '' : ' (' + n + ' hóa đơn)');
+        };
+        const foot = ['Cả kỳ:', ...rows, 'Tổng: ' + done.length + ' hóa đơn · ' + money(total) + (cancelled ? '  (không tính ' + cancelled + ' hóa đơn hủy/chưa hoàn thành)' : ''), 'Tính theo tiền hàng sau giảm giá của hóa đơn hoàn thành. Số trong ngoặc = số hóa đơn.'];
+        let out = [note + '📊 Doanh số từng ngày ' + range.title, ...[...days.entries()].map(([day, d]) => line(day, d, true)), '', ...foot].join('\n');
+        if (out.length > 3800) out = [note + '📊 Doanh số từng ngày ' + range.title, ...[...days.entries()].map(([day, d]) => line(day, d, false)), '', ...foot].join('\n');
+        return out;
+      }
       return [note + '📊 Doanh số ' + range.title, ...rows, 'Tổng: ' + done.length + ' hóa đơn · ' + money(total) + (cancelled ? '  (không tính ' + cancelled + ' hóa đơn hủy/chưa hoàn thành)' : ''),
         'Tính theo tiền hàng sau giảm giá của hóa đơn hoàn thành.'].join('\n');
     },
@@ -301,7 +354,7 @@ function createMultiKiotViet(shops, o) {
 
     async revenue(arg, nowMs) {
       if (!multi) return list.length ? list[0].api.revenue(arg, nowMs) : 'Chưa cấu hình KiotViet.';
-      const q = splitRevenueQuery(arg);
+      const q = splitRevenueQuery(arg, nowMs);
       const c = choose(q.filter);
       const sub = (q.range + ' ' + c.rest).trim();
       const res = await each(c.chosen, (api) => api.revenue(sub, nowMs));

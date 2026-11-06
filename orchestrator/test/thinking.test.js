@@ -102,16 +102,39 @@ test('splitRevenueQuery: tách khoảng thời gian và tên chi nhánh trong c�
   assert.equal(splitRevenueQuery('năm ngoái').range, 'nam ngoai');
 });
 
-test('quick.match: câu hỏi doanh thu/tồn kho đi thẳng API, việc khác vẫn về AI', () => {
+test('quick.match: câu thường về doanh thu/tồn kho KHÔNG đi đường tắt lệnh, để AI nhận và trả lời trực tiếp', () => {
   const q = createQuick({});
-  const a = q.match('Em kiểm tra và báo cáo cho anh doanh thu của từng chi nhánh Tulibaby ngày hôm nay');
-  assert.equal(a.name, 'doanhso'); assert.equal(a.soft, true);
-  assert.deepEqual([q.match('tồn kho nồi chiên').name, q.match('tồn kho nồi chiên').arg], ['ton', 'nồi chiên']);
-  assert.equal(q.match('kiểm tra tồn kho'), null);
-  assert.equal(q.match('xóa file doanh thu cũ'), null);
-  assert.equal(q.match('/doanhso hôm nay'), null);          // đã là lệnh
-  assert.equal(q.match('hôm nay trời đẹp'), null);
-  assert.ok(q.has('doanhso') && q.has('ton') && q.has('hanghoa'));
+  assert.equal(q.match('Em kiểm tra và báo cáo cho anh doanh thu của từng chi nhánh Tulibaby ngày hôm nay'), null);
+  assert.equal(q.match('Cho anh biết doanh thu từng ngày của từng chi nhánh Tulibaby từ 1/11/2026 đến hiện tại'), null);
+  assert.equal(q.match('tồn kho nồi chiên'), null);
+  assert.equal(q.match('/doanhso hôm nay'), null);
+  assert.ok(q.has('doanhso') && q.has('ton') && q.has('hanghoa'));   // lệnh gõ tay vẫn dùng được
+});
+
+test('splitRevenueQuery: khoảng ngày tùy ý và "từng ngày"', () => {
+  const now = Date.UTC(2026, 10, 6, 5);   // 06/11/2026 12:00 giờ VN
+  assert.deepEqual(splitRevenueQuery('Cho anh biết doanh thu từng ngày của từng chi nhánh Tulibaby từ 1/11/2026 đến hiện tại', now), { range: 'tungngay tu20261101den20261106', filter: 'tulibaby' });
+  assert.deepEqual(splitRevenueQuery('doanh thu từ 01/11 đến 03/11', now), { range: 'tu20261101den20261103', filter: '' });
+  assert.deepEqual(splitRevenueQuery('tungngay tu20261101den20261106 tulibaby', now), { range: 'tungngay tu20261101den20261106', filter: 'tulibaby' });   // gian hàng nhận lại dạng nội bộ
+  assert.doesNotMatch(splitRevenueQuery('doanh thu 31/02', now).range, /^tu\d{8}den/);   // ngày không có thật thì không coi là khoảng ngày
+});
+
+test('kiotviet.revenue: từng ngày theo chi nhánh từ 1/11 đến hôm nay', async () => {
+  const { createKiotViet } = require('../src/kiotviet');
+  const inv = [
+    { purchaseDate: '2026-11-01T09:00:00', status: 1, total: 1000000, branchName: 'Tulibaby A' },
+    { purchaseDate: '2026-11-01T10:00:00', status: 1, total: 500000, branchName: 'Tulibaby B' },
+    { purchaseDate: '2026-11-03T10:00:00', status: 1, total: 200000, branchName: 'Tulibaby A' },
+    { purchaseDate: '2026-11-03T11:00:00', status: 2, total: 999999, branchName: 'Tulibaby A' },
+  ];
+  const f = async (url) => /connect\/token/.test(url) ? { ok: true, status: 200, json: async () => ({ access_token: 'T', expires_in: 3600 }) } : { ok: true, status: 200, json: async () => ({ total: inv.length, data: inv }) };
+  const kv = createKiotViet({ clientId: 'i', clientSecret: 's', retailer: 'x', fetch: f, gapMs: 0, sleep: async () => {} });
+  const r = await kv.revenue('doanh thu từng ngày từ 1/11/2026 đến hiện tại', Date.UTC(2026, 10, 3, 5));
+  assert.match(r, /Doanh số từng ngày từ 01\/11\/2026 đến 03\/11\/2026/);
+  assert.match(r, /01\/11: Tulibaby A 1\.000\.000đ \(1\) · Tulibaby B 500\.000đ \(1\) → 1\.500\.000đ/);
+  assert.match(r, /02\/11: chưa có hóa đơn/);
+  assert.match(r, /03\/11: Tulibaby A 200\.000đ \(1\) → 200\.000đ/);
+  assert.match(r, /Tổng: 3 hóa đơn · 1\.700\.000đ/);
 });
 
 test('/doanhso lọc theo tên chi nhánh; chưa cấu hình thì chỉ cách khai khóa', async () => {

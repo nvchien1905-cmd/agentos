@@ -61,3 +61,9 @@ test('câu hỏi phức tạp (danh sách sản phẩm, N ngày) không lấy s�
   assert.equal(called, 0);
   assert.match(await build(kv, 'doanh thu hôm qua các chi nhánh', Date.now()), /DỮ LIỆU KIOTVIET/);
 });
+
+test('build: hỏi theo khoảng ngày + từng ngày thì lấy đúng khoảng đó cho đúng gian (không lấy hôm nay/hôm qua)', async () => {
+  const r = await build(kv, 'Cho anh biết doanh thu từng ngày của từng chi nhánh Tulibaby từ 1/11/2026 đến hiện tại', NOW);
+  assert.match(r, /^\[DỮ LIỆU KIOTVIET/); assert.match(r, /Doanh số từng ngày từ 01\/11\/2026 đến 05\/11\/2026/);
+  assert.match(r, /05\/11: .*Thượng Mỗ 100\.000đ/); assert.match(r, /01\/11: chưa có hóa đơn/); assert.doesNotMatch(r, /Phương Đình/); assert.doesNotMatch(r, /hôm qua/);
+});

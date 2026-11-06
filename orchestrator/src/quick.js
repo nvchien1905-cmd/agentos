@@ -310,7 +310,8 @@ function createQuick(o) {
     if (what.length >= 2) return { name: 'ton', arg: String(text).trim().split(/\s+/).slice(-what.split(' ').length).join(' '), soft: true };   // lấy lại chữ CÓ DẤU của tên sản phẩm
     return null;
   };
-  const match = (text) => (od && od.looksLikeAuthResponse(text) ? { name: 'onedrive', arg: String(text).trim() } : salesIntent(text));
+  // Câu hỏi thường về doanh thu/tồn kho KHÔNG còn đi đường tắt lệnh: AI nhận và trả lời trực tiếp (số liệu KiotViet được lấy sẵn đính vào câu hỏi, xem kvcontext.js)
+  const match = (text) => (od && od.looksLikeAuthResponse(text) ? { name: 'onedrive', arg: String(text).trim() } : null);
   return { names: NAMES, has: (n) => NAMES.includes(n), run, match, appKey };
 }
 

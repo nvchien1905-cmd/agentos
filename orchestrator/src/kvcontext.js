@@ -29,9 +29,15 @@ async function build(kv, text, nowMs) {
   try {
     if (!kv || !kv.configured || !kv.configured() || !wants(text)) return '';
     const t = noAccent(text), t0 = Date.now();
-    if (COMPLEX.test(t)) return '';
     const shopArg = kv.pick ? kv.pick(text).join(' ') : '';
     const blocks = [];
+    // Hỏi theo khoảng ngày cụ thể / từng ngày ("từ 1/11/2026 đến hiện tại", "từng ngày"): lấy đúng khoảng đó, không lấy hôm nay/hôm qua
+    if (/\b(doanh thu|doanh so|ban duoc)\b/.test(t) && (/\d{1,2}[/.-]\d{1,2}/.test(String(text)) || /\b(tung ngay|moi ngay|theo ngay|hang ngay)\b/.test(t))) {
+      try { blocks.push(await withTimeout(kv.revenue(String(text), nowMs), FETCH_TIMEOUT_MS * 3)); }
+      catch (e) { blocks.push('⚠️ Không lấy được doanh số theo khoảng ngày: ' + e.message); }
+      return '[DỮ LIỆU KIOTVIET — bot đã lấy sẵn bằng API chính thức (chỉ đọc), KHÔNG cần đăng nhập web. Dùng đúng số liệu này để trả lời chủ máy, trả lời trực tiếp và ngắn gọn; thiếu hoặc lỗi thì nói thật là thiếu/lỗi, đừng bịa.]\n' + blocks.join('\n\n') + '\n[HẾT DỮ LIỆU KIOTVIET]\n\n';
+    }
+    if (COMPLEX.test(t)) return '';
     for (const r of ranges(t)) {
       if (Date.now() - t0 > TOTAL_MS) { blocks.push('⚠️ Quá thời gian lấy sẵn, chưa có doanh số ' + r + '.'); continue; }
       try { blocks.push(await withTimeout(kv.revenue((r + ' ' + shopArg).trim(), nowMs), FETCH_TIMEOUT_MS)); }

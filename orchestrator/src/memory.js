@@ -118,6 +118,7 @@ function createMemory(o) {
   async function afterJob(job, eng, res) {
     if (!cfg.enabled || !res || !res.ok) return { rotate: false };
     const scope = db.scopeOf(job);
+    if (job.project && projects && projects.titleFromPrompt) { try { projects.titleFromPrompt(job.project, job.prompt); } catch (e) { /* bỏ qua */ } }   // dự án tự tạo: đặt tên theo câu đầu tiên
     // Chủ máy dặn rõ "nhớ…/từ nay…/luôn luôn…/đừng bao giờ…": ghi thẳng vào sổ tay (không phụ thuộc có khóa mô hình nén hay chưa)
     try {
       const p = String(job.prompt || '').trim();
@@ -169,6 +170,31 @@ function createMemory(o) {
     return { done: true, via, compressed: eligible.length, notesAdded: ap.added, replaced: ap.replaced, upTo: eligible[eligible.length - 1].id };
   }
 
+  // Dự án vừa được GỘP (trang Cài đặt): nhờ AI sắp xếp lại sổ tay đích cho hợp lý — chuyển mục về đúng chương/phần, bỏ mục trùng/lỗi thời, rút điều đáng nhớ từ tóm tắt các cuộc trò chuyện đã gộp.
+  // Gọi định kỳ (mỗi phút, rẻ vì chỉ đọc một tệp nhỏ); mỗi dự án một lần, xong thì ghi kết quả vào dự án (lastOrganized) để trang Cài đặt hiện.
+  const organizing = new Set();
+  async function organizePending() {
+    if (!projects || !projects.pending) return 0;
+    let n = 0;
+    for (const p of projects.pending()) {
+      if (organizing.has(p.id)) continue;
+      organizing.add(p.id);
+      try {
+        const sums = [];
+        for (const sid of ((p.pendingOrganize && p.pendingOrganize.from) || [])) {
+          const s = projects.get(sid); if (!s) continue;
+          for (const chat of new Set([s.chat, s.home, s.createdBy].filter(Boolean))) { const t = db.kvGet(kSum(chat + '#' + sid)); if (t) sums.push('Cuộc trò chuyện "' + s.name + '": ' + t); }
+        }
+        const r = await bookFor(p.id).reorganize({ summaries: sums.join('\n\n') });
+        projects.clearPending(p.id, { moved: r.moved, removed: r.removed, dropped: r.dropped, notes: r.notes, via: r.via || 'không cần AI' });
+        log('sắp xếp lại sổ tay dự án "' + p.name + '": chuyển ' + r.moved + ' mục, bỏ ' + (r.removed + r.dropped) + ', thêm ' + r.notes + ' ghi chú' + (r.via ? ' (' + r.via + ')' : ' (không có mô hình: chỉ dọn trùng)'));
+        n++;
+      } catch (e) { log('sắp xếp lại sổ tay ' + p.id + ' lỗi: ' + e.message); }
+      finally { organizing.delete(p.id); }
+    }
+    return n;
+  }
+
   // Dọn định kỳ (gọi từ bộ điều phối): xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài.
   async function housekeeping() {
     const r = await book.ingestInbox();
@@ -189,7 +215,7 @@ function createMemory(o) {
       summary: summaryOf(chat), summaryUpTo: uptoOf(chat), cfg, summarizer: summarizer ? summarizer.provider() : null };
   }
 
-  return { pack, afterJob, addFact, forgetFact, resetChat, flush, info, maybeSummarize, summarizeSoon, housekeeping, book, bookFor, cfg };
+  return { organizePending, pack, afterJob, addFact, forgetFact, resetChat, flush, info, maybeSummarize, summarizeSoon, housekeeping, book, bookFor, cfg };
 }
 
 module.exports = { createMemory, SECRET_RE };

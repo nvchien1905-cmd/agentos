@@ -141,7 +141,7 @@ test('cổng duyệt: việc trong dự án chỉ được đọc/ghi trong thư
 function botOf(P, db, extra) {
   const jobs = []; const worker = { wake() {}, engineNames: () => ['claude', 'codex'], currentJobId: () => null, engineStatus: () => [], cancelRunning: () => false };
   const bot = createBot(Object.assign({ db, worker, allowed: new Set(['111', '222']), profiles: [], isAdmin: (u) => String(u) === '111', projects: P, quietAck: true }, extra || {}));
-  const say = async (uid, text) => bot.handle({ from: { id: uid }, chat: { id: uid, type: 'private' }, text });
+  const say = async (uid, text) => { const r = await bot.handle({ from: { id: uid }, chat: { id: uid, type: 'private' }, text }); return r && typeof r === 'object' && r.buttons ? r.text : r; };      // /duan trả { text, buttons }: các test cũ chỉ đọc chữ
   return { say, jobs };
 }
 
@@ -161,8 +161,8 @@ test('Telegram /duan: tạo, vào, việc mới gắn đúng dự án, #tên h�
   assert.match(await say(111, '/duan ai khong-co'), /chưa bật/);
   // /moi trong dự án: chỉ dự án này đặt mốc mới
   const idp = db.addJob('111', 'cũ', null, null, 'main', 'ke-toan-2026'); db.claimNext(); db.finishJob(idp, 'done', { result: 'x' });
-  await say(111, '/moi'); assert.equal(db.kvGet('ctxfrom:111#ke-toan-2026'), null);                  // /moi thường: giữ ngữ cảnh
-  await say(111, '/moi xoa'); assert.equal(db.kvGet('ctxfrom:111#ke-toan-2026'), String(idp)); assert.equal(db.kvGet('ctxfrom:111'), null);
+  await say(111, '/moi tiep'); assert.equal(db.kvGet('ctxfrom:111#ke-toan-2026'), null);            // /moi tiep: chỉ mở phiên AI mới, giữ ngữ cảnh
+  await say(111, '/moi xoa'); assert.equal(db.kvGet('ctxfrom:111#ke-toan-2026'), String(idp)); assert.equal(db.kvGet('ctxfrom:111'), null);   // /moi xoa: quên ngữ cảnh, chỉ riêng dự án này
   // người thường (222): chưa được gán thì không vào/không hỏi; được gán thì vào; không tạo/xóa được
   assert.match(await say(222, '/duan Kế toán 2026'), /chưa được gán/); assert.match(await say(222, '#ke-toan-2026 xin chào'), /chưa được gán/);
   assert.match(await say(222, '/duan moi Lén'), /chỉ dành cho chủ máy/);

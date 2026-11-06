@@ -419,10 +419,26 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         var h = '<h2>Dự án</h2><div class="card"><p class="mute">Mỗi dự án có <b>thư mục tệp</b>, <b>chỉ dẫn</b>, <b>sổ tay</b> và <b>lịch sử</b> riêng. Dữ liệu do AgentOS giữ nên mọi AI (Claude, Codex, Gemini, DeepSeek) dùng chung: Claude hết hạn mức thì Codex làm tiếp đúng dự án đó. Trên Telegram: /duan, /duan &lt;tên&gt;, #tên-dự-án &lt;việc&gt;.</p>' +
           '<div class="row"><input id="pn" placeholder="Tên dự án mới, ví dụ Kế toán 2026" style="flex:1;min-width:180px"><button class="b p" id="pc">Tạo dự án</button></div><p class="mute">Thư mục: ' + esc(r.root) + '</p></div>';
         if (!r.list.length) h += '<div class="card"><p class="mute">Chưa có dự án nào.</p></div>';
+        var live = r.list.filter(function (p) { return !p.mergedInto; });
+        function organizeNote(p) {
+          if (p.pendingOrganize) return '<span class="mute">⏳ AI đang sắp xếp lại sổ tay…</span>';
+          var o = p.lastOrganized; if (!o) return '';
+          return '<span class="mute">✅ AI đã sắp xếp lại ' + esc(new Date(o.at).toLocaleString('vi-VN')) + ' (chuyển ' + (o.moved || 0) + ' mục, bỏ ' + ((o.removed || 0) + (o.dropped || 0)) + ', thêm ' + (o.notes || 0) + ' ghi chú)</span>';
+        }
+        if (live.length >= 2) {
+          h += '<div class="card"><h3>🔀 Gộp dự án</h3><p class="mute">Mỗi cuộc trò chuyện mới (/moi) là một dự án với một cuốn sổ tay riêng. Tick các dự án muốn gộp: sổ tay, chỉ dẫn, tệp và lịch hẹn được đổ vào dự án giữ lại, rồi <b>AI sắp xếp lại sổ tay</b> cho hợp lý (gom cùng chủ đề vào một chương, bỏ mục trùng hoặc lỗi thời). Dự án bị gộp được cất đi, thư mục gốc vẫn còn làm bản dự phòng.</p><table>' +
+            live.map(function (p) { return '<tr><td><input type="checkbox" data-mg="' + esc(p.id) + '"></td><td>' + esc(p.name) + (p.auto ? ' <span class="mute">(từ /moi)</span>' : '') + (p.archived ? ' <span class="mute">(đã cất)</span>' : '') + '</td><td class="mute">' + p.book.entries + ' mục · ' + p.book.chapters + ' chương</td><td>' + organizeNote(p) + '</td></tr>'; }).join('') + '</table>' +
+            '<div class="row" style="margin-top:8px"><label class="mute">Gộp vào <select id="mgt"><option value="">➕ Dự án mới…</option>' + live.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('') + '</select></label>' +
+            '<input id="mgn" placeholder="Tên dự án mới (nếu chọn Dự án mới)" style="flex:1;min-width:200px"><button class="b p" id="mgb">Gộp các dự án đã tick</button></div></div>';
+        }
+        var merged = r.list.filter(function (p) { return p.mergedInto; });
+        if (merged.length) h += '<div class="card"><p class="mute">Đã gộp: ' + merged.map(function (p) { return esc(p.name) + ' → ' + esc(p.mergedIntoName); }).join(' · ') + '</p></div>';
         r.list.forEach(function (p, i) {
+          if (p.mergedInto) return;
           var opts = '<option value="">Tự chọn</option>' + r.engines.map(function (e) { return '<option value="' + esc(e) + '"' + (p.engine === e ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join('');
           h += '<div class="card"><h3>📁 ' + esc(p.name) + (p.archived ? ' <span class="mute">(đã cất)</span>' : '') + '</h3>' +
-            '<p class="mute">' + p.usage.docs + ' tài liệu · ' + p.usage.results + ' kết quả · mã <code>' + esc(p.id) + '</code> · ' + esc(p.dir) + '</p>' +
+            '<div class="row"><label class="mute" style="flex:1;min-width:220px">Tên dự án <input id="pnm' + i + '" value="' + esc(p.name) + '" maxlength="60" style="width:100%;box-sizing:border-box"></label></div>' +
+            '<p class="mute">' + p.usage.docs + ' tài liệu · ' + p.usage.results + ' kết quả · sổ tay ' + p.book.entries + ' mục / ' + p.book.chapters + ' chương · mã <code>' + esc(p.id) + '</code> · ' + esc(p.dir) + '</p>' + (organizeNote(p) ? '<p>' + organizeNote(p) + '</p>' : '') +
             '<div class="row"><label class="mute">AI ưu tiên <select id="pe' + i + '">' + opts + '</select></label><label class="mute"><input type="checkbox" id="pc' + i + '"' + (p.chungtu ? ' checked' : '') + '> Đọc chứng từ tự động (hóa đơn, phiếu) → sổ Excel</label><label class="mute"><input type="checkbox" id="ph' + i + '"' + (p.hoidap ? ' checked' : '') + '> Kho kiến thức hỏi đáp cho nhân viên bán hàng</label><label class="mute">Người được dùng (ID Telegram, cách nhau dấu phẩy) <input id="pu' + i + '" value="' + esc(p.users.join(', ')) + '"></label></div>' +
             '<p class="mute" style="margin:8px 0 2px">⏰ Lịch tự làm (giờ Việt Nam; kết quả gửi về Telegram của chủ máy):</p><ul>' + (p.schedule && p.schedule.length ? p.schedule.map(function (j) { return '<li>' + esc(j.time) + ' · ' + (j.days && j.days.length && j.days.length < 7 ? j.days.map(function (d) { return ['', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'][d]; }).join(',') : 'mỗi ngày') + ' · ' + esc(j.text.slice(0, 120)) + ' <button class="b" data-sd="' + i + ':' + j.id + '">Xóa</button></li>'; }).join('') : '<li class="mute">(chưa có)</li>') + '</ul>' +
             '<div class="row"><input id="st' + i + '" type="time" value="08:00"><input id="sw' + i + '" placeholder="Thứ (để trống = mỗi ngày): 1,2,3,4,5 = T2–T6" style="width:210px"><input id="sx' + i + '" placeholder="Việc giao cho AI, ví dụ: lập báo cáo doanh số hôm qua" style="flex:1;min-width:200px"><button class="b" data-sa="' + i + '">Thêm lịch</button></div>' +
@@ -431,9 +447,16 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         });
         set(h);
         on('pc', function () { api('POST', 'projects/create', { name: document.getElementById('pn').value }).then(function () { toast('Đã tạo dự án'); render(); }).catch(fail); });
+        on('mgb', function () {
+          var ids = [].map.call(main.querySelectorAll('input[data-mg]:checked'), function (c) { return c.getAttribute('data-mg'); });
+          var into = document.getElementById('mgt').value, name = document.getElementById('mgn').value;
+          if (!ids.length) return fail(new Error('Tick ít nhất một dự án để gộp.'));
+          if (ask('Gộp ' + ids.length + ' dự án đã tick ' + (into ? 'vào dự án đã chọn' : 'thành dự án mới "' + name + '"') + '? Dự án bị gộp được cất đi (thư mục gốc vẫn giữ làm bản dự phòng); AI sẽ sắp xếp lại sổ tay sau ít phút.'))
+            api('POST', 'projects/merge', { ids: ids, into: into, name: name, confirm: true }).then(function (x) { toast('Đã gộp: ' + x.entries + ' mục sổ tay, ' + x.files + ' tệp. AI đang sắp xếp lại…'); render(); }).catch(fail);
+        });
         [].forEach.call(main.querySelectorAll('button[data-ps]'), function (b) { b.onclick = function () {
           var i = b.getAttribute('data-ps'), p = r.list[i];
-          api('POST', 'projects/update', { id: p.id, engine: document.getElementById('pe' + i).value || null, chungtu: document.getElementById('pc' + i).checked, hoidap: document.getElementById('ph' + i).checked, users: document.getElementById('pu' + i).value })
+          api('POST', 'projects/update', { id: p.id, name: document.getElementById('pnm' + i).value, engine: document.getElementById('pe' + i).value || null, chungtu: document.getElementById('pc' + i).checked, hoidap: document.getElementById('ph' + i).checked, users: document.getElementById('pu' + i).value })
             .then(function () { return api('POST', 'projects/instructions', { id: p.id, text: document.getElementById('pi' + i).value }); }).then(function () { toast('Đã lưu'); }).catch(fail); }; });
         [].forEach.call(main.querySelectorAll('button[data-sa]'), function (b) { b.onclick = function () {
           var i = b.getAttribute('data-sa'), p = r.list[i], d = document.getElementById('sw' + i).value.split(/[^1-7]+/).filter(Boolean).map(Number);

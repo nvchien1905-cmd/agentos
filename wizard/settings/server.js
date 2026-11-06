@@ -20,6 +20,7 @@ const fullaccess = require('../lib/fullaccess');
 const odauth = require('../lib/odauth');
 const synclist = require('../lib/synclist');
 const { createProjects } = require('../../orchestrator/src/projects');
+const { mergeProjects } = require('../../orchestrator/src/projectMerge');
 const { createBackup } = require('../../orchestrator/src/backup');
 const { createUsage } = require('../../orchestrator/src/usage');
 const { createAuditLog } = require('../../orchestrator/src/auditlog');
@@ -693,8 +694,20 @@ function createSettings(o) {
     async 'GET /api/projects'() {
       const text = readEnv() || '';
       const engines = envVal(text, 'ENGINE_ORDER').split(',').map((s) => s.trim()).filter(Boolean);
-      const list = projectsLib().list({ all: true }).map((p) => Object.assign({}, p, { usage: projectsLib().usage(p.id), instructions: projectsLib().rawInstructions(p.id) }));
-      return { list, engines, root: projectsLib().root() };
+      const P = projectsLib();
+      const bookOf = (p) => { try { const ch = createBook({ rootDir: P.bookDir(p.id) }).list(); return { chapters: ch.length, entries: ch.reduce((s, c) => s + c.entries.length, 0) }; } catch (e) { return { chapters: 0, entries: 0 }; } };
+      const all = P.list({ all: true });
+      const nameOf = (id) => { const t = all.find((x) => x.id === id); return t ? t.name : id; };
+      const list = all.map((p) => Object.assign({}, p, { usage: P.usage(p.id), instructions: P.rawInstructions(p.id), book: bookOf(p), mergedIntoName: p.mergedInto ? nameOf(p.mergedInto) : '' }));
+      return { list, engines, root: P.root() };
+    },
+    // GỘP DỰ ÁN: đổ sổ tay/chỉ dẫn/tệp/lịch của các dự án đã chọn vào một dự án đích (có sẵn hoặc tạo mới); sau đó bộ điều phối nhờ AI sắp xếp lại sổ tay (xem memory.organizePending).
+    async 'POST /api/projects/merge'(b) {
+      if (b.confirm !== true) throw new Error('Cần xác nhận');
+      const P = projectsLib();
+      const r = mergeProjects({ projects: P, ids: Array.isArray(b.ids) ? b.ids : [], into: b.into ? String(b.into) : '', name: b.name, by: 'settings' });
+      try { chownTree(P.root()); } catch (e) { /* bỏ qua */ }
+      return Object.assign({ ok: true }, r);
     },
     async 'POST /api/projects/create'(b) { const p = projectsLib().create(b.name, 'settings'); fixProjectOwner(p); return { project: p }; },
     async 'POST /api/projects/update'(b) {

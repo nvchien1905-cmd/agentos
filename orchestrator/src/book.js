@@ -40,6 +40,11 @@ const ORGANIZE_SYSTEM = 'Bạn sắp xếp các dòng ghi nhớ CHƯA PHÂN LO�
 const MERGE_SYSTEM = 'Bạn dọn một chương sổ tay quá dài. Gộp các dòng trùng ý, bỏ dòng lỗi thời/mâu thuẫn (giữ bản mới hơn), giữ nguyên ngày và thông tin cụ thể (tên, số, giờ). Viết lại tóm tắt chương 1-2 câu. ' +
   'Chỉ trả về JSON: {"summary":"<tóm tắt>","entries":[{"date":"YYYY-MM-DD","text":"<một dòng>"}]}';
 
+const REORG_SYSTEM = 'Bạn là biên tập viên một cuốn SỔ TAY vừa được GỘP từ nhiều dự án/cuộc trò chuyện. Hãy sắp xếp lại cho hợp lý như một cuốn sách: mục cùng chủ đề gom về MỘT chương (dùng lại chương đã có nếu hợp; chương mới tên 2-4 từ tiếng Việt), mỗi chương thuộc một PHẦN cố định (số). ' +
+  'Mục nằm sai chương thì chuyển ("moves"). Mục trùng ý hoặc lỗi thời/mâu thuẫn với mục mới hơn thì bỏ ("drop", giữ mục mới hơn). Chỉ liệt kê mục CẦN chuyển hoặc bỏ; mục đã đúng chỗ không liệt kê. Viết lại tóm tắt (1-2 câu) cho chương bị thay đổi. ' +
+  '"notes": tối đa 6 điều đáng nhớ LÂU DÀI rút từ tóm tắt các cuộc trò chuyện mà sổ tay chưa có (mỗi điều "chapter", "part", "text" một dòng ≤200 ký tự). KHÔNG chép mật khẩu/khóa/token. Không bịa. ' +
+  'Chỉ trả về JSON: {"moves":[{"id":"<mã>","chapter":"<tên chương>","part":<số phần>}],"drop":["<mã>"],"summaries":{"<tên chương>":"<tóm tắt>"},"notes":[{"chapter":"...","part":4,"text":"..."}]}';
+
 function createBook(o) {
   o = o || {};
   const summarizer = o.summarizer || null, log = o.log || (() => {});
@@ -359,7 +364,82 @@ function createBook(o) {
     return items.length;
   }
 
-  return { PARTS, partTitle, numberAll, search, classifyPart, root, inboxFile, list, get, save, parse, render, toc, tocText, tocHash, hashOf, relevant, place, chapterText, put, forget, addNote, applyNotes, ingestInbox, organizeGeneral, compact, compactAll, migrateLegacy, modelContext, fileOf, ADD_SYSTEM, SECRET_RE, slugOf, cfg };
+  // ---------- gộp sổ tay / sắp xếp lại ----------
+  // Gỡ mục theo cặp (chương, mã): mã mục là băm nội dung nên cùng mã có thể có ở chương khác — chỉ gỡ đúng chương chỉ định.
+  function removeEntries(pairs, why) {
+    const by = new Map(); for (const p of pairs) { if (!by.has(p.slug)) by.set(p.slug, new Set()); by.get(p.slug).add(String(p.id)); }
+    let n = 0;
+    for (const [slug, ids] of by) {
+      const ch = get(slug); if (!ch) continue;
+      const gone = ch.entries.filter((e) => ids.has(e.id)); if (!gone.length) continue;
+      ch.entries = ch.entries.filter((e) => !ids.has(e.id)); archive(ch, gone, null); n += gone.length;
+      if (ch.entries.length) save(ch); else { try { fs.copyFileSync(fileOf(slug), fileOf(slug) + '.bak'); fs.rmSync(fileOf(slug)); } catch (e) { /* bỏ qua */ } }
+    }
+    if (n) writeToc();
+    return n;
+  }
+  // Đổ toàn bộ chương/mục của sổ tay khác vào sổ tay này: cùng chủ đề gom cạnh nhau, trùng ý thì thay bản cũ (giữ ngày gốc). Trả số mục đã thêm.
+  function mergeFrom(src) {
+    let n = 0;
+    for (const c of src.list()) {
+      const isNew = !get(slugOf(c.title));
+      c.entries.forEach((e, i) => {
+        const r = put(c.title, e.text, { date: e.date, part: c.part || undefined, summary: isNew && i === 0 ? c.summary : undefined });
+        if (r.ok && !r.duplicate) n++;
+      });
+    }
+    return n;
+  }
+  // Dọn không cần AI: xếp mục trong chương theo ngày, bỏ mục gần như trùng (giữ mục mới hơn). Trả số mục đã bỏ.
+  function tidy() {
+    let dropped = 0;
+    for (const ch of list()) {
+      const sorted = ch.entries.slice().sort((a, b) => a.date.localeCompare(b.date)), keep = [], gone = [];
+      for (let i = sorted.length - 1; i >= 0; i--) { const e = sorted[i]; if (keep.some((k) => jaccard(k.text, e.text) >= 0.85)) gone.push(e); else keep.push(e); }
+      keep.reverse();
+      if (gone.length || keep.some((e, i) => e !== ch.entries[i])) { archive(ch, gone, null); ch.entries = keep; ch.keepDate = true; save(ch); dropped += gone.length; }
+    }
+    return dropped;
+  }
+  // Sắp xếp lại sau khi GỘP: dọn trùng, rồi nhờ mô hình chuyển mục về đúng chương/phần, bỏ mục lỗi thời, viết lại tóm tắt và rút thêm điều đáng nhớ từ tóm tắt các cuộc trò chuyện đã gộp.
+  // opts.summaries: văn bản tóm tắt các cuộc trò chuyện vừa gộp. Không có mô hình thì chỉ dọn không cần AI.
+  async function reorganize(opts) {
+    opts = opts || {};
+    const res = { dropped: tidy(), moved: 0, removed: 0, notes: 0, via: null };
+    if (!summarizer || !summarizer.available()) { numberAll(); writeToc(); return res; }
+    const all = []; for (const c of list()) for (const e of c.entries) all.push({ c, e });
+    const CH = 120;
+    for (let i = 0, k = 0; i < all.length && k < 5; i += CH, k++) {
+      const part = all.slice(i, i + CH);
+      const chapters = list().map((c) => '- ' + (c.part ? c.part + '.' + c.no + ' ' : '') + c.title + ': ' + cut(c.summary, 100)).join('\n');
+      const user = 'CÁC PHẦN CỐ ĐỊNH: ' + partsText() + '\n\nCÁC CHƯƠNG HIỆN CÓ:\n' + chapters +
+        (k === 0 && opts.summaries ? '\n\nTÓM TẮT CÁC CUỘC TRÒ CHUYỆN VỪA GỘP (rút điều đáng nhớ LÂU DÀI chưa có trong sổ tay vào "notes"):\n' + cut(opts.summaries, 3000) : '') +
+        '\n\nCÁC MỤC CẦN XEM XÉT:\n' + part.map((x) => '{' + x.e.id + '} [' + x.c.title + '] ' + cut(x.e.text, 180)).join('\n');
+      const r = await summarizer.run(REORG_SYSTEM, user), j = r && parseJson(r.text);
+      if (!j) continue;
+      res.via = r.via;
+      const byId = new Map(); for (const x of part) { if (!byId.has(x.e.id)) byId.set(x.e.id, []); byId.get(x.e.id).push(x); }
+      const gone = [];
+      for (const m of (Array.isArray(j.moves) ? j.moves : []).slice(0, 200)) {
+        const xs = m && byId.get(String(m.id)), title = m && String(m.chapter || '').trim();
+        if (!xs || !title) continue;
+        for (const x of xs) {
+          if (slugOf(title) === x.c.slug) continue;
+          const put1 = put(title, x.e.text, { date: x.e.date, part: m.part, autoReplace: false });
+          if (put1.ok) { gone.push({ slug: x.c.slug, id: x.e.id }); res.moved++; }
+        }
+      }
+      for (const id of (Array.isArray(j.drop) ? j.drop : []).slice(0, 100)) for (const x of (byId.get(String(id)) || [])) { gone.push({ slug: x.c.slug, id: x.e.id }); res.removed++; }
+      removeEntries(gone);
+      if (j.summaries && typeof j.summaries === 'object') for (const [title, sm] of Object.entries(j.summaries)) { const ch = get(slugOf(title)); if (ch && typeof sm === 'string' && sm.trim()) { ch.summary = cut(sm, 300); save(ch); } }
+      if (k === 0 && Array.isArray(j.notes)) res.notes = applyNotes(j.notes).added;
+    }
+    res.dropped += tidy();
+    numberAll(); writeToc();
+    return res;
+  }
+
+  return { removeEntries, mergeFrom, tidy, reorganize, PARTS, partTitle, numberAll, search, classifyPart, root, inboxFile, list, get, save, parse, render, toc, tocText, tocHash, hashOf, relevant, place, chapterText, put, forget, addNote, applyNotes, ingestInbox, organizeGeneral, compact, compactAll, migrateLegacy, modelContext, fileOf, ADD_SYSTEM, SECRET_RE, slugOf, cfg };
 }
 
 module.exports = { createBook, SECRET_RE, ENTRY_RE, PARTS };

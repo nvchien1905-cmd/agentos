@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.5",
-  "file": "agentos-update-2026.11.06.5.tar.gz",
-  "size": 373306,
-  "sha256": "3990b2043cb7e4a5ab8a3e12c9a26063bb3258cb951ac7fb72f26b9d1b945ba5",
+  "version": "2026.11.06.6",
+  "file": "agentos-update-2026.11.06.6.tar.gz",
+  "size": 382988,
+  "sha256": "a3645fe7087b3479fcdc05bde0a6be4fe8cf5f26270e90b2aed23cc488532809",
   "date": "2026-11-06",
-  "notes": "Bộ nhớ như cuốn sách (Phần/Chương/Mục có số, tìm kiếm); /moi không mất trí nhớ; tự ghi khi dặn nhớ"
+  "notes": "Mỗi cuộc trò chuyện là một dự án (sổ tay riêng): /moi tạo dự án mới và hỏi tên; /duan có nút Tiếp tục; quay lại sau vài giờ thì chọn dự án; gộp dự án ở Cài đặt, AI sắp xếp lại sổ tay"
 }

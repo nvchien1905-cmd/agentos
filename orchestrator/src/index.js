@@ -351,6 +351,9 @@ async function main() {
   log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek, Codex tắt)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
   setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
   const bookTimer = setInterval(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 10 * 60 * 1000);
+  // Dự án vừa gộp ở trang Cài đặt: AI sắp xếp lại sổ tay (kiểm mỗi phút, chỉ làm khi có dự án chờ)
+  const organizeTimer = setInterval(() => memory.organizePending().catch((e) => log('sắp xếp sổ tay dự án lỗi: ' + e.message)), 60 * 1000);
+  organizeTimer.unref && organizeTimer.unref();
   const inboxDir = path.join(cfg.workdir, 'inbox');
   const voice = createVoice({ tg, log, bin: process.env.STT_BIN || undefined });
   const media = createMedia({ tg, dir: inboxDir, log, voice });
@@ -553,7 +556,7 @@ async function main() {
     },
     voice, media, memory, projects, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
     send: async (chat, reply) => {                          // trả lời cho album (không đi qua vòng nhận tin)
-      if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) await tg.sendMessage(chat, reply.text); }
+      if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) { if (reply.buttons) await tg.sendButtons(chat, reply.text, reply.buttons); else await tg.sendMessage(chat, reply.text); } }
       else if (reply) await tg.sendMessage(chat, reply);
     },
     quick: createQuick({ vault, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
@@ -656,7 +659,7 @@ async function main() {
             const chat = u.message.chat.id;
             if (reply && typeof reply === 'object') {                                       // { text, files:[{path,name,kind,temp}] }
               for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } }
-              if (reply.text) await tg.sendMessage(chat, reply.text);
+              if (reply.text) { if (reply.buttons) await tg.sendButtons(chat, reply.text, reply.buttons); else await tg.sendMessage(chat, reply.text); }
             } else if (reply) await tg.sendMessage(chat, reply);
           }
         } catch (e) {

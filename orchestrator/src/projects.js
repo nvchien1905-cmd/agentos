@@ -73,6 +73,34 @@ function createProjects(o) {
     log('tạo dự án "' + name + '" (' + id + ')');
     return pub(p);
   }
+  // CUỘC TRÒ CHUYỆN MỚI = DỰ ÁN MỚI (mỗi cuốn sách riêng): tên tạm theo giờ, sau khi có câu đầu tiên thì đặt theo câu đó (titleFromPrompt). Gộp lại được ở Cài đặt → Dự án.
+  function newChat(chatId, uid) {
+    const c = String(chatId == null ? '' : chatId), vn = new Date(now() + 7 * 3600 * 1000), p2 = (n) => String(n).padStart(2, '0');
+    const base = 'Cuộc trò chuyện ' + p2(vn.getUTCDate()) + '/' + p2(vn.getUTCMonth() + 1) + ' ' + p2(vn.getUTCHours()) + ':' + p2(vn.getUTCMinutes());
+    const taken = new Set(load().list.filter((x) => !x.deleted).map((x) => x.name.toLowerCase()));
+    let name = base, n = 2; while (taken.has(name.toLowerCase())) name = base + ' (' + n++ + ')';
+    const p = create(name, c);
+    const users = [...new Set([c, uid == null ? '' : String(uid)].filter((u) => /^\d{3,}$/.test(u)))];
+    const out = update(p.id, (x) => { x.auto = true; x.autoTitle = true; x.nameAuto = true; x.chat = c; x.users = users; });
+    if (o.db) setActive(c, p.id);
+    return out;
+  }
+  // Đặt tên dự án tự tạo theo câu đầu tiên của chủ máy (một lần)
+  function titleFromPrompt(id, prompt) {
+    const p = get(id); if (!p || !p.autoTitle) return null;
+    let t = String(prompt || '').replace(/[\u0000-\u001f]/g, ' ').replace(/^#\S+\s+/, '').replace(/\s+/g, ' ').trim();
+    if (t.length < 3) return null;
+    t = t.length > 44 ? t.slice(0, 43).replace(/\s+\S*$/, '') + '…' : t;
+    const taken = new Set(load().list.filter((x) => !x.deleted && x.id !== id).map((x) => x.name.toLowerCase()));
+    let name = t, n = 2; while (taken.has(name.toLowerCase())) name = t + ' (' + n++ + ')';
+    return update(id, (x) => { x.name = name; x.autoTitle = false; });
+  }
+  // Lần làm việc gần nhất của dự án (để xếp danh sách chọn: mới dùng nhất lên đầu)
+  const markActive = (id) => { if (o.db && id) db.kvSet('proj:act:' + id, now()); };
+  function lastActive(id) { const t = Number(db.kvGet('proj:act:' + id)); if (t) return t; const p = load().list.find((x) => x.id === id); return p ? (p.created || 0) : 0; }
+  // Dự án vừa được GỘP, đang chờ AI sắp xếp lại sổ tay (bộ điều phối làm nền)
+  const pending = () => load().list.filter((p) => !p.deleted && p.pendingOrganize).map(pub);
+  function clearPending(id, result) { return update(id, (p) => { delete p.pendingOrganize; p.lastOrganized = Object.assign({ at: now() }, result || {}); }); }
   function update(id, fn) {
     const st = load(), p = st.list.find((x) => x.id === id && !x.deleted);
     if (!p) throw new Error('Không có dự án này.');
@@ -82,7 +110,7 @@ function createProjects(o) {
     name = String(name || '').replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim();
     if (name.length < 2 || name.length > 60) throw new Error('Tên dự án dài 2–60 ký tự.');
     if (load().list.some((p) => !p.deleted && p.id !== id && p.name.toLowerCase() === name.toLowerCase())) throw new Error('Đã có dự án tên "' + name + '".');
-    return update(id, (p) => { p.name = name; p.nameAuto = false; });          // mã/thư mục giữ nguyên để tệp và lịch sử không đứt
+    return update(id, (p) => { p.name = name; p.nameAuto = false; p.autoTitle = false; });          // mã/thư mục giữ nguyên để tệp và lịch sử không đứt
   }
   const archive = (id, on) => update(id, (p) => { p.archived = on !== false; });
   function setEngine(id, eng) { return update(id, (p) => { p.engine = eng ? String(eng) : null; }); }
@@ -172,6 +200,7 @@ function createProjects(o) {
         st.list.push(p); ensureDirs(p); save(st);
         log('tạo dự án tổng cho ID ' + c + ' (' + id + ')');
       }
+      if (p.mergedInto) { const t = get(p.mergedInto); if (t && !t.archived) return t; }          // dự án tổng đã gộp vào dự án khác
       return pub(p);
     } catch (e) { log('dự án tổng ' + c + ' lỗi: ' + e.message); return null; }
   }
@@ -188,7 +217,11 @@ function createProjects(o) {
   }
   function active(chatId) {
     const id = db.kvGet(kActive(chatId));
-    if (id) { const p = get(id); if (p && !p.archived) return p; db.kvDel(kActive(chatId)); }
+    if (id) {
+      let p = get(id);
+      for (let i = 0; p && p.mergedInto && i < 5; i++) p = get(p.mergedInto);          // dự án đã gộp: chuyển sang dự án đích
+      if (p && !p.archived) return p; db.kvDel(kActive(chatId));
+    }
     return homeOf(chatId);
   }
   function setActive(chatId, id) { if (id) db.kvSet(kActive(chatId), id); else db.kvDel(kActive(chatId)); }
@@ -212,7 +245,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

@@ -94,7 +94,7 @@ test('Telegram: việc mới của mỗi ID tự gắn vào dự án tổng củ
   const db = openDb(':memory:'), projects = createProjects({ db, baseDir: tmp() });
   const worker = { wake() {}, engineNames: () => ['claude'], currentJobId: () => null, engineStatus: () => [], cancelRunning: () => false };
   const bot = createBot({ db, worker, allowed: new Set(['111', '222']), profiles: [], isAdmin: (u) => String(u) === '111', projects, quietAck: true });
-  const say = async (uid, text) => bot.handle({ from: { id: uid }, chat: { id: uid, type: 'private' }, text });
+  const say = async (uid, text) => { const r = await bot.handle({ from: { id: uid }, chat: { id: uid, type: 'private' }, text }); return r && typeof r === 'object' && r.buttons ? r.text : r; };      // /duan trả { text, buttons }: các test cũ chỉ đọc chữ
   await say(111, 'việc của chủ'); await say(222, 'việc của nhân viên');
   const j1 = db.recentJobs('111', 1)[0], j2 = db.recentJobs('222', 1)[0];
   assert.equal(j1.project, 'tong-111'); assert.equal(j2.project, 'tong-222');

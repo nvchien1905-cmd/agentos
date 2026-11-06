@@ -626,11 +626,11 @@ function createSettings(o) {
     // ---- Đội máy (fleet.js; cấu hình ở tệp JSON dùng chung với bộ điều phối)
     async 'GET /api/fleet'() {
       const f = fleetLib(), c = f.load(), tsi = await ts.info().catch(() => ({}));
-      return { agent: { enabled: c.agent.enabled, name: c.agent.name, port: c.agent.port, host: c.agent.host, hasKey: !!c.agent.key }, tailscaleIp: (tsi.ips || [])[0] || '', machines: await f.statusAll() };
+      return { agent: { enabled: c.agent.enabled, name: c.agent.name, port: c.agent.port, host: c.agent.host, hasKey: !!c.agent.key, allowFrom: c.agent.allowFrom || [] }, isHead: c.machines.length > 0, tailscaleIp: (tsi.ips || [])[0] || '', machines: await f.statusAll() };
     },
     async 'POST /api/fleet/agent'(b) {
       const f = fleetLib();
-      if (b.enabled === false) { f.disableAgent(); } else {
+      if (b.resetAllowFrom === true) { f.resetAllowFrom(); } else if (b.enabled === false) { f.disableAgent(); } else {
         const tsi = await ts.info().catch(() => ({})), ip = (tsi.ips || [])[0] || '';
         f.enableAgent({ name: b.name, port: b.port === undefined || b.port === '' ? undefined : Number(b.port), host: ip, regenerate: b.regenerate === true });
       }

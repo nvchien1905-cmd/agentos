@@ -84,3 +84,24 @@ test('Telegram /may: chỉ chủ máy; xem danh sách, thêm/xóa, giao việc r
     assert.match(await say(111, '/may capnhat Kho'), /đã là bản mới nhất/); assert.match(await say(111, '/may Không-có làm gì đó'), /Không giao được.*Không có máy/);
   } finally { await c.close(); }
 });
+
+test('đội máy MỘT CHIỀU: máy con chỉ nghe máy điều khiển đầu tiên; máy khác (kể cả cùng tài khoản Tailscale, kể cả có khóa) bị chặn; máy đầu não không nhận điều khiển; xóa ghi nhớ để đổi máy', async () => {
+  const dir = tmp(); let t = 1800000000000; const fleet = createFleet({ file: path.join(dir, 'c.json'), now: () => t });
+  const K = 'cd'.repeat(24);
+  fleet.save(Object.assign(fleet.load(), { agent: { enabled: true, key: K, host: '', port: 8433, name: 'Con' } }));
+  const agent = fleet.createAgent({ version: () => 'v', submit: () => 1, getJob: () => null, stats: () => ({}), sameOwner: async () => true });
+  const mk = (ts, m, p) => ({ 'x-fleet-ts': String(ts), 'x-fleet-sig': sign(K, m || 'GET', p || '/fleet/status', ts, '') });
+  const DAUNAO = '100.83.146.120', CON2 = '100.90.0.7';
+  assert.equal((await agent.handle('POST', '/fleet/pair', {}, '{}', DAUNAO)).status, 200);               // máy đầu tiên ghép đôi → được ghi nhớ
+  assert.deepEqual(fleet.load().agent.allowFrom, [DAUNAO]);
+  assert.equal((await agent.handle('POST', '/fleet/pair', {}, '{}', CON2)).status, 403, 'máy con khác không ghép đôi lấy khóa được');
+  assert.equal((await agent.handle('GET', '/fleet/hello', {}, '', CON2)).status, 403);
+  assert.equal((await agent.handle('GET', '/fleet/status', mk(t + 1), '', CON2)).status, 403, 'có khóa vẫn bị chặn nếu không phải máy điều khiển');
+  assert.equal((await agent.handle('GET', '/fleet/status', mk(t + 2), '', '::ffff:' + DAUNAO)).status, 200);
+  fleet.resetAllowFrom(); assert.deepEqual(fleet.load().agent.allowFrom, []);
+  assert.equal((await agent.handle('GET', '/fleet/status', mk(t + 3), '', CON2)).status, 200, 'sau khi xóa ghi nhớ, máy ký hợp lệ đầu tiên được ghi nhớ');
+  assert.deepEqual(fleet.load().agent.allowFrom, [CON2]);
+  const c = fleet.load(); c.machines.push({ name: 'X', url: 'http://100.1.1.1:8433', key: 'ab'.repeat(24) }); fleet.save(c);   // thành máy đầu não
+  assert.equal((await agent.handle('POST', '/fleet/pair', {}, '{}', CON2)).status, 403);
+  assert.equal((await agent.handle('GET', '/fleet/status', mk(t + 4), '', CON2)).status, 403, 'máy đầu não không nhận điều khiển');
+});

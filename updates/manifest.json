@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.1",
-  "file": "agentos-update-2026.11.06.1.tar.gz",
-  "size": 368405,
-  "sha256": "d99d8458035dc20325fb787af4a82800e8c588abaa1758a34bc9956df1915897",
+  "version": "2026.11.06.2",
+  "file": "agentos-update-2026.11.06.2.tar.gz",
+  "size": 369065,
+  "sha256": "afab12494ed913d29454f5151655715ed974f6f484640745cce398c786f5ed10",
   "date": "2026-11-06",
-  "notes": "Kho mật khẩu RustDesk mã hóa: nhập một lần ở Cài đặt → Máy từ xa, /vao <máy> tự đăng nhập"
+  "notes": "Đội máy một chiều: máy con không điều khiển ngược máy đầu não/máy khác được"
 }

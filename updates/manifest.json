@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.7",
-  "file": "agentos-update-2026.11.06.7.tar.gz",
-  "size": 388077,
-  "sha256": "9a570c4994ef133a13af2672447b6fce0e616e307810c9a133ace7ed6fd4e850",
+  "version": "2026.11.06.8",
+  "file": "agentos-update-2026.11.06.8.tar.gz",
+  "size": 390427,
+  "sha256": "e5c6afe7c43f37d3389720d2350007442fccc1c65852ddc95e5ae5386f77f0ad",
   "date": "2026-11-06",
-  "notes": "Mỗi ID Telegram độc lập: giao máy theo ID (Cài đặt hoặc /quyenmay), sổ tay chung chỉ chủ máy, hộp cô lập che dữ liệu ID khác"
+  "notes": "Mỗi ID Telegram dùng màn hình ảo riêng trên cùng máy (nhiều ID cùng lúc không đụng nhau); chủ máy vẫn dùng màn hình thật"
 }

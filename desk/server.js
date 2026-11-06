@@ -84,6 +84,8 @@ function realDetach(cmd, args, env) {
   return c.pid;
 }
 
+const { AsyncLocalStorage } = require('async_hooks');
+
 function createDesk(o) {
   o = o || {};
   const run = o.run || realRun;
@@ -93,6 +95,7 @@ function createDesk(o) {
 
   // Phiên đồ họa đang hoạt động (người đang đăng nhập ở màn hình chính).
   async function session() {
+    const st = als.getStore(); if (st && st.slot) return ensureSlot(st.slot);          // yêu cầu của ID thường: màn hình ảo riêng
     if (o.session) return o.session();
     const ls = await run('loginctl', ['list-sessions', '--no-legend'], { timeoutMs: 8000 });
     const cands = [];
@@ -115,8 +118,67 @@ function createDesk(o) {
     }
     return null;
   }
+  // ---------- MÀN HÌNH ẢO RIÊNG TỪNG ID ("slot") ----------
+  // Mỗi ID Telegram thường (không phải chủ máy) được giao màn hình riêng trên CÙNG máy này: một tài khoản Linux riêng (agv<n>, không đăng nhập được, thư mục riêng) chạy Xvfb + xfwm4 ở màn hình :<base+n>.
+  // Ứng dụng, cửa sổ, hồ sơ trình duyệt, RustDesk của ID này nằm trong tài khoản đó nên hai ID dùng cùng lúc không đụng nhau và không thấy nhau. Chủ máy vẫn dùng màn hình thật.
+  // Yêu cầu có trường "slot" (ID Telegram, chỉ số) thì mọi lệnh màn hình trong yêu cầu đó chạy ở màn hình ảo của slot; không có thì chạy ở màn hình thật như cũ.
+  const als = new AsyncLocalStorage();
+  const VD = Object.assign({ dir: '/var/lib/agentos-vd', runDir: '/run/agentos-vd', sockDir: '/tmp/.X11-unix', lockDir: '/tmp', base: 40, max: 8, geometry: '1366x768x24', prefix: 'agv', waitMs: 8000 }, o.vd || {});
+  const slotFile = () => path.join(VD.dir, 'slots.json');
+  const loadSlots = () => { try { const j = JSON.parse(fs.readFileSync(slotFile(), 'utf8')); return j && typeof j === 'object' ? j : {}; } catch (e) { return {}; } };
+  const sleepMs = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const alive = async (user, name) => (await run('pgrep', ['-u', user, '-x', name], { timeoutMs: 5000 })).code === 0;
+  const uidOf = async (user) => { const r = await run('id', ['-u', user], { timeoutMs: 5000 }); return r.code === 0 ? String(r.out).trim() : ''; };
+  const slotParts = (n) => ({ user: VD.prefix + n, home: path.join(VD.dir, String(n)), runDir: path.join(VD.runDir, String(n)), display: ':' + (VD.base + n) });
+
+  async function ensureSlot(key) {
+    key = String(key);
+    if (!/^\d{3,15}$/.test(key)) throw new Error('Mã màn hình riêng không hợp lệ.');
+    const map = loadSlots(); let n = Number(map[key]) || 0;
+    if (!n) {
+      const used = new Set(Object.values(map).map(Number));
+      for (let i = 1; i <= VD.max && !n; i++) if (!used.has(i)) n = i;
+      if (!n) throw new Error('Đã đủ ' + VD.max + ' màn hình riêng trên máy này. Chủ máy cần gỡ bớt (lệnh vdlist/vddrop) hoặc tăng giới hạn.');
+      fs.mkdirSync(VD.dir, { recursive: true }); map[key] = n; fs.writeFileSync(slotFile(), JSON.stringify(map, null, 1), { mode: 0o600 });
+    }
+    const p = slotParts(n);
+    let uid = await uidOf(p.user);
+    if (!uid) {
+      fs.mkdirSync(VD.dir, { recursive: true });
+      const r = await run('useradd', ['--system', '--create-home', '--home-dir', p.home, '--shell', '/usr/sbin/nologin', '--user-group', p.user], { timeoutMs: 20000 });
+      if (r.code !== 0) throw new Error('Không tạo được tài khoản màn hình riêng: ' + String(r.err || r.out).trim().slice(0, 160));
+      uid = await uidOf(p.user);
+    }
+    fs.mkdirSync(p.runDir, { recursive: true, mode: 0o700 });
+    await run('chown', [p.user + ':' + p.user, p.runDir], { timeoutMs: 5000 }); await run('chmod', ['700', p.runDir], { timeoutMs: 5000 });
+    const sock = path.join(VD.sockDir, 'X' + (VD.base + n));
+    if (!(await alive(p.user, 'Xvfb'))) {
+      for (const f of [sock, path.join(VD.lockDir, '.X' + (VD.base + n) + '-lock')]) { try { fs.rmSync(f, { force: true }); } catch (e) { /* chưa có */ } }   // ổ khóa/ổ cắm mồ côi của lần chạy trước
+      detach('runuser', ['-u', p.user, '--', 'Xvfb', p.display, '-screen', '0', VD.geometry, '-nolisten', 'tcp'], process.env);
+      for (let t = 0; t < VD.waitMs && !fs.existsSync(sock); t += 200) await sleepMs(200);
+      if (!fs.existsSync(sock)) throw new Error('Màn hình ảo ' + p.display + ' không khởi động được (Xvfb).');
+    }
+    if (!(await alive(p.user, 'xfwm4'))) {
+      detach('runuser', ['-u', p.user, '--', 'env', 'DISPLAY=' + p.display, 'HOME=' + p.home, 'XDG_RUNTIME_DIR=' + p.runDir, 'xfwm4', '--compositor=off'], process.env);
+      await sleepMs(o.wmWaitMs === undefined ? 600 : o.wmWaitMs);
+    }
+    return { virtual: true, slot: key, n, id: 'v' + n, uid, user: p.user, display: p.display, home: p.home, runDir: p.runDir, active: true, xauth: '' };
+  }
   const xenv = (s) => Object.assign({}, process.env, { DISPLAY: s.display }, s.xauth ? { XAUTHORITY: s.xauth } : {});
-  const userArgs = (s, argv, extra) => ['-u', s.user, '--', 'env', 'DISPLAY=' + s.display, ...(s.xauth ? ['XAUTHORITY=' + s.xauth] : []),
+  // Chạy công cụ X (xdotool, scrot, xset) trên màn hình của phiên s: màn hình thật dùng môi trường người ngồi máy; màn hình ảo chạy bằng tài khoản riêng của slot.
+  async function xrun(s, cmd, args, opts) {
+    opts = opts || {};
+    if (!s.virtual) return run(cmd, args, Object.assign({}, opts, { env: xenv(s) }));
+    const wrap = (c, a) => run('runuser', ['-u', s.user, '--', 'env', 'DISPLAY=' + s.display, 'HOME=' + s.home, 'XDG_RUNTIME_DIR=' + s.runDir, c, ...a], opts);
+    if (cmd === 'scrot') {                                         // tài khoản slot không ghi được vào thư mục ảnh của deskd: chụp vào thư mục riêng rồi chép ra
+      const i = args.indexOf('-o'), dest = args[i + 1], tmp = path.join(s.home, 'shot-' + now() + '.png');
+      const r = await wrap('scrot', ['-o', tmp]);
+      try { if (r.code === 0 && fs.existsSync(tmp)) fs.copyFileSync(tmp, dest); } finally { try { fs.rmSync(tmp, { force: true }); } catch (e) { /* bỏ qua */ } }
+      return r;
+    }
+    return wrap(cmd, args);
+  }
+  const userArgs = (s, argv, extra) => s.virtual ? ['-u', s.user, '--', 'env', 'DISPLAY=' + s.display, 'HOME=' + s.home, 'XDG_RUNTIME_DIR=' + s.runDir, ...(extra || []), ...argv] : ['-u', s.user, '--', 'env', 'DISPLAY=' + s.display, ...(s.xauth ? ['XAUTHORITY=' + s.xauth] : []),
     'XDG_RUNTIME_DIR=/run/user/' + s.uid, 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/' + s.uid + '/bus', 'HOME=' + s.home, ...(extra || []), ...argv];
   // Biến môi trường của phiên LightDM (light-locker cần XDG_SESSION_PATH...). Lấy từ tiến trình xfce4-session đang chạy của người dùng.
   async function sessionEnv(s) {
@@ -139,14 +201,14 @@ function createDesk(o) {
   }
 
   const cmds = {
-    async who() { const s = await session(); return s ? { ok: true, user: s.user, display: s.display, locked: !live(s) } : fail('Không có ai đang đăng nhập màn hình chính.'); },
+    async who() { const s = await session(); return s ? { ok: true, user: s.user, display: s.display, locked: !live(s), ...(s.virtual ? { virtual: true } : {}) } : fail('Không có ai đang đăng nhập màn hình chính.'); },
 
     async screenshot() {
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính (máy ở màn hình đăng nhập hoặc chưa ai vào).');
       if (!live(s)) return fail(LOCKED);
       fs.mkdirSync(outDir, { recursive: true });
       const file = path.join(outDir, 'manhinh-' + now() + '.png');
-      const r = await run('scrot', ['-o', file], { env: xenv(s), timeoutMs: 15000 });
+      const r = await xrun(s, 'scrot', ['-o', file], { timeoutMs: 15000 });
       if (r.code !== 0 || !fs.existsSync(file)) return fail('Không chụp được màn hình: ' + String(r.err || r.out).trim().slice(0, 200));
       try { fs.chmodSync(file, 0o644); if (o.chownTo) fs.chownSync(file, ...o.chownTo); } catch (e) { /* thử nghiệm không có quyền chown */ }
       return { ok: true, file };
@@ -154,10 +216,10 @@ function createDesk(o) {
 
     async windows() {
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
-      const r = await run('xdotool', ['search', '--onlyvisible', '--name', '.'], { env: xenv(s) });
+      const r = await xrun(s, 'xdotool', ['search', '--onlyvisible', '--name', '.'], {  });
       const names = [];
       for (const id of String(r.out).split('\n').filter((x) => /^\d+$/.test(x)).slice(0, 40)) {
-        const n = await run('xdotool', ['getwindowname', id], { env: xenv(s), timeoutMs: 4000 });
+        const n = await xrun(s, 'xdotool', ['getwindowname', id], { timeoutMs: 4000 });
         const t = String(n.out).trim(); if (t) names.push(t);
       }
       return { ok: true, windows: [...new Set(names)] };
@@ -167,7 +229,7 @@ function createDesk(o) {
       const app = APPS[String(req.app || '').toLowerCase()];
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
-      if (app.runAs) {
+      if (app.runAs && !s.virtual) {
         // Ứng dụng phải chạy bằng người dùng KHÁC người ngồi máy (vd. trình duyệt của bot dùng hồ sơ thuộc `agentos`, quyền 700): cho người đó vẽ lên màn hình của người ngồi máy
         // (xhost chỉ cho đúng tài khoản cục bộ đó, gỡ khi đóng ứng dụng) rồi chạy bằng chính người đó.
         await run('runuser', userArgs(s, ['xhost', '+SI:localuser:' + app.runAs]), { timeoutMs: 8000 });
@@ -175,7 +237,9 @@ function createDesk(o) {
         const pidx = detach('runuser', ['-u', app.runAs, '--', 'env', 'DISPLAY=' + s.display, 'HOME=' + home, ...app.argv], process.env);
         return { ok: true, app: app.label, pid: pidx };
       }
-      const pid = detach('runuser', userArgs(s, app.argv), process.env);
+      // Màn hình riêng: hồ sơ Chrome của tài khoản slot còn trống nên bỏ hộp thoại "điều khoản/trình duyệt mặc định" lần đầu
+      const argv = s.virtual && /google-chrome/.test(app.argv[0]) ? [...app.argv, '--no-first-run', '--no-default-browser-check'] : app.argv;
+      const pid = detach('runuser', userArgs(s, argv), process.env);
       return { ok: true, app: app.label, pid };
     },
 
@@ -197,8 +261,8 @@ function createDesk(o) {
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));
       if (!app.match) return fail(app.label + ' chạy trong cửa sổ dòng lệnh, hãy tự đóng cửa sổ đó.');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
-      const hit = (await listProcs(app.runAs ? { user: app.runAs } : s)).filter((p) => app.match(p.cmd));
-      if (app.runAs) await run('runuser', userArgs(s, ['xhost', '-SI:localuser:' + app.runAs]), { timeoutMs: 8000 }).catch(() => {});   // thu hồi quyền vẽ lên màn hình
+      const hit = (await listProcs(app.runAs && !s.virtual ? { user: app.runAs } : s)).filter((p) => app.match(p.cmd));
+      if (app.runAs && !s.virtual) await run('runuser', userArgs(s, ['xhost', '-SI:localuser:' + app.runAs]), { timeoutMs: 8000 }).catch(() => {});   // thu hồi quyền vẽ lên màn hình
       if (!hit.length) return { ok: true, app: app.label, closed: 0 };
       await run('kill', ['-TERM', ...hit.map((p) => String(p.pid))], { timeoutMs: 8000 });
       return { ok: true, app: app.label, closed: hit.length };
@@ -211,7 +275,7 @@ function createDesk(o) {
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
       const args = ['mousemove', String(x), String(y), 'click'].concat(req.double ? ['--repeat', '2', '--delay', '80'] : [], [b]);
-      const r = await run('xdotool', args, { env: xenv(s) });
+      const r = await xrun(s, 'xdotool', args, {  });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
@@ -219,8 +283,8 @@ function createDesk(o) {
     async info() {
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
-      const g = await run('xdotool', ['getdisplaygeometry'], { env: xenv(s), timeoutMs: 5000 });
-      const w = await run('xdotool', ['getactivewindow', 'getwindowname'], { env: xenv(s), timeoutMs: 5000 });
+      const g = await xrun(s, 'xdotool', ['getdisplaygeometry'], { timeoutMs: 5000 });
+      const w = await xrun(s, 'xdotool', ['getactivewindow', 'getwindowname'], { timeoutMs: 5000 });
       const m = String(g.out).trim().split(/\s+/).map(Number);
       return { ok: true, width: m[0] || null, height: m[1] || null, active: String(w.out).trim() || null };
     },
@@ -231,10 +295,10 @@ function createDesk(o) {
       if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name)) return fail('Tên cửa sổ phải dài 1-80 ký tự');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
-      const f = await run('xdotool', ['search', '--onlyvisible', '--name', name], { env: xenv(s), timeoutMs: 8000 });
+      const f = await xrun(s, 'xdotool', ['search', '--onlyvisible', '--name', name], { timeoutMs: 8000 });
       const id = String(f.out).split('\n').filter((x) => /^\d+$/.test(x))[0];
       if (!id) return fail('Không thấy cửa sổ nào có tên chứa "' + name + '". Gõ /cuaso để xem danh sách.');
-      const a = await run('xdotool', ['windowactivate', '--sync', id], { env: xenv(s), timeoutMs: 8000 });
+      const a = await xrun(s, 'xdotool', ['windowactivate', '--sync', id], { timeoutMs: 8000 });
       return a.code === 0 ? { ok: true } : fail('Không đưa được cửa sổ lên trước: ' + String(a.err).trim().slice(0, 150));
     },
 
@@ -246,7 +310,7 @@ function createDesk(o) {
       if (!live(s)) return fail(LOCKED);
       fs.mkdirSync(outDir, { recursive: true });
       const file = path.join(outDir, 'ocr-' + now() + '.png');
-      const sc = await run('scrot', ['-o', file], { env: xenv(s), timeoutMs: 15000 });
+      const sc = await xrun(s, 'scrot', ['-o', file], { timeoutMs: 15000 });
       if (sc.code !== 0) return fail('Không chụp được màn hình: ' + String(sc.err || sc.out).trim().slice(0, 150));
       const oc = await run('tesseract', [file, 'stdout', '-l', 'vie+eng', '--psm', '11', 'tsv'], { timeoutMs: 60000 });
       if (oc.code !== 0) { try { fs.rmSync(file, { force: true }); } catch (e) { /* bỏ qua */ } return fail('Không đọc được chữ trên màn hình (tesseract): ' + String(oc.err).trim().slice(0, 150)); }
@@ -278,7 +342,7 @@ function createDesk(o) {
     // Đọc chữ đang ở bộ nhớ tạm của màn hình chính (để chuyển sang điện thoại)
     async clipget() {
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
-      const r = await run('xclip', ['-selection', 'clipboard', '-o'], { env: xenv(s), timeoutMs: 5000 });
+      const r = await xrun(s, 'xclip', ['-selection', 'clipboard', '-o'], { timeoutMs: 5000 });
       if (r.code !== 0) return { ok: true, text: '' };                      // bộ nhớ tạm trống cũng trả về mã lỗi
       return { ok: true, text: String(r.out).slice(0, 20000) };
     },
@@ -299,7 +363,7 @@ function createDesk(o) {
       const p = point(req.x, req.y); if (!p) return fail('Toạ độ không hợp lệ');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
-      const r = await run('xdotool', ['mousemove', String(p.x), String(p.y)], { env: xenv(s) });
+      const r = await xrun(s, 'xdotool', ['mousemove', String(p.x), String(p.y)], {  });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
@@ -310,7 +374,7 @@ function createDesk(o) {
       if (!live(s)) return fail(LOCKED);
       const args = ['mousemove', String(a.x), String(a.y), 'mousedown', '1', 'sleep', '0.15', 'mousemove_relative', '--', '1', '1',
         'sleep', '0.1', 'mousemove', String(b.x), String(b.y), 'sleep', '0.15', 'mouseup', '1'];
-      const r = await run('xdotool', args, { env: xenv(s), timeoutMs: 20000 });
+      const r = await xrun(s, 'xdotool', args, { timeoutMs: 20000 });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
@@ -324,7 +388,7 @@ function createDesk(o) {
       const args = [];
       if (req.x !== undefined && req.y !== undefined) { const p = point(req.x, req.y); if (!p) return fail('Toạ độ không hợp lệ'); args.push('mousemove', String(p.x), String(p.y)); }
       args.push('click', '--repeat', String(n), '--delay', '30', btn);
-      const r = await run('xdotool', args, { env: xenv(s) });
+      const r = await xrun(s, 'xdotool', args, {  });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
@@ -333,7 +397,7 @@ function createDesk(o) {
       if (!text || text.length > MAX_TYPE) return fail('Chữ cần gõ phải dài 1-' + MAX_TYPE + ' ký tự');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
-      const r = await run('xdotool', ['type', '--delay', '12', '--', text], { env: xenv(s), timeoutMs: 60000 });
+      const r = await xrun(s, 'xdotool', ['type', '--delay', '12', '--', text], { timeoutMs: 60000 });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
@@ -342,7 +406,7 @@ function createDesk(o) {
       if (!KEY_RE.test(k)) return fail('Tên phím không hợp lệ (VD: Return, ctrl+v, alt+F4)');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
-      const r = await run('xdotool', ['key', '--', ...k.split(' ').filter(Boolean)], { env: xenv(s) });
+      const r = await xrun(s, 'xdotool', ['key', '--', ...k.split(' ').filter(Boolean)], {  });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 
@@ -352,7 +416,7 @@ function createDesk(o) {
       if (!text || text.length > 20000) return fail('Chữ cần chép phải dài 1-20000 ký tự');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       // xclip ở lại nền giữ nội dung bộ nhớ tạm và giữ ống đầu ra mở: không chờ ống đóng (noPipes), chỉ chờ tiến trình cha thoát
-      const r = await run('xclip', ['-selection', 'clipboard', '-i'], { env: xenv(s), input: text, timeoutMs: 8000, noPipes: true });
+      const r = await xrun(s, 'xclip', ['-selection', 'clipboard', '-i'], { input: text, timeoutMs: 8000, noPipes: true });
       return r.code === 0 ? { ok: true } : fail('Không chép được vào bộ nhớ tạm: ' + String(r.err).trim().slice(0, 200));
     },
 
@@ -361,6 +425,7 @@ function createDesk(o) {
       if (!live(s)) return { ok: true, already: true };
       // Máy này mặc định KHÔNG tự khóa khi nhàn rỗi (xem lệnh nolock); khóa theo yêu cầu bằng bộ khóa light-locker đang chạy sẵn trong phiên
       // (light-locker bắt buộc chạy BÊN TRONG phiên đăng nhập, không khởi động từ dịch vụ nền được: "session_id is not set").
+      if (s.virtual) return fail('Màn hình riêng không có khóa màn hình.');
       const r = await run('runuser', userArgs(s, ['light-locker-command', '-l'], await sessionEnv(s)), { timeoutMs: 8000 });
       if (r.code === 0 && !/ServiceUnknown|error message from the locker/i.test(String(r.out) + String(r.err))) return { ok: true };
       return fail('Không khóa được màn hình (bộ khóa chưa chạy trong phiên). Hãy đăng xuất rồi đăng nhập lại máy một lần.');
@@ -370,9 +435,23 @@ function createDesk(o) {
     // deskd gọi lệnh này định kỳ vì xfce4-power-manager có thể đặt lại.
     async nolock() {
       const s = await session(); if (!s || !live(s)) return fail('Không có phiên đang mở.');
-      await run('xset', ['s', 'off'], { env: xenv(s), timeoutMs: 5000 });
-      await run('xset', ['s', 'noblank'], { env: xenv(s), timeoutMs: 5000 });
+      await xrun(s, 'xset', ['s', 'off'], { timeoutMs: 5000 });
+      await xrun(s, 'xset', ['s', 'noblank'], { timeoutMs: 5000 });
       return { ok: true };
+    },
+
+    // Màn hình ảo riêng: danh sách / đóng (tắt mọi ứng dụng + màn hình của slot, giải phóng bộ nhớ; lần sau dùng lại tự dựng lại)
+    async vdlist() {
+      const map = loadSlots(), out = [];
+      for (const [key, n] of Object.entries(map)) { const p = slotParts(Number(n)); out.push({ slot: key, n: Number(n), user: p.user, display: p.display, running: await alive(p.user, 'Xvfb') }); }
+      return { ok: true, slots: out, max: VD.max };
+    },
+    async vdclose(req) {
+      const key = String(req.slot || ''); const n = Number(loadSlots()[key]);
+      if (!n) return { ok: true, closed: false };
+      const p = slotParts(n);
+      const r = await run('pkill', ['-KILL', '-u', p.user], { timeoutMs: 8000 });
+      return { ok: true, closed: r.code === 0 };
     },
 
     // Khởi động lại / tắt máy sau vài giây để kịp trả lời Telegram.
@@ -384,7 +463,10 @@ function createDesk(o) {
     apps: () => Object.keys(APPS),
     async handle(req) {
       if (!req || typeof req !== 'object' || typeof req.cmd !== 'string' || !Object.prototype.hasOwnProperty.call(cmds, req.cmd)) return fail('Lệnh không có');
-      try { return await cmds[req.cmd](req); } catch (e) { return fail('Lỗi: ' + e.message); }
+      const slot = req.slot == null || req.slot === '' ? '' : String(req.slot);
+      if (slot && !/^\d{3,15}$/.test(slot)) return fail('Mã màn hình riêng không hợp lệ.');
+      if (slot && ['reboot', 'poweroff', 'nolock', 'lock'].includes(req.cmd)) return fail('Lệnh này chỉ áp dụng cho màn hình thật của máy.');
+      try { return await als.run({ slot }, () => cmds[req.cmd](req)); } catch (e) { return fail('Lỗi: ' + e.message); }
     },
   };
 }

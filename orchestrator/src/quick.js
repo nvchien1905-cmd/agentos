@@ -12,9 +12,9 @@ const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, vault = o.vault, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, fleet = o.fleet, iot = o.iot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const deskRaw = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, vault = o.vault, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, fleet = o.fleet, iot = o.iot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
-  async function withShot(text) {
+  async function withShotOn(desk, text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
     let r = null; try { r = await desk.call({ cmd: 'screenshot' }); } catch (e) { /* không chụp được thì chỉ báo chữ */ }
     if (r && r.ok && r.file) return { text: text + ' (ảnh màn hình sau thao tác)', files: [{ path: r.file, name: 'manhinh.png', kind: 'photo', temp: true }] };
@@ -25,8 +25,14 @@ function createQuick(o) {
   const access = o.access || null;                                           // quyền dùng máy theo từng ID (machineAccess.js)
   const nonAdmin = (ctx) => !!(o.isAdmin && ctx && ctx.uid != null && !o.isAdmin(ctx.uid));   // ID thường: không đụng sổ tay chung, chỉ dùng máy được giao
   const NO_SHARED_BOOK = '🔒 Sổ tay chung chỉ dành cho chủ máy. Bạn đang làm việc trong dự án riêng của mình: dùng /duan để vào dự án (mỗi dự án có sổ tay riêng).';
+  // Chủ máy dùng màn hình THẬT; ID thường dùng màn hình ảo RIÊNG của mình (slot = ID Telegram) nên nhiều ID dùng cùng lúc không đụng nhau
+  const deskFor = (ctx) => {
+    const slot = access && ctx && ctx.uid != null ? access.slotOf(ctx.uid) : null;
+    return slot ? { call: (req, t) => deskRaw.call(Object.assign({}, req, { slot }), t) } : deskRaw;
+  };
   async function run(name, arg, ctx) {
     arg = String(arg || '').trim();
+    const desk = deskFor(ctx), withShot = (text) => withShotOn(desk, text);
     try {
       if (access && ctx && ctx.uid != null && access.MACHINE_CMDS.has(name)) { const g = access.gate(ctx.uid, name); if (g) return g; }   // lệnh điều khiển máy: kiểm quyền + giữ lượt dùng màn hình
       switch (name) {
@@ -291,21 +297,27 @@ function createQuick(o) {
           await new Promise((res) => setTimeout(res, o.rdWaitMs === undefined ? 7000 : o.rdWaitMs));
           return await withShot('🖥 Đã mở RustDesk nối tới "' + sec.name + '" (ID ' + sec.id + ') bằng mật khẩu đã lưu. Xong việc gõ /dong rustdesk.');
         }
-        case 'nhaman': return access && ctx && ctx.uid != null ? (access.releaseScreen(ctx.uid) ? '✅ Đã nhả màn hình máy, người khác dùng được ngay.' : 'Bạn đang không giữ màn hình máy.') : 'Máy này chưa có phân quyền máy.';
+        case 'nhaman': {                                          // đóng màn hình ảo riêng của mình (tắt mọi ứng dụng trong đó, giải phóng bộ nhớ); lần sau dùng lại tự mở
+          if (!access || !ctx || ctx.uid == null) return 'Máy này chưa có phân quyền máy.';
+          const slot = access.slotOf(ctx.uid);
+          if (!slot) return 'Chủ máy dùng màn hình thật của máy, không có màn hình riêng để đóng.';
+          const r = await deskRaw.call({ cmd: 'vdclose', slot });
+          return r.ok ? (r.closed ? '✅ Đã đóng màn hình riêng của bạn (mọi ứng dụng trong đó đã tắt). Lần sau dùng lại, màn hình mới tự mở.' : 'Màn hình riêng của bạn chưa mở.') : '⚠️ ' + r.error;
+        }
         case 'quyenmay': {                                        // chủ máy giao máy cho từng ID: /quyenmay · /quyenmay <máy|@local> <ID ...|none>
           if (!access) return '⚠️ Máy này chưa có phân quyền máy.';
           if (nonAdmin(ctx)) return 'Chỉ chủ máy giao máy được.';
           const snap2 = access.snapshot(), m = arg.match(/^(@local|"[^"]+"|\S+)\s*([\s\S]*)$/);
           if (!m) {
             const ks = Object.keys(snap2);
-            return '🖥 Quyền dùng máy theo ID (chủ máy luôn dùng được mọi máy):\n' + (ks.length ? ks.map((k) => '• ' + (k === access.LOCAL ? 'Màn hình máy này (@local)' : k) + ': ' + snap2[k].join(', ')).join('\n') : '(chưa giao máy nào cho ai)') +
-              '\n\nGiao: /quyenmay @local 123456789 (màn hình máy này) · /quyenmay "May van phong" 123456789,987654321 · bỏ hết: /quyenmay "May van phong" none';
+            return '🖥 Quyền dùng máy theo ID (chủ máy luôn dùng được mọi máy):\n' + (ks.length ? ks.map((k) => '• ' + (k === access.LOCAL ? 'Màn hình riêng trên máy này (@local)' : k) + ': ' + snap2[k].join(', ')).join('\n') : '(chưa giao máy nào cho ai)') +
+              '\n\nGiao: /quyenmay @local 123456789 (màn hình riêng trên máy này) · /quyenmay "May van phong" 123456789,987654321 · bỏ hết: /quyenmay "May van phong" none';
           }
           const name = m[1].replace(/^"|"$/g, ''), rest = m[2].trim();
           if (!rest) { const u = access.usersOf(name); return '🖥 ' + name + ': ' + (u.length ? u.join(', ') : 'chỉ chủ máy') + '.'; }
           if (access.key(name) !== access.LOCAL && vault && !vault.has(name)) return 'Không có máy "' + name + '" trong kho mật khẩu (Cài đặt → Máy từ xa). Màn hình máy này dùng tên @local.';
           const r = access.setUsers(name, /^(none|khong|xoa)$/i.test(rest) ? [] : rest);
-          return '✅ ' + (r.name === access.LOCAL ? 'Màn hình máy này' : r.name) + ': ' + (r.users.length ? r.users.join(', ') : 'chỉ chủ máy') + '.';
+          return '✅ ' + (r.name === access.LOCAL ? 'Màn hình riêng trên máy này' : r.name) + ': ' + (r.users.length ? r.users.join(', ') : 'chỉ chủ máy') + '.';
         }
         case 'maytinh': return remote ? await remote.sysinfo() : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'go': {

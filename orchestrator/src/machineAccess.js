@@ -5,7 +5,7 @@ const path = require('path');
 // QUYỀN DÙNG MÁY THEO TỪNG ID TELEGRAM. Chủ máy dùng mọi máy; ID khác CHỈ dùng máy được chủ máy giao:
 //   "@local"   màn hình/bàn phím/chuột của máy chủ AgentOS này (các lệnh /manhinh /cuaso /mo /dong /go /phim /bam /timchu /bamchu /chuyen /dan)
 //   "<tên máy>" máy từ xa trong kho mật khẩu (Cài đặt → Máy từ xa): ID đó gõ /vao <tên máy> và chỉ THẤY các máy của mình
-// Màn hình máy chủ chỉ có MỘT bộ: ai đang dùng thì giữ "lượt dùng" (mặc định 10 phút kể từ thao tác cuối); ID khác phải chờ hoặc người đó /nhaman. Chủ máy luôn được giành lại.
+// Chủ máy dùng màn hình THẬT của máy. Mỗi ID khác dùng một MÀN HÌNH ẢO RIÊNG trên cùng máy (tài khoản Linux riêng + Xvfb, xem desk/server.js "slot"): ứng dụng, cửa sổ, RustDesk của mỗi ID tách hẳn nên nhiều ID dùng CÙNG LÚC không đụng nhau.
 // Các lệnh nguy hiểm (tắt/khóa/mở khóa máy, tự xa...) vẫn CHỈ dành cho chủ máy.
 // Lưu ở một tệp JSON cạnh kho mật khẩu để cả bộ điều phối lẫn trang Cài đặt cùng đọc/ghi: { "machines": { "@local": ["123456789"], "May van phong": ["987654321"] } }
 const LOCAL = '@local';
@@ -15,7 +15,7 @@ const noAcc = (s) => String(s == null ? '' : s).toLowerCase().normalize('NFD').r
 const normUid = (u) => String(u).trim();
 
 function createMachineAccess(o) {
-  const file = o.file, isAdmin = o.isAdmin || (() => false), now = o.now || Date.now, leaseMs = o.leaseMs || 10 * 60 * 1000;
+  const file = o.file, isAdmin = o.isAdmin || (() => false);
   let cache = null, cacheKey = '';
   function read() {
     let st = null; try { st = fs.statSync(file); } catch (e) { return { machines: {} }; }
@@ -58,19 +58,6 @@ function createMachineAccess(o) {
   // Xóa máy khỏi bảng quyền (khi xóa khỏi kho mật khẩu)
   function forget(name) { const d = read(), k = findKey(d, name); if (!d.machines[k]) return false; const data = { machines: Object.assign({}, d.machines) }; delete data.machines[k]; write(data); return true; }
 
-  // ---- lượt dùng màn hình máy chủ ----
-  let lease = null;                                    // { uid, at, admin }
-  function useScreen(uid) {
-    const u = normUid(uid), t = now();
-    if (isAdmin(u)) { lease = { uid: u, at: t, admin: true }; return { ok: true }; }
-    if (lease && lease.uid !== u && t - lease.at < leaseMs) {
-      const wait = Math.max(1, Math.ceil((leaseMs - (t - lease.at)) / 60000));
-      return { ok: false, holder: lease.uid, admin: !!lease.admin, wait };
-    }
-    lease = { uid: u, at: t, admin: false }; return { ok: true };
-  }
-  function releaseScreen(uid) { if (lease && lease.uid === normUid(uid)) { lease = null; return true; } return false; }
-
   // Lệnh này thuộc nhóm điều khiển máy mà ID này được phép chạy?
   function canRun(uid, name) {
     if (isAdmin(uid)) return true;
@@ -81,18 +68,17 @@ function createMachineAccess(o) {
     if (name === 'nhaman') return true;
     return g.includes(LOCAL);
   }
-  // Cổng cho lệnh điều khiển máy: trả null = cho chạy (đã giữ lượt dùng màn hình), chuỗi = lý do từ chối.
+  // Cổng cho lệnh điều khiển máy: trả null = cho chạy, chuỗi = lý do từ chối. (Mỗi ID thường có màn hình ảo riêng nên không còn tranh nhau một màn hình.)
   function gate(uid, name) {
     if (!MACHINE_CMDS.has(name) || name === 'nhaman') return null;
-    if (!canRun(uid, name)) return 'Bạn chưa được giao máy này. Nhờ chủ máy giao ở Cài đặt → Máy từ xa (hoặc /quyenmay).';
-    const r = useScreen(uid);
-    if (r.ok) return null;
-    return '⏳ Màn hình máy đang được ' + (r.admin ? 'chủ máy' : 'một người khác') + ' dùng, thử lại sau khoảng ' + r.wait + ' phút (người đó gõ /nhaman là dùng được ngay).';
+    return canRun(uid, name) ? null : 'Bạn chưa được giao máy này. Nhờ chủ máy giao ở Cài đặt → Máy từ xa (hoặc /quyenmay).';
   }
+  // Màn hình dùng cho ID này: chủ máy = màn hình THẬT (null); ID khác = màn hình ảo RIÊNG của chính ID đó (không bao giờ đụng màn hình thật)
+  const slotOf = (uid) => (isAdmin(uid) ? null : normUid(uid));
   // Danh sách máy từ xa mà ID này thấy (chủ máy thấy hết)
   const visible = (uid, list) => (isAdmin(uid) ? list : list.filter((x) => can(uid, x.name)));
 
-  return { LOCAL, MACHINE_CMDS, grants, can, canRun, gate, visible, setUsers, grant, usersOf, snapshot, forget, useScreen, releaseScreen, isAdmin, key };
+  return { LOCAL, MACHINE_CMDS, grants, can, canRun, gate, visible, setUsers, grant, usersOf, snapshot, forget, slotOf, isAdmin, key };
 }
 
 module.exports = { createMachineAccess, LOCAL, MACHINE_CMDS, SCREEN_CMDS };

@@ -37,20 +37,15 @@ test('quyền dùng máy theo ID: chủ máy dùng mọi máy; ID thường ch�
   assert.throws(() => X.grant('abc', 'x'), /số/);
 });
 
-test('màn hình máy chủ chỉ MỘT người dùng một lúc: giữ lượt 10 phút, nhả bằng /nhaman, hết hạn thì người khác vào, chủ máy luôn giành lại', () => {
-  let t = 1000000; const ac = createMachineAccess({ file: path.join(tmp(), 'a.json'), isAdmin, now: () => t });
+test('màn hình: chủ máy dùng màn hình THẬT, mọi ID khác dùng màn hình ẢO RIÊNG (slot = ID của họ), không ai phải chờ ai', () => {
+  const ac = createMachineAccess({ file: path.join(tmp(), 'a.json'), isAdmin });
   ac.setUsers('@local', [A, B]);
-  assert.equal(ac.gate(A, 'manhinh'), null);
-  assert.match(ac.gate(B, 'manhinh'), /đang được một người khác dùng.*thử lại sau khoảng 10 phút/);
-  assert.equal(ac.gate(A, 'go'), null);                                                          // người đang giữ dùng tiếp (làm mới lượt)
-  t += 9 * 60000; assert.match(ac.gate(B, 'manhinh'), /thử lại/);
-  t += 2 * 60000; assert.equal(ac.gate(B, 'manhinh'), null);                                     // A im quá 10 phút: B vào
-  assert.equal(ac.releaseScreen(B), true); assert.equal(ac.gate(A, 'manhinh'), null);            // B nhả: A vào ngay
-  assert.equal(ac.gate(ADMIN, 'manhinh'), null); assert.match(ac.gate(A, 'manhinh'), /chủ máy/);   // chủ máy giành lại; người khác chờ
-  assert.match(ac.gate('999', 'manhinh'), /chưa được giao/);
+  assert.equal(ac.slotOf(ADMIN), null); assert.equal(ac.slotOf(A), A); assert.equal(ac.slotOf(B), B); assert.equal(ac.slotOf('999'), '999', 'ID thường chưa giao gì cũng không bao giờ được dùng màn hình thật');
+  assert.equal(ac.gate(A, 'manhinh'), null); assert.equal(ac.gate(B, 'manhinh'), null);        // cả hai cùng lúc, không chặn nhau
+  assert.match(ac.gate('999', 'manhinh'), /chưa được giao/); assert.equal(ac.gate(ADMIN, 'manhinh'), null);
 });
 
-function fakeDesk() { const calls = []; return { calls, call: async (c) => { calls.push(c.cmd); return { ok: true, file: path.join(os.tmpdir(), 'x.png') }; } }; }
+function fakeDesk() { const calls = [], reqs = []; return { calls, reqs, call: async (c) => { calls.push(c.cmd); reqs.push(c); return { ok: true, file: path.join(os.tmpdir(), 'x.png'), closed: true }; } }; }
 test('lệnh Telegram: ID thường chỉ chạy lệnh máy khi được giao; /vao chỉ thấy và chỉ vào máy của mình; /quyenmay chỉ chủ máy; nhả màn hình', async () => {
   const dir = tmp(), vault = createVault({ file: path.join(dir, 'vault.enc'), keyFile: path.join(dir, 'vault.key') });
   vault.put('May van phong', { id: '264372510', password: 'pw-1' }); vault.put('May kho', { id: '111222333', password: 'pw-2' });
@@ -62,8 +57,8 @@ test('lệnh Telegram: ID thường chỉ chạy lệnh máy khi được giao; 
   assert.match(await q.run('vao', '', as(A)), /chưa được giao/);
   // chủ máy giao
   assert.match(await q.run('quyenmay', '"May van phong" ' + A, as(ADMIN)), /May van phong: 222/);
-  assert.match(await q.run('quyenmay', '@local ' + B, as(ADMIN)), /Màn hình máy này: 333/);
-  assert.match(await q.run('quyenmay', '', as(ADMIN)), /May van phong: 222[\s\S]*Màn hình máy này \(@local\): 333/);
+  assert.match(await q.run('quyenmay', '@local ' + B, as(ADMIN)), /Màn hình riêng trên máy này: 333/);
+  assert.match(await q.run('quyenmay', '', as(ADMIN)), /May van phong: 222[\s\S]*Màn hình riêng trên máy này \(@local\): 333/);
   assert.match(await q.run('quyenmay', '"May ma" 222', as(ADMIN)), /Không có máy "May ma"/);
   assert.match(await q.run('quyenmay', '@local ' + B, as(A)), /Chỉ chủ máy/);
   // A: chỉ máy văn phòng
@@ -71,11 +66,14 @@ test('lệnh Telegram: ID thường chỉ chạy lệnh máy khi được giao; 
   assert.match(await q.run('vao', 'kho', as(A)), /May van phong/, 'gõ tên máy không được giao thì không khớp (không lộ máy khác)');
   assert.equal(desk.calls.includes('rdconnect'), false);
   assert.match(String((await q.run('vao', 'van phong', as(A))).text || ''), /Đã mở RustDesk nối tới "May van phong"/); assert.ok(desk.calls.includes('rdconnect'));
-  // B: có màn hình máy chủ nhưng A đang giữ lượt (vừa /vao) → phải chờ; A nhả thì B dùng được
-  assert.match(await q.run('manhinh', '', as(B)), /đang được một người khác dùng/);
-  assert.match(await q.run('nhaman', '', as(A)), /Đã nhả/);
-  assert.match(String((await q.run('manhinh', '', as(B))).text || ''), /Màn hình máy lúc/);
-  assert.match(await q.run('vao', 'van phong', as(B)), /chưa được giao/);
+  // mỗi ID một màn hình ảo riêng: A và B dùng CÙNG LÚC, lệnh của ai mang slot của người đó; chủ máy không có slot (màn hình thật)
+  const before = desk.reqs.length;
+  await q.run('manhinh', '', as(B)); await q.run('manhinh', '', as(A).uid ? as(ADMIN) : as(ADMIN));
+  const sl = desk.reqs.slice(before);
+  assert.ok(sl.some((r) => r.cmd === 'screenshot' && r.slot === B)); assert.ok(sl.some((r) => r.cmd === 'screenshot' && r.slot === undefined), 'chủ máy: không có slot');
+  assert.ok(desk.reqs.filter((r) => r.cmd === 'rdconnect').every((r) => r.slot === A), '/vao của A chạy trong màn hình ảo của A');
+  assert.match(await q.run('nhaman', '', as(B)), /Đã đóng màn hình riêng/); assert.deepEqual(desk.reqs[desk.reqs.length - 1], { cmd: 'vdclose', slot: B });
+  assert.match(await q.run('nhaman', '', as(ADMIN)), /không có màn hình riêng/);
   assert.equal((await q.run('quyenmay', '"May van phong" none', as(ADMIN))).includes('chỉ chủ máy'), true);
   assert.match(await q.run('vao', '', as(A)), /chưa được giao/);                  // thu quyền có hiệu lực ngay
 });

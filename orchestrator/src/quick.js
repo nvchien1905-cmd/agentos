@@ -125,8 +125,17 @@ function createQuick(o) {
         case 'trinho': {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           const pj = projects && ctx ? projects.active(ctx.chatId) : null;
+          // Tra trong cuốn sách: "/trinho tim <từ khóa>" (từng mục khớp, kèm số chương) hoặc "/trinho 4.2" / "/trinho chương 4.2" (mở đúng chương theo số)
+          const bk = pj ? mem.bookFor(pj.id) : mem.book;
+          const findQ = String(arg || '').match(/^(?:tim|tìm|search)\s+(.+)$/i);
+          if (findQ) {
+            const r = bk.search(findQ[1], 10);
+            return r.length ? '🔎 Tìm "' + findQ[1].trim() + '" trong sổ tay' + (pj ? ' dự án "' + pj.name + '"' : '') + ':\n' + r.map((x) => '• ' + (x.part ? x.part + '.' + x.no + '.' + x.idx : '?') + ' [' + x.title + '] ' + x.date + ': ' + x.text.slice(0, 160)).join('\n') + '\n\n/trinho <số chương> (vd /trinho ' + (r[0].part ? r[0].part + '.' + r[0].no : '1.1') + ') để mở cả chương.' : 'Không thấy mục nào có "' + findQ[1].trim() + '". Gõ /trinho để xem mục lục.';
+          }
+          const numQ = String(arg || '').match(/^(?:chuong\s+|chương\s+)?(\d)\.(\d+)$/i);
+          if (numQ) { const c = bk.list().find((x) => x.part === Number(numQ[1]) && x.no === Number(numQ[2])); return c ? bk.chapterText(c, 3000) : 'Không có chương ' + numQ[1] + '.' + numQ[2] + '. Gõ /trinho để xem mục lục.'; }
           if (pj) {                                                          // đang ở dự án: xem sổ tay của dự án
-            const pb = mem.bookFor(pj.id);
+            const pb = bk;
             if (arg) { const hit = pb.relevant(arg, 2, 1, 1); return hit.length ? hit.map((c) => pb.chapterText(c, 1800)).join('\n\n') : 'Không có chương nào khớp "' + arg + '" trong sổ tay dự án.'; }
             const toc = pb.toc();
             return '📖 Sổ tay của dự án "' + pj.name + '" (' + pb.list().length + ' chương)\n' + (toc ? toc.replace(/ → \S+$/gm, '') : '(chưa có gì; /nho <điều cần nhớ> sẽ ghi vào sổ tay của dự án này)') + '\n\nThoát dự án: /duan thoat để xem sổ tay chung.';
@@ -138,7 +147,7 @@ function createQuick(o) {
           }
           return '📖 Sổ tay của chủ máy (' + i.chapters + ' chương, ' + i.entries + ' mục, dùng chung mọi AI)\n' + (i.toc ? i.toc.replace(/ → \S+$/gm, '') : '(chưa có gì; dùng /nho để thêm)') +
             '\n\n📝 Tóm tắt cuộc trò chuyện này: ' + (i.summary ? '\n' + i.summary.slice(0, 1000) : '(chưa có; có khi hội thoại dài)') +
-            '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> xem chi tiết một chương';
+            '\n\nNén ngữ cảnh bằng: ' + (i.summarizer ? (i.summarizer === 'gemini' ? 'Gemini (khóa API)' : 'DeepSeek (khóa API)') : 'cắt gọn (chưa có khóa Gemini/DeepSeek, thêm ở Cài đặt → AI và khóa API)') + ' · mở phiên mới sau ' + i.cfg.rotateAfter + ' lượt\n/trinho <chủ đề> hoặc /trinho 4.2 xem chi tiết một chương · /trinho tim <từ khóa> tìm trong cả cuốn';
         }
         case 'sukien': {
           if (!triggers) return '⚠️ Máy này chưa có sự kiện tự kích hoạt.';

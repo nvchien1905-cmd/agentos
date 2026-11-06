@@ -8,6 +8,8 @@ const { createBook, SECRET_RE } = require('./book');
 //   2) NGỮ CẢNH CUỘC TRÒ CHUYỆN: tóm tắt cuộn của các việc cũ + vài việc gần nhất nguyên văn + việc cũ liên quan (SQLite FTS5).
 // Khi nén hội thoại, mô hình rẻ còn đề xuất các "ghi chú" để xếp vào sổ tay (đúng chương, thay mục cũ nếu có cập nhật).
 // Trong cùng một AI còn phiên thì chỉ gửi yêu cầu mới (hưởng bộ nhớ đệm); sau `rotateAfter` lượt thì chốt tóm tắt và mở phiên mới.
+const { noAccent: noAcc } = require('./kiotviet');
+const REMEMBER_RE = /^(em |ban |bot )?(nho|ghi nho|hay nho|luu y|tu nay|tu gio|tu bay gio|luon luon|dung bao gio|khong bao gio|quy dinh|quy tac)\b/;
 const cut = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
 const SUMMARY_SYSTEM = 'Bạn nén ngữ cảnh cuộc trò chuyện giữa chủ máy và trợ lý AI, và rút kiến thức bền vững vào SỔ TAY. Viết tiếng Việt, súc tích, KHÔNG bịa. ' +
@@ -35,6 +37,7 @@ function createMemory(o) {
   const projOfScope = (scope) => { const s = String(scope), i = s.indexOf('#'); return i < 0 ? null : s.slice(i + 1); };
   const busy = new Set();
   try { const n = book.migrateLegacy(); if (n) log('đã chuyển ' + n + ' dòng ghi nhớ cũ sang sổ tay'); } catch (e) { log('chuyển ghi nhớ cũ lỗi: ' + e.message); }
+  try { const n = book.numberAll(); if (n) log('đã đánh số ' + n + ' chương sổ tay (phần.thứ tự)'); } catch (e) { log('đánh số sổ tay lỗi: ' + e.message); }
 
   // ---------- sổ tay: các thao tác cho lệnh /nho /quen /trinho ----------
   async function addFact(text, project) { return bookFor(project).addNote(text); }
@@ -115,6 +118,11 @@ function createMemory(o) {
   async function afterJob(job, eng, res) {
     if (!cfg.enabled || !res || !res.ok) return { rotate: false };
     const scope = db.scopeOf(job);
+    // Chủ máy dặn rõ "nhớ…/từ nay…/luôn luôn…/đừng bao giờ…": ghi thẳng vào sổ tay (không phụ thuộc có khóa mô hình nén hay chưa)
+    try {
+      const p = String(job.prompt || '').trim();
+      if (p.length >= 8 && p.length <= 400 && !p.startsWith('/') && REMEMBER_RE.test(noAcc(p))) addFact(p, job.project || null).catch((e) => log('tự ghi sổ tay lỗi: ' + e.message));
+    } catch (e) { /* không chặn */ }
     const tk = 'turns:' + scope + ':' + eng;
     const turns = (Number(db.kvGet(tk)) || 0) + 1;
     let rotate = false;
@@ -122,6 +130,8 @@ function createMemory(o) {
     summarizeSoon(scope, rotate);
     return { rotate };
   }
+  // /moi: trước khi AI mở phiên mới, nén ngay các việc cũ và xếp điều đáng nhớ vào sổ tay (chạy nền, không chặn)
+  function flush(chat) { return summarizeSoon(chat, true); }
   function summarizeSoon(chat, force) {
     if (busy.has(chat)) return null;
     busy.add(chat);
@@ -162,10 +172,11 @@ function createMemory(o) {
   // Dọn định kỳ (gọi từ bộ điều phối): xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài.
   async function housekeeping() {
     const r = await book.ingestInbox();
+    book.numberAll();
     const o2 = await book.organizeGeneral();
     const c = await book.compactAll();
     if (projects) {
-      for (const p of projects.list({ all: true })) { try { const pb = bookFor(p.id); await pb.ingestInbox(); await pb.compactAll(); } catch (e) { log('dọn sổ tay dự án ' + p.id + ' lỗi: ' + e.message); } }
+      for (const p of projects.list({ all: true })) { try { const pb = bookFor(p.id); await pb.ingestInbox(); pb.numberAll(); await pb.compactAll(); } catch (e) { log('dọn sổ tay dự án ' + p.id + ' lỗi: ' + e.message); } }
       try { projects.purge(); } catch (e) { /* bỏ qua */ }
     }
     return { moved: r.moved, organized: o2, compacted: c };
@@ -178,7 +189,7 @@ function createMemory(o) {
       summary: summaryOf(chat), summaryUpTo: uptoOf(chat), cfg, summarizer: summarizer ? summarizer.provider() : null };
   }
 
-  return { pack, afterJob, addFact, forgetFact, resetChat, info, maybeSummarize, summarizeSoon, housekeeping, book, bookFor, cfg };
+  return { pack, afterJob, addFact, forgetFact, resetChat, flush, info, maybeSummarize, summarizeSoon, housekeeping, book, bookFor, cfg };
 }
 
 module.exports = { createMemory, SECRET_RE };

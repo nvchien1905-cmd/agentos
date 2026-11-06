@@ -46,7 +46,7 @@ function helpText(profiles) {
     '/toanquyen - bật chế độ TOÀN QUYỀN: AI tự làm một mạch, không hỏi xin phép, có sudo (chỉ quản trị viên)\n' +
     '/baove - quay về chế độ bảo vệ: AI hỏi trước khi ghi file/chạy lệnh (chỉ quản trị viên)\n' +
     '/moi - bắt đầu cuộc trò chuyện mới (quên ngữ cảnh cũ, GIỮ ghi nhớ lâu dài)\n' +
-    '/nho <điều cần nhớ> · /quen <từ khóa> · /trinho - ghi nhớ LÂU DÀI dùng chung cho mọi AI (Claude/Codex/Gemini/DeepSeek)\n' +
+    '/nho <điều cần nhớ> · /quen <từ khóa> · /trinho · /trinho tim <từ khóa> - SỔ TAY LÂU DÀI như cuốn sách (Phần › Chương › Mục, có số), dùng chung cho mọi AI. /moi chỉ mở phiên AI mới, KHÔNG mất bộ nhớ (/moi xoa mới quên ngữ cảnh)\n' +
     '📷 Gửi ảnh, nhiều ảnh (album), video hoặc tài liệu kèm chú thích: bot tải về, trích khung hình + lời nói trong video rồi giao AI xem (tệp tối đa 20 MB)\n' +
     '/id - xem ID Telegram của bạn';
 }
@@ -290,10 +290,15 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'moi': {
           const cur = pcmd ? pcmd.current(chatId, uid) : null;
           const scope = chatId + (cur ? '#' + cur.id : '');            // /moi trong dự án chỉ làm mới cuộc trò chuyện CỦA dự án đó
-          db.kvDelPrefix('session:' + scope + ':');
-          db.kvSet('ctxfrom:' + scope, db.lastJobId(scope));
-          if (memory) memory.resetChat(scope);                  // xóa tóm tắt cuộn; ghi nhớ lâu dài (GHI-NHO.md) vẫn giữ, xóa bằng /quen
-          return cur ? 'Đã bắt đầu cuộc trò chuyện mới trong dự án "' + cur.name + '" (chỉ dẫn và sổ tay dự án vẫn giữ).' : 'Đã bắt đầu cuộc trò chuyện mới.';
+          const wipe = /^\s*(xoa|xóa|het|hết|sach|sạch)\b/i.test(String(cmd[3] || ''));
+          db.kvDelPrefix('session:' + scope + ':');                // AI mở phiên mới (hết "lạc đề")...
+          if (wipe) {                                              // /moi xoa: quên cả tóm tắt cuộc trò chuyện (sổ tay vẫn giữ, xóa bằng /quen)
+            db.kvSet('ctxfrom:' + scope, db.lastJobId(scope));
+            if (memory) memory.resetChat(scope);
+            return cur ? 'Đã xóa ngữ cảnh và bắt đầu cuộc trò chuyện mới trong dự án "' + cur.name + '" (sổ tay vẫn giữ).' : 'Đã xóa ngữ cảnh và bắt đầu cuộc trò chuyện mới (sổ tay vẫn giữ).';
+          }
+          if (memory && memory.flush) memory.flush(scope);         // ...nhưng KHÔNG mất trí nhớ: ghi điều đáng nhớ vào sổ tay, giữ tóm tắt + sổ tay cho phiên mới
+          return (cur ? 'Đã mở phiên AI mới trong dự án "' + cur.name + '"' : 'Đã mở phiên AI mới') + ', bộ nhớ vẫn giữ nguyên (sổ tay + tóm tắt). Muốn quên hẳn ngữ cảnh: /moi xoa.';
         }
         case 'trangthai': {
           const cur = worker.currentJobId();

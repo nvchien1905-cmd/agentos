@@ -252,7 +252,7 @@ test('định tuyến: lỗi thường không chuyển engine; chuyển engine t
   assert.equal(R.codex.calls[1].resumeId, 's-x'); assert.equal(R.codex.calls[1].prompt, 'việc nữa');
 
   const bot = createBot({ db: R.db, worker: R.worker, allowed: new Set(['7']) });
-  bot.handle({ from: { id: 7 }, chat: { id: 7, type: 'private' }, text: '/moi' });
+  bot.handle({ from: { id: 7 }, chat: { id: 7, type: 'private' }, text: '/moi xoa' });
   await R.go('chủ đề khác');
   assert.equal(R.codex.calls[2].resumeId, null); assert.equal(R.codex.calls[2].prompt, 'chủ đề khác');
 });
@@ -287,7 +287,7 @@ test('bot + worker: nhận việc, chạy tiến trình thật, giữ phiên, /m
   assert.match(sent[0][1], /Việc #1 xong:\necho:việc một/);
   bot.handle(msg('việc hai')); await idle();
   assert.match(sent[1][1], /resume=sess-1/);
-  assert.equal(bot.handle(msg('/moi')), 'Đã bắt đầu cuộc trò chuyện mới.');
+  assert.match(bot.handle(msg('/moi xoa')), /Đã xóa ngữ cảnh/);          // /moi xoa: quên hẳn; /moi thường chỉ mở phiên AI mới và GIỮ bộ nhớ (xem memory.test.js)
   bot.handle(msg('việc ba')); await idle();
   assert.doesNotMatch(sent[2][1], /resume=/);
   bot.handle(msg('FAIL')); await idle();

@@ -202,7 +202,7 @@ test('settings: sổ tay — thêm ghi chú vào chương, sửa/xóa chương (
     const m0 = await S.call('GET', 'memory');
     assert.deepEqual([m0.body.config.enabled, m0.body.config.route, m0.body.config.provider, m0.body.config.rotateAfter, m0.body.summarizer.gemini, m0.body.chapters.length], [true, true, 'auto', 25, false, 0]);
     const n1 = await S.call('POST', 'memory/note', { text: 'Phí giao hàng ngoại thành 30 nghìn' }); assert.equal(n1.body.chapter, 'Ghi nhớ chung');
-    const ch = (await S.call('GET', 'memory')).body.chapters[0]; assert.deepEqual([ch.slug, ch.entries], ['ghi-nho-chung', 1]); assert.match(ch.text, /^# Ghi nhớ chung\n> Tóm tắt:/);
+    const ch = (await S.call('GET', 'memory')).body.chapters[0]; assert.deepEqual([ch.slug, ch.entries], ['ghi-nho-chung', 1]); assert.match(ch.text, /^# Ghi nhớ chung\n> Số: \d\.\d+\n> Tóm tắt:/);
     const edit = ch.text.replace('30 nghìn', '35 nghìn') + '- [2026-10-21] Nghỉ chủ nhật\n';
     assert.equal((await S.call('POST', 'memory/chapter', { slug: ch.slug, text: edit })).body.entries, 2);
     assert.match((await S.call('GET', 'memory')).body.chapters[0].text, /35 nghìn[\s\S]*Nghỉ chủ nhật/);

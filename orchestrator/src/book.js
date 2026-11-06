@@ -18,10 +18,23 @@ const slugOf = (title) => (noAccent(title).replace(/\s+/g, '-').replace(/[^a-z0-
 const idOf = (text) => crypto.createHash('sha1').update(noAccent(text)).digest('hex').slice(0, 6);
 const ENTRY_RE = /^-\s+\[(\d{4}-\d{2}-\d{2})\]\s+(?:\{([0-9a-f]{6})\}\s+)?(.*\S)\s*$/;
 const DEFAULT_TITLE = 'Ghi nhớ chung';
+// CÁC PHẦN của cuốn sách (số thứ tự cố định, không đổi). Chương nào cũng thuộc một phần và có số "phần.thứ tự" (vd 4.2); số không đổi khi thêm/bớt mục.
+const PARTS = [
+  [1, 'Chủ máy và cách làm việc', 'chu may|xung ho|so thich|thoi quen|cach tra loi|ngon ngu|tinh cach|anh thich|anh muon'],
+  [2, 'Cửa hàng và kinh doanh', 'cua hang|chi nhanh|giao hang|van chuyen|gio mo cua|doanh thu|doanh so|kiotviet|ban hang|khuyen mai|chuong trinh|nghi chu nhat'],
+  [3, 'Khách hàng và đối tác', 'khach hang|khach quen|nha cung cap|doi tac|nhan vien|lien he|so dien thoai'],
+  [4, 'Hàng hóa và giá', 'hang hoa|san pham|gia ban|gia von|ton kho|nhap hang|bang gia|noi chien|bep tu'],
+  [5, 'Máy móc và hệ thống', 'may tinh|may in|tailscale|rustdesk|wifi|may con|may van phong|server|vps|zalo|telegram|bot|agentos|ssh|usb'],
+  [6, 'Quy trình và quy định', 'quy trinh|quy dinh|quy tac|luat|thue|hoa don dien tu|ke toan|doi tra|bao hanh'],
+  [7, 'Dự án và quyết định', 'du an|quyet dinh|ke hoach|cong viec'],
+  [9, 'Khác', ''],
+];
+const partTitle = (n) => (PARTS.find((p) => p[0] === n) || PARTS[PARTS.length - 1])[1];
+const partsText = () => PARTS.map((p) => p[0] + '=' + p[1]).join('; ');
 
 const ADD_SYSTEM = 'Bạn là biên tập viên một cuốn SỔ TAY (như cuốn sách) về chủ máy và cửa hàng của họ. Xếp thông tin mới vào ĐÚNG chương: cùng chủ đề gom một chương (dùng lại chương đã có nếu hợp), chỉ tạo chương mới (tên 2-4 từ, tiếng Việt) khi chưa có chủ đề đó. ' +
-  'Viết lại thành MỘT dòng ngắn gọn rõ nghĩa (tối đa 200 ký tự). Nếu thông tin mới CẬP NHẬT/THAY THẾ/MÂU THUẪN với dòng cũ thì liệt kê mã dòng cũ cần thay. Viết lại tóm tắt chương (1-2 câu) sau khi thêm. KHÔNG chép mật khẩu/khóa/token. ' +
-  'Chỉ trả về JSON: {"chapter":"<tên chương>","text":"<một dòng>","supersedes":["<mã>"],"summary":"<tóm tắt chương>"}';
+  'Viết lại thành MỘT dòng ngắn gọn rõ nghĩa (tối đa 200 ký tự). Nếu thông tin mới CẬP NHẬT/THAY THẾ/MÂU THUẪN với dòng cũ thì liệt kê mã dòng cũ cần thay. Viết lại tóm tắt chương (1-2 câu) sau khi thêm. Chương mới phải thuộc một PHẦN cố định: ' + partsText() + '. KHÔNG chép mật khẩu/khóa/token. ' +
+  'Chỉ trả về JSON: {"chapter":"<tên chương>","part":<số phần>,"text":"<một dòng>","supersedes":["<mã>"],"summary":"<tóm tắt chương>"}';
 const ORGANIZE_SYSTEM = 'Bạn sắp xếp các dòng ghi nhớ CHƯA PHÂN LOẠI vào các chương chủ đề của một cuốn sổ tay. Dùng lại chương đã có nếu hợp; chỉ tạo chương mới (tên 2-4 từ, tiếng Việt) khi có từ 2 dòng cùng chủ đề trở lên; dòng lẻ không thuộc chủ đề nào thì bỏ qua (không liệt kê). ' +
   'Viết lại tóm tắt (1-2 câu) cho mỗi chương có dòng mới. Chỉ trả về JSON: {"assign":[{"id":"<mã dòng>","chapter":"<tên chương>"}],"summaries":{"<tên chương>":"<tóm tắt>"}}';
 const MERGE_SYSTEM = 'Bạn dọn một chương sổ tay quá dài. Gộp các dòng trùng ý, bỏ dòng lỗi thời/mâu thuẫn (giữ bản mới hơn), giữ nguyên ngày và thông tin cụ thể (tên, số, giờ). Viết lại tóm tắt chương 1-2 câu. ' +
@@ -41,12 +54,13 @@ function createBook(o) {
   // ---------- đọc / ghi chương ----------
   function parse(slug, text) {
     const lines = String(text).split('\n');
-    const ch = { slug, title: slug, summary: '', updated: '', entries: [] };
+    const ch = { slug, title: slug, summary: '', updated: '', part: 0, no: 0, entries: [] };
     const h = lines.find((l) => /^#\s+\S/.test(l)); if (h) ch.title = h.replace(/^#\s+/, '').trim();
     for (const l of lines) {
       let m;
       if ((m = l.match(/^>\s*Tóm tắt:\s*(.*)$/))) ch.summary = m[1].trim();
       else if ((m = l.match(/^>\s*Cập nhật:\s*(\d{4}-\d{2}-\d{2})/))) ch.updated = m[1];
+      else if ((m = l.match(/^>\s*Số:\s*(\d)\.(\d+)/))) { ch.part = Number(m[1]); ch.no = Number(m[2]); }
       else if ((m = l.match(ENTRY_RE))) ch.entries.push({ date: m[1], id: m[2] || idOf(m[3]), text: m[3] });
     }
     // mã trùng (hai dòng giống hệt) -> đánh lại
@@ -55,7 +69,7 @@ function createBook(o) {
     return ch;
   }
   function render(ch) {
-    return '# ' + ch.title + '\n> Tóm tắt: ' + (ch.summary || '(chưa có)') + '\n> Cập nhật: ' + (ch.updated || today(now())) + '\n\n## Chi tiết\n' +
+    return '# ' + ch.title + '\n> Số: ' + (ch.part ? ch.part + '.' + ch.no : '') + '\n> Tóm tắt: ' + (ch.summary || '(chưa có)') + '\n> Cập nhật: ' + (ch.updated || today(now())) + '\n\n## Chi tiết\n' +
       ch.entries.map((e) => '- [' + e.date + '] {' + e.id + '} ' + e.text).join('\n') + (ch.entries.length ? '\n' : '');
   }
   function list() {
@@ -63,14 +77,15 @@ function createBook(o) {
     return names.filter((n) => /^chuong-[a-z0-9-]+\.md$/.test(n)).map((n) => {
       const slug = n.slice(7, -3);
       try { return parse(slug, fs.readFileSync(path.join(root(), n), 'utf8')); } catch (e) { return null; }
-    }).filter(Boolean).sort((a, b) => (b.updated || '').localeCompare(a.updated || '') || a.title.localeCompare(b.title));
+    }).filter(Boolean).sort((a, b) => (a.part || 9) - (b.part || 9) || (a.no || 999) - (b.no || 999) || a.title.localeCompare(b.title));
   }
   const get = (slug) => { try { return parse(slug, fs.readFileSync(fileOf(slug), 'utf8')); } catch (e) { return null; } };
   function save(ch) {
     fs.mkdirSync(root(), { recursive: true });
     const f = fileOf(ch.slug);
     if (fs.existsSync(f)) { try { fs.copyFileSync(f, f + '.bak'); } catch (e) { /* bỏ qua */ } }
-    ch.updated = today(now());
+    if (!ch.keepDate) ch.updated = today(now());
+    delete ch.keepDate;
     fs.writeFileSync(f, render(ch));
     writeToc();
   }
@@ -88,10 +103,15 @@ function createBook(o) {
   // ---------- mục lục / chương liên quan ----------
   function tocText(max) {
     const chs = list();
-    const lines = chs.map((c) => '- ' + c.title + ' (' + c.entries.length + ' mục): ' + (c.summary && c.summary !== '(chưa có)' ? cut(c.summary, 160) : cut((c.entries[0] || {}).text, 100)) + ' → ' + fileOf(c.slug));
+    const lines = []; let lastPart = -1;
+    for (const c of chs) {
+      const p = c.part || 9;
+      if (p !== lastPart) { lines.push('PHẦN ' + p + ' — ' + partTitle(p)); lastPart = p; }
+      lines.push('- Chương ' + (c.part ? c.part + '.' + c.no : '?') + ' ' + c.title + ' (' + c.entries.length + ' mục): ' + (c.summary && c.summary !== '(chưa có)' ? cut(c.summary, 160) : cut((c.entries[0] || {}).text, 100)) + ' → ' + fileOf(c.slug));
+    }
     let out = '', n = 0;
     for (const l of lines) { if (out.length + l.length > max) break; out += (out ? '\n' : '') + l; n++; }
-    return out + (n < lines.length ? '\n…(còn ' + (lines.length - n) + ' chương, xem MUC-LUC.md)' : '');
+    return out + (n < lines.length ? '\n…(còn ' + lines.filter((l, i) => i >= n && l.startsWith('- ')).length + ' chương, xem MUC-LUC.md)' : '');
   }
   const toc = () => tocText(cfg.tocMax);
   const hashOf = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10);
@@ -129,10 +149,47 @@ function createBook(o) {
     return best ? best.c : null;
   }
   function chapterText(ch, max) {
-    const head = '"' + ch.title + '" — ' + ch.summary + ' (tệp ' + fileOf(ch.slug) + ')\n';
-    let body = ch.entries.map((e) => '- [' + e.date + '] ' + e.text).join('\n');
+    const head = 'Chương ' + (ch.part ? ch.part + '.' + ch.no + ' ' : '') + '"' + ch.title + '" (Phần ' + (ch.part || 9) + ' — ' + partTitle(ch.part || 9) + ') — ' + ch.summary + ' (tệp ' + fileOf(ch.slug) + ')\n';
+    let body = ch.entries.map((e, i) => '- ' + (ch.part ? ch.part + '.' + ch.no + '.' : '') + (i + 1) + ' [' + e.date + '] ' + e.text).join('\n');
     if (head.length + body.length > (max || cfg.chapterMax)) body = body.slice(0, (max || cfg.chapterMax) - head.length - 20) + '\n…(còn nữa, mở tệp để xem hết)';
     return head + body;
+  }
+
+  // ---------- phần & số chương ----------
+  // Đoán phần theo từ khóa khi không có mô hình (hoặc chương cũ chưa có số).
+  function classifyPart(title, text) {
+    const t = ' ' + noAccent(title + ' ' + text) + ' ';
+    let best = 9, bestSc = 0;
+    for (const p of PARTS) { if (!p[2]) continue; let sc = 0; for (const w of p[2].split('|')) if (t.includes(' ' + w + ' ')) sc++; if (sc > bestSc) { best = p[0]; bestSc = sc; } }
+    return best;
+  }
+  const nextNo = (chs, part) => chs.filter((c) => c.part === part).reduce((m, c) => Math.max(m, c.no || 0), 0) + 1;
+  // Đánh số các chương chưa có số (sổ tay cũ): giữ nguyên nội dung, chỉ thêm phần + số; số đã có không bao giờ đổi.
+  function numberAll() {
+    const chs = list(); let n = 0;
+    for (const c of chs) {
+      if (c.part && c.no) continue;
+      c.part = classifyPart(c.title, c.summary + ' ' + c.entries.map((e) => e.text).join(' '));
+      c.no = nextNo(chs.filter((x) => x !== c), c.part);
+      c.keepDate = true; save(c); n++;
+    }
+    if (n) writeToc();
+    return n;
+  }
+  // Tìm trong cả cuốn: mục khớp nhiều từ nhất trước (rồi mới nhất). Trả [{slug, part, no, title, idx, date, text}].
+  function search(query, limit) {
+    const words = tokens(query);
+    if (!words.length) return [];
+    const out = [];
+    for (const c of list()) {
+      const tt = noAccent(c.title + ' ' + c.summary);
+      for (let i = 0; i < c.entries.length; i++) {
+        const e = c.entries[i], t = noAccent(e.text);
+        const hit = words.filter((w) => t.includes(w) || tt.includes(w)).length;
+        if (hit && hit >= Math.min(2, words.length)) out.push({ slug: c.slug, part: c.part, no: c.no, title: c.title, idx: i + 1, date: e.date, text: e.text, hit });
+      }
+    }
+    return out.sort((a, b) => b.hit - a.hit || b.date.localeCompare(a.date)).slice(0, limit || 8);
   }
 
   // ---------- ghi / thay / quên ----------
@@ -147,7 +204,11 @@ function createBook(o) {
     if (SECRET_RE.test(text)) return { ok: false, error: 'Nội dung giống mật khẩu/khóa/token nên em KHÔNG ghi nhớ (sổ tay được gửi cho hãng AI).' };
     title = cut(String(title || DEFAULT_TITLE), 60) || DEFAULT_TITLE;
     const slug = slugOf(title);
-    const ch = get(slug) || { slug, title, summary: '', updated: '', entries: [] };
+    let ch = get(slug);
+    if (!ch) {
+      const all = list(), part = PARTS.some((p) => p[0] === Number(opts.part)) ? Number(opts.part) : classifyPart(title, (opts.summary || '') + ' ' + text);
+      ch = { slug, title, summary: '', updated: '', part, no: nextNo(all, part), entries: [] };
+    } else if (!ch.part) { const all = list().filter((x) => x.slug !== slug); ch.part = classifyPart(ch.title, ch.summary + ' ' + text); ch.no = nextNo(all, ch.part); }
     const key = noAccent(text);
     if (ch.entries.some((e) => noAccent(e.text) === key)) return { ok: true, duplicate: true, chapter: ch.title };
     let sup = new Set((opts.supersedes || []).map(String));
@@ -195,7 +256,7 @@ function createBook(o) {
       if (used + blk.length > budget) break;
       blocks.push(blk); used += blk.length;
     }
-    return 'CÁC CHƯƠNG HIỆN CÓ:\n' + (chs.length ? chs.map((c) => '- ' + c.title + ': ' + cut(c.summary, 120)).join('\n') : '(chưa có chương nào)') +
+    return 'CÁC PHẦN CỐ ĐỊNH: ' + partsText() + '\n\nCÁC CHƯƠNG HIỆN CÓ:\n' + (chs.length ? chs.map((c) => '- ' + (c.part ? c.part + '.' + c.no + ' ' : '') + c.title + ': ' + cut(c.summary, 120)).join('\n') : '(chưa có chương nào)') +
       (blocks.length ? '\n\nCHI TIẾT CÁC CHƯƠNG (kèm mã dòng):\n' + blocks.join('\n') : '');
   }
   function parseJson(t) { try { const m = String(t).match(/\{[\s\S]*\}/); return JSON.parse(m ? m[0] : t); } catch (e) { return null; } }
@@ -208,7 +269,7 @@ function createBook(o) {
       const r = await summarizer.run(ADD_SYSTEM, modelContext(text) + '\n\nTHÔNG TIN MỚI: ' + text);
       const j = r && parseJson(r.text);
       if (j && j.chapter && j.text) {
-        const res = put(String(j.chapter), String(j.text), { supersedes: Array.isArray(j.supersedes) ? j.supersedes : [], summary: j.summary, autoReplace: false });
+        const res = put(String(j.chapter), String(j.text), { supersedes: Array.isArray(j.supersedes) ? j.supersedes : [], summary: j.summary, part: j.part, autoReplace: false });
         if (res.ok) return Object.assign(res, { via: r.via });
       }
     }
@@ -221,7 +282,7 @@ function createBook(o) {
     let added = 0, replaced = 0;
     for (const n of (notes || []).slice(0, 6)) {
       if (!n || !n.text) continue;
-      const r = put(String(n.chapter || DEFAULT_TITLE), String(n.text), { supersedes: Array.isArray(n.supersedes) ? n.supersedes : [], summary: n.summary, autoReplace: false });
+      const r = put(String(n.chapter || DEFAULT_TITLE), String(n.text), { supersedes: Array.isArray(n.supersedes) ? n.supersedes : [], summary: n.summary, part: n.part, autoReplace: false });
       if (r.ok && !r.duplicate) { added++; replaced += r.replaced || 0; }
     }
     return { added, replaced };
@@ -298,7 +359,7 @@ function createBook(o) {
     return items.length;
   }
 
-  return { root, inboxFile, list, get, save, parse, render, toc, tocText, tocHash, hashOf, relevant, place, chapterText, put, forget, addNote, applyNotes, ingestInbox, organizeGeneral, compact, compactAll, migrateLegacy, modelContext, fileOf, ADD_SYSTEM, SECRET_RE, slugOf, cfg };
+  return { PARTS, partTitle, numberAll, search, classifyPart, root, inboxFile, list, get, save, parse, render, toc, tocText, tocHash, hashOf, relevant, place, chapterText, put, forget, addNote, applyNotes, ingestInbox, organizeGeneral, compact, compactAll, migrateLegacy, modelContext, fileOf, ADD_SYSTEM, SECRET_RE, slugOf, cfg };
 }
 
-module.exports = { createBook, SECRET_RE, ENTRY_RE };
+module.exports = { createBook, SECRET_RE, ENTRY_RE, PARTS };

@@ -469,3 +469,9 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.11.06.4 — Hỏi doanh thu bằng câu thường, AI trả lời trực tiếp (không còn đường tắt lệnh)
 - Câu thường về doanh thu/tồn kho không còn bị bot chặn rồi báo "Khoảng thời gian không hiểu được": AI nhận và trả lời. Bot lấy sẵn số liệu KiotViet (API chính thức, chỉ đọc) đính vào câu hỏi.
 - Hiểu khoảng ngày tùy ý ("từ 1/11/2026 đến hiện tại", "từ 01/11 đến 03/11") và "từng ngày" (mỗi ngày một dòng, chia theo chi nhánh, tối đa 62 ngày). Lệnh /doanhso gõ tay cũng hiểu như vậy. Test: orchestrator/test/thinking.test.js, wizard/test/kvcontext.test.js.
+
+## 2026.11.06.5 — Bộ nhớ như cuốn sách: Phần › Chương › Mục, có số, tìm được; /moi không còn làm mất trí nhớ
+- Sổ tay có 8 PHẦN cố định (Chủ máy · Cửa hàng/kinh doanh · Khách hàng/đối tác · Hàng hóa/giá · Máy móc/hệ thống · Quy trình/quy định · Dự án/quyết định · Khác). Mỗi chương có số "phần.thứ tự" (vd 4.2) cố định, mỗi mục có số 4.2.3. Mục lục xếp theo phần rồi số (không còn nhảy theo ngày sửa). Chương cũ được tự đánh số một lần khi lên bản này (giữ nguyên nội dung và ngày).
+- /moi chỉ mở phiên AI mới (hết "lạc đề"), KHÔNG xóa tóm tắt cuộc trò chuyện; trước đó nén ngay và xếp điều đáng nhớ vào sổ tay. /moi xoa mới quên hẳn ngữ cảnh (sổ tay vẫn giữ).
+- Chủ máy dặn "nhớ…/từ nay…/luôn luôn…/đừng bao giờ…/quy định…" thì tự ghi vào sổ tay (không cần khóa mô hình nén). Mô hình rẻ khi xếp ghi chú còn chọn phần.
+- Tra cứu: /trinho (mục lục), /trinho 4.2 (mở chương theo số), /trinho tim <từ khóa> (từng mục khớp kèm số). Test: orchestrator/test/book-structure.test.js, memory.test.js.

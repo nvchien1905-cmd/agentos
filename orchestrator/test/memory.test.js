@@ -35,9 +35,9 @@ test('sổ tay: chương theo chủ đề + mục lục; mục mới cùng ý TH
   const ch = b.get('giao-hang'); assert.deepEqual(ch.entries.map((e) => e.text), ['Giao hàng nội thành miễn phí cho đơn từ 500 nghìn', 'Phí giao hàng ngoại thành là 35 nghìn']);
   const root = b.root();
   assert.match(fs.readFileSync(path.join(root, '.lichsu', 'giao-hang.md'), 'utf8'), /Phí giao hàng ngoại thành 30 nghìn.*thay bằng/);
-  assert.match(fs.readFileSync(path.join(root, 'chuong-giao-hang.md'), 'utf8'), /^# Giao hàng\n> Tóm tắt:/);
+  assert.match(fs.readFileSync(path.join(root, 'chuong-giao-hang.md'), 'utf8'), /^# Giao hàng\n> Số: \d\.\d+\n> Tóm tắt:/);
   // mục lục: tên chương + số mục + đường dẫn; có tệp MUC-LUC.md cho người đọc
-  assert.match(b.toc(), /- Giao hàng \(2 mục\):.*chuong-giao-hang\.md/); assert.match(fs.readFileSync(path.join(root, 'MUC-LUC.md'), 'utf8'), /Mục lục sổ tay[\s\S]*Giao hàng/);
+  assert.match(b.toc(), /- Chương \d\.\d+ Giao hàng \(2 mục\):.*chuong-giao-hang\.md/); assert.match(fs.readFileSync(path.join(root, 'MUC-LUC.md'), 'utf8'), /Mục lục sổ tay[\s\S]*Giao hàng/);
   // chương liên quan theo nội dung (không phân biệt dấu); câu không liên quan thì không có chương
   assert.deepEqual(b.relevant('phí giao hàng ngoại thành bao nhiêu?', 2).map((c) => c.title), ['Giao hàng']);
   assert.deepEqual(b.relevant('hôm nay trời đẹp', 2), []);
@@ -57,7 +57,7 @@ test('sổ tay + mô hình rẻ: chọn chương, thay mục cũ theo mã, cập
   const r1 = await m.addFact('Lan thích màu xanh'); assert.deepEqual([r1.chapter, r1.via], ['Khách hàng', 'gemini']);
   const idOld = m.book.get('khach-hang').entries[0].id; calls.idOld = idOld;
   const r2 = await m.addFact('Lan đổi sang thích màu đỏ'); assert.equal(r2.replaced, 1);
-  assert.match(calls[1], new RegExp('CÁC CHƯƠNG HIỆN CÓ:\\n- Khách hàng: Sở thích khách\\.[\\s\\S]*\\{' + idOld + '\\} .*màu xanh[\\s\\S]*THÔNG TIN MỚI: Lan đổi sang'));
+  assert.match(calls[1], new RegExp('CÁC CHƯƠNG HIỆN CÓ:\\n- \\d\\.\\d+ Khách hàng: Sở thích khách\\.[\\s\\S]*\\{' + idOld + '\\} .*màu xanh[\\s\\S]*THÔNG TIN MỚI: Lan đổi sang'));
   const ch = m.book.get('khach-hang'); assert.deepEqual(ch.entries.map((e) => e.text), ['Khách Lan nay thích màu đỏ']); assert.equal(ch.summary, 'Sở thích khách (cập nhật).');
   // mô hình trả rác -> xếp theo từ khóa
   const bad = createMemory({ db: openDb(':memory:'), dir: tmp(), summarizer: { available: () => true, provider: () => 'gemini', run: async () => ({ via: 'gemini', text: 'không phải json' }) } });
@@ -104,8 +104,8 @@ test('ghép ngữ cảnh: phiên mới có MỤC LỤC + chi tiết chương li�
   db.kvSet('sum:c1', 'Chủ máy đang so sánh giá nồi chiên.'); db.kvSet('sumupto:c1', String(a));
   const job = { id: 999, chat_id: 'c1', prompt: 'Nồi chiên Philips lúc nãy giá bao nhiêu? Và phí giao hàng ngoại thành?' };
   const p = m.pack(job, false, 'claude');
-  assert.match(p, /\[Sổ tay của chủ máy — MỤC LỤC\.[^\]]*\]\n- (Giao hàng|Khách hàng) \(1 mục\)/);                      // mục lục để "lướt"
-  assert.match(p, /\[Sổ tay — chi tiết chương liên quan\]\n"Giao hàng" — [\s\S]*Phí giao hàng ngoại thành là 35 nghìn/);   // chương liên quan được mở chi tiết
+  assert.match(p, /\[Sổ tay của chủ máy — MỤC LỤC\.[^\]]*\]\nPHẦN \d — [^\n]+\n- Chương \d\.\d+ (Giao hàng|Khách hàng) \(1 mục\)/);                      // mục lục để "lướt"
+  assert.match(p, /\[Sổ tay — chi tiết chương liên quan\]\nChương \d\.\d+ "Giao hàng" \([^)]*\) — [\s\S]*Phí giao hàng ngoại thành là 35 nghìn/);   // chương liên quan được mở chi tiết
   assert.doesNotMatch(p, /chi tiết chương liên quan\]\n"Khách hàng"/);                                                     // chương không liên quan chỉ ở mục lục
   assert.match(p, /\[Tóm tắt cuộc trò chuyện trước đó\]\nChủ máy đang so sánh/);
   assert.match(p, /\[Các việc gần nhất[\s\S]*việc đệm số 3/); assert.doesNotMatch(p, /việc đệm số 0/);
@@ -317,8 +317,11 @@ test('lệnh /nho /quen /trinho dùng chung cho mọi AI; /moi xóa tóm tắt n
   assert.match(await E.bot.handle(m1({ text: '/trinho giao hàng' })), /"Ghi nhớ chung"[\s\S]*Giao hàng buổi sáng/);
   assert.match(await E.bot.handle(m1({ text: '/trinho chuyện lạ hoắc' })), /Không có chương nào khớp/);
   E.db.kvSet('sum:1', 'tóm tắt cũ'); E.db.kvSet('sumupto:1', '3');
-  await E.bot.handle(m1({ text: '/moi' }));
+  assert.match(await E.bot.handle(m1({ text: '/moi' })), /bộ nhớ vẫn giữ nguyên/);               // /moi thường: phiên AI mới nhưng KHÔNG mất tóm tắt
+  assert.equal(E.db.kvGet('sum:1'), 'tóm tắt cũ');
+  await E.bot.handle(m1({ text: '/moi xoa' }));                                                   // /moi xoa: quên hẳn ngữ cảnh
   assert.equal(E.db.kvGet('sum:1'), null); assert.match(E.memory.book.toc(), /Ghi nhớ chung/);
+  assert.match(await E.bot.handle(m1({ text: '/trinho tim giao hàng' })), /Tìm "giao hàng"[\s\S]*Giao hàng buổi sáng/);
   assert.match(await E.bot.handle(m1({ text: '/quen giao hang' })), /Đã gỡ 1 mục/);
   assert.match(await E.bot.handle(m1({ text: '/quen giao hang' })), /Không có mục nào chứa/);
 });
@@ -353,4 +356,16 @@ test('codex: ảnh đính kèm truyền bằng -i (mỗi ảnh một cờ) và "
   assert.deepEqual(a.slice(a.indexOf('-i')), ['-i', '/a/inbox/1.jpg', '-i', '/a/inbox/2.png', '--sandbox', 'read-only', '--', '-']);
   const none = JSON.parse((await startCodex({ bin: process.execPath, binArgs: [f], cwd: os.tmpdir(), prompt: 'hi', timeoutMs: 20000, sandbox: 'read-only' }).done).text);
   assert.ok(!none.includes('-i') && !none.includes('--') && none.at(-1) === '-');
+});
+
+test('tự ghi sổ tay khi chủ máy dặn "từ nay/nhớ/luôn luôn…" (không cần khóa mô hình); câu thường thì không ghi', async () => {
+  const db = openDb(':memory:'), dir = tmp();
+  const memory = createMemory({ db, dir, now: () => T0, cfg: { summarizeAfter: 99 } });
+  const ok = { ok: true, text: 'xong' };
+  await memory.afterJob({ id: 1, chat_id: 'c1', prompt: 'Từ nay mở cửa lúc 8 giờ sáng, nghỉ chủ nhật' }, 'claude', ok);
+  await memory.afterJob({ id: 2, chat_id: 'c1', prompt: 'viết thư cho khách Lan' }, 'claude', ok);
+  await new Promise((r) => setTimeout(r, 50));
+  const hit = memory.book.search('mở cửa chủ nhật', 5);
+  assert.equal(hit.length, 1); assert.match(hit[0].text, /Từ nay mở cửa/);
+  assert.equal(memory.book.search('viết thư khách Lan', 5).length, 0);
 });

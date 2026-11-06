@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.6",
-  "file": "agentos-update-2026.11.06.6.tar.gz",
-  "size": 382988,
-  "sha256": "a3645fe7087b3479fcdc05bde0a6be4fe8cf5f26270e90b2aed23cc488532809",
+  "version": "2026.11.06.7",
+  "file": "agentos-update-2026.11.06.7.tar.gz",
+  "size": 388077,
+  "sha256": "9a570c4994ef133a13af2672447b6fce0e616e307810c9a133ace7ed6fd4e850",
   "date": "2026-11-06",
-  "notes": "Mỗi cuộc trò chuyện là một dự án (sổ tay riêng): /moi tạo dự án mới và hỏi tên; /duan có nút Tiếp tục; quay lại sau vài giờ thì chọn dự án; gộp dự án ở Cài đặt, AI sắp xếp lại sổ tay"
+  "notes": "Mỗi ID Telegram độc lập: giao máy theo ID (Cài đặt hoặc /quyenmay), sổ tay chung chỉ chủ máy, hộp cô lập che dữ liệu ID khác"
 }

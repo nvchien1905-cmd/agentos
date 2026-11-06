@@ -26,6 +26,7 @@ const { createMultiKiotViet } = require('./kiotviet');
 const { THINK_HINT, kiotvietHint } = require('./thinking');
 const { createKvContext } = require('./kvcontext');
 const { createVault } = require('./vault');
+const { createMachineAccess } = require('./machineAccess');
 const { createQuick } = require('./quick');
 const { createOneDrive } = require('./onedrive');
 const { createVoice } = require('./voice');
@@ -169,6 +170,7 @@ async function main() {
   log('Cô lập tiến trình AI: ' + cfg.sandboxMode + ' · ' + (sandbox.enabled ? 'ĐANG BẬT' : 'KHÔNG bật (' + sandbox.info.reason + ')'));
   if (cfg.sandboxMode === 'auto' && !sandbox.enabled) notices.push('⚠️ AI đang chạy KHÔNG có cô lập (' + sandbox.info.reason + ').');
   if (cfg.sandboxMode === 'bwrap' && !sandbox.enabled) notices.push('⛔ SANDBOX=bwrap nhưng không dùng được (' + sandbox.info.reason + '): mọi việc sẽ báo lỗi cho tới khi sửa.');
+  if (!sandbox.enabled && [...cfg.allowedUserIds].some((u) => !cfg.adminUserIds.has(String(u)))) notices.push('⚠️ Có ID Telegram không phải chủ máy nhưng hộp cô lập AI chưa bật: dữ liệu các ID mới tách theo thư mục/sổ tay, CHƯA bị chặn ở mức hệ điều hành. Đặt SANDBOX=auto trong /etc/agentos/orchestrator.env rồi khởi động lại.');
   log('Bộ công cụ: ' + Object.keys(tools.profiles).map((n) => n + (tools.profiles[n].mcp.length ? '(' + tools.profiles[n].mcp.join('+') + ')' : '') + (tools.profiles[n].adminOnly ? '[admin]' : '')).join(', ') + ' · mặc định: ' + tools.defaultName);
 
   // Cổng duyệt: mọi lần AI dùng công cụ đều hỏi cổng; chính sách quyết định tự cho phép / hỏi qua Telegram / cấm.
@@ -181,6 +183,19 @@ async function main() {
   });
   // DỰ ÁN: mỗi dự án có thư mục, chỉ dẫn, sổ tay, phiên riêng (projects.js). Dữ liệu do AgentOS giữ nên mọi AI dùng chung được.
   const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log });
+  // CÁCH LY DỮ LIỆU THEO ID: AI của ID thường (không phải chủ máy) chạy trong hộp cô lập mà thư mục AgentOS của OneDrive (dự án, sổ tay chung, danh sách dự án), thư mục tệp gửi/nhận của mọi chat
+  // đều bị che; chỉ mở lại đúng dự án của mình + thư mục tệp riêng của chat đó. Chủ máy không bị che. Cần SANDBOX=auto|bwrap (xem sandbox.js); tắt thì chỉ còn cách ly theo thư mục.
+  const safeChat = (c) => String(c).replace(/[^\w.-]/g, '_');
+  const inboxRoot = path.join(cfg.workdir, 'inbox');
+  const isolationFor = (job) => {
+    const uid = String(job.chat_id);
+    if (isAdmin(uid)) return null;
+    const mine = [chatOutDir(uid), path.join(inboxRoot, safeChat(uid))];
+    for (const d of mine) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { /* bỏ qua */ } }
+    for (const p of projects.list({ all: true })) if (projects.canUse(uid, p, isAdmin)) mine.push(p.dir);
+    return { hide: [path.join(cfg.oneDriveDir, 'AgentOS'), outDir, inboxRoot, path.join(dataDir, '..', 'vault.key')], bind: mine };
+  };
+  const wrapFor = (job) => (spec) => sandbox.wrap(Object.assign({}, spec, { isolate: isolationFor(job) }));
   const usage = createUsage({ db, projects });
   const cwdOf = (job) => { if (!job.project) return cfg.workdir; const p = projects.get(job.project); if (!p) return cfg.workdir; try { projects.ensureDirs(p); } catch (e) { return cfg.workdir; } return p.dir; };
   const projectEngine = (job) => { const p = projects.get(job.project); return p && p.engine ? p.engine : null; };
@@ -253,7 +268,7 @@ async function main() {
         prompt, resumeId, allowedTools: tools.allowFor(p).join(','),
         mcpConfig: files.mcpConfig, settings: files.settings, env: Object.assign({}, kenv, files.env),
         permissionPromptTool: 'mcp__agentos_gate__approve',   // dự phòng: công cụ nào hook bỏ sót vẫn bị cổng từ chối
-        appendSystemPrompt: [p.hint, BRAIN_HINT, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: sandbox.wrap, onProgress,
+        appendSystemPrompt: [p.hint, BRAIN_HINT, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: wrapFor(job), onProgress,
       });
       const cleanup = () => { gate.end(job.id); for (const f of [files.mcpConfig, files.settings]) fs.rmSync(f, { force: true }); };
       return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
@@ -284,7 +299,7 @@ async function main() {
       return startCodex({
         bin: cfg.codexBin, binArgs: cfg.codexBinArgs, cwd: cwdOf(job),
         prompt: '[' + [p.hint, THINK_HINT, kiotvietHint(KV_ON, false), STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' ') + ']\n\n' + prompt, resumeId, onProgress,
-        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), images: imagePaths(prompt), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: sandbox.wrap, env: keyEnv('codex'),
+        sandbox: p.codexSandbox || cfg.codexSandbox, extraArgs: tools.codexArgs(p), images: imagePaths(prompt), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: wrapFor(job), env: keyEnv('codex'),
       });
     },
     // Gemini (Google) KHÔNG đi qua cổng duyệt của AgentOS -> ở chế độ bảo vệ chỉ chạy CHỈ ĐỌC (--approval-mode plan: không ghi tệp, không chạy lệnh, không MCP)
@@ -299,7 +314,7 @@ async function main() {
       return startGemini({
         bin: cfg.geminiBin, binArgs: cfg.geminiBinArgs, cwd: cwdOf(job),
         prompt: '[' + [p.hint, THINK_HINT, kiotvietHint(KV_ON, false), STYLE_HINT, ONEDRIVE_HINT, note].filter(Boolean).join(' ') + ']\n\n' + atImages(prompt), resumeId,
-        mode: 'plan', model: cfg.geminiModel, timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: sandbox.wrap, env: keyEnv('gemini'),
+        mode: 'plan', model: cfg.geminiModel, timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: wrapFor(job), env: keyEnv('gemini'),
       });
     },
   };
@@ -347,7 +362,7 @@ async function main() {
     h.done.then((r) => (r && r.ok && r.text ? resolve(r.text) : reject(new Error((r && r.error) || 'Codex không trả kết quả'))), reject);
   });
   const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: codexSummarize, log });
-  const memory = createMemory({ db, projects, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
+  const memory = createMemory({ db, projects, isAdmin, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
   log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek, Codex tắt)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
   setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
   const bookTimer = setInterval(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 10 * 60 * 1000);
@@ -456,6 +471,7 @@ async function main() {
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();
   // Kho mật khẩu máy từ xa (mã hóa; khóa riêng NGOÀI thư mục dữ liệu). Tệp rõ cũ của /ketnoi được nhập vào kho rồi xóa.
   const vault = createVault({ file: path.join(dataDir, 'vault.enc'), keyFile: path.join(dataDir, '..', 'vault.key') });
+  const access = createMachineAccess({ file: path.join(dataDir, 'machine-acl.json'), isAdmin });          // ID nào được dùng máy nào (Cài đặt → Máy từ xa, hoặc /quyenmay)
   try { const n = vault.importPlain(path.join(dataDir, 'rustdesk-may-con.json')); if (n) log('kho mật khẩu: đã nhập ' + n + ' máy từ tệp cũ'); } catch (e) { log('kho mật khẩu: ' + e.message); }
   const ketnoi = createKetNoi({
     vault, fleet, log, keyDir: path.join(dataDir, '..', '.ssh'), tsPeers: () => tsowner.peers(), offeredFile: path.join(dataDir, 'ketnoi-offered.json'), credsFile: path.join(dataDir, 'rustdesk-may-con.json'),
@@ -554,12 +570,12 @@ async function main() {
         '(3) KHÔNG tự chạy lệnh ghi/sửa hệ thống; được xin chạy lệnh chỉ đọc (systemctl status, journalctl -u <dịch vụ> -n 50, df -h) qua nút duyệt để tìm hiểu thêm. Trả lời ngắn gọn, theo thứ tự ưu tiên.';
       return { bad: nbad || (bad.length ? bad.length : 0), report, prompt };
     },
-    voice, media, memory, projects, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
+    voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
     send: async (chat, reply) => {                          // trả lời cho album (không đi qua vòng nhận tin)
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) { if (reply.buttons) await tg.sendButtons(chat, reply.text, reply.buttons); else await tg.sendMessage(chat, reply.text); } }
       else if (reply) await tg.sendMessage(chat, reply);
     },
-    quick: createQuick({ vault, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
+    quick: createQuick({ vault, access, isAdmin, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: {
       get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); },

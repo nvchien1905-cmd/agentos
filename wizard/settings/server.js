@@ -21,6 +21,7 @@ const odauth = require('../lib/odauth');
 const synclist = require('../lib/synclist');
 const { createProjects } = require('../../orchestrator/src/projects');
 const { mergeProjects } = require('../../orchestrator/src/projectMerge');
+const { createMachineAccess } = require('../../orchestrator/src/machineAccess');
 const { createBackup } = require('../../orchestrator/src/backup');
 const { createUsage } = require('../../orchestrator/src/usage');
 const { createAuditLog } = require('../../orchestrator/src/auditlog');
@@ -243,6 +244,8 @@ function createSettings(o) {
   }
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const vaultLib = () => createVault({ file: o.vaultFile || '/var/lib/agentos/data/vault.enc', keyFile: o.vaultKey || '/var/lib/agentos/vault.key', chown: (f) => chownAgentos(f) });
+  let accessInst = null;
+  const accessLib = () => accessInst || (accessInst = createMachineAccess({ file: path.join(path.dirname(o.vaultFile || '/var/lib/agentos/data/vault.enc'), 'machine-acl.json'), isAdmin: () => false, chown: (f) => chownAgentos(f) }));
   const chownAgentos = (p) => { try { const l = fs.readFileSync('/etc/passwd', 'utf8').split('\n').find((x) => x.startsWith('agentos:')).split(':'); fs.chownSync(p, Number(l[2]), Number(l[3])); } catch (e) { /* máy thử */ } };
 
   // ---------- xử lý yêu cầu ----------
@@ -313,9 +316,11 @@ function createSettings(o) {
     },
 
     // ----- Máy từ xa: kho mật khẩu RustDesk (mã hóa). Mật khẩu chỉ đi MỘT chiều vào kho, không bao giờ trả ra màn hình/chat -----
-    async 'GET /api/vault'() { return { machines: vaultLib().list() }; },
+    // Quyền dùng máy theo từng ID Telegram (machineAccess.js): tệp machine-acl.json cạnh kho mật khẩu, bộ điều phối đọc cùng tệp
+    async 'GET /api/vault'() { const A = accessLib(); return { machines: vaultLib().list().map((m) => Object.assign({}, m, { users: A.usersOf(m.name) })), local: A.usersOf(A.LOCAL) }; },
+    async 'POST /api/machine-access/set'(b) { const r = accessLib().setUsers(String(b.name || ''), Array.isArray(b.users) ? b.users : String(b.users || '')); return { saved: true, name: r.name, users: r.users }; },
     async 'POST /api/vault/save'(b) { const r = vaultLib().put(b.name, { id: b.id, password: b.password, note: b.note }); return { saved: true, name: r.name, id: r.id }; },
-    async 'POST /api/vault/delete'(b) { if (!vaultLib().remove(b.name)) throw new Error('Không có máy này trong kho.'); return { deleted: true }; },
+    async 'POST /api/vault/delete'(b) { if (!vaultLib().remove(b.name)) throw new Error('Không có máy này trong kho.'); try { accessLib().forget(b.name); } catch (e) { /* bỏ qua */ } return { deleted: true }; },
 
     // ----- Ứng dụng -----
     async 'GET /api/apps'() {

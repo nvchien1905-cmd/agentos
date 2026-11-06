@@ -5,7 +5,7 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng] [tên chi nhánh]  /ton <sản phẩm>  /hanghoa  -> KiotViet API chính thức, chỉ đọc (cả khi hỏi bằng câu thường: "doanh thu hôm nay")
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien', 'vao'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien', 'vao', 'quyenmay', 'nhaman'];
 
 const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
@@ -22,9 +22,13 @@ function createQuick(o) {
   }
   const clock = () => { const d = new Date(Date.now() + 7 * 3600 * 1000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
 
+  const access = o.access || null;                                           // quyền dùng máy theo từng ID (machineAccess.js)
+  const nonAdmin = (ctx) => !!(o.isAdmin && ctx && ctx.uid != null && !o.isAdmin(ctx.uid));   // ID thường: không đụng sổ tay chung, chỉ dùng máy được giao
+  const NO_SHARED_BOOK = '🔒 Sổ tay chung chỉ dành cho chủ máy. Bạn đang làm việc trong dự án riêng của mình: dùng /duan để vào dự án (mỗi dự án có sổ tay riêng).';
   async function run(name, arg, ctx) {
     arg = String(arg || '').trim();
     try {
+      if (access && ctx && ctx.uid != null && access.MACHINE_CMDS.has(name)) { const g = access.gate(ctx.uid, name); if (g) return g; }   // lệnh điều khiển máy: kiểm quyền + giữ lượt dùng màn hình
       switch (name) {
         case 'manhinh': {
           const r = await desk.call({ cmd: 'screenshot' });
@@ -111,6 +115,7 @@ function createQuick(o) {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           if (!arg) return 'Cách dùng: /nho <điều cần nhớ lâu dài>, ví dụ /nho Cửa hàng nghỉ chủ nhật. Bot xếp vào đúng CHƯƠNG của sổ tay (cùng chủ đề gom lại; thông tin mới thay mục cũ). Mọi AI dùng chung. /trinho xem, /quen <từ khóa> xóa.';
           const pj = projects && ctx ? projects.active(ctx.chatId) : null;          // đang ở dự án: ghi vào SỔ TAY CỦA DỰ ÁN
+          if (!pj && nonAdmin(ctx)) return NO_SHARED_BOOK;
           const r = await mem.addFact(arg, pj && pj.id);
           if (!r.ok) return '⚠️ ' + r.error;
           return r.duplicate ? 'Điều này đã có trong sổ tay (chương "' + r.chapter + '").' : '🧠 Đã ghi vào chương "' + r.chapter + '"' + (r.replaced ? ' (thay ' + r.replaced + ' mục cũ đã lỗi thời)' : '') + '. Mọi AI sẽ biết điều này (/trinho để xem, /quen để xóa).';
@@ -119,6 +124,7 @@ function createQuick(o) {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           if (!arg) return 'Cách dùng: /quen <từ khóa>: gỡ các mục trong sổ tay có chứa từ khóa đó (mục bị gỡ lưu ở thư mục .lichsu, có thể xem lại).';
           const pj = projects && ctx ? projects.active(ctx.chatId) : null;
+          if (!pj && nonAdmin(ctx)) return NO_SHARED_BOOK;
           const r = mem.forgetFact(arg, pj && pj.id);
           return r.removed ? '🗑️ Đã gỡ ' + r.removed + ' mục khỏi sổ tay:\n' + r.lines.map((l) => l.slice(0, 150)).join('\n') : 'Không có mục nào chứa "' + arg + '".';
         }
@@ -126,6 +132,7 @@ function createQuick(o) {
           if (!mem) return '⚠️ Máy này chưa có bộ nhớ.';
           const pj = projects && ctx ? projects.active(ctx.chatId) : null;
           // Tra trong cuốn sách: "/trinho tim <từ khóa>" (từng mục khớp, kèm số chương) hoặc "/trinho 4.2" / "/trinho chương 4.2" (mở đúng chương theo số)
+          if (!pj && nonAdmin(ctx)) return NO_SHARED_BOOK;
           const bk = pj ? mem.bookFor(pj.id) : mem.book;
           const findQ = String(arg || '').match(/^(?:tim|tìm|search)\s+(.+)$/i);
           if (findQ) {
@@ -183,9 +190,9 @@ function createQuick(o) {
           if (w === 'tat' || w === 'bat') { guard.set(w === 'bat'); return w === 'bat' ? '🛡️ Đã BẬT hàng rào: AI toàn quyền vẫn không đọc được khóa API/biến môi trường, và phải hỏi anh trước khi gửi dữ liệu ra ngoài hoặc làm việc dính tiền.' : '⚠️ Đã TẮT hàng rào: AI toàn quyền không còn bị chặn/hỏi gì (có thể bị lừa qua nội dung web/email). Gõ /hangrao bat để bật lại.'; }
           return '🛡️ Hàng rào chế độ toàn quyền đang ' + (guard.get() ? 'BẬT' : 'TẮT') + '.\nBật: cấm đọc khóa API/biến môi trường/cấu hình bí mật; hỏi anh (nút bấm) trước khi gửi email, tin nhắn, POST/upload, scp, git push hoặc việc dính ngân hàng/thanh toán. Đổi: /hangrao bat | /hangrao tat. (Chỉ áp cho Claude; Codex/Gemini không có cơ chế này.)';
         }
-        case 'doc': return office ? await office.read(arg) : '⚠️ Máy này chưa có công cụ văn phòng.';
-        case 'doi': { if (!office) return '⚠️ Máy này chưa có công cụ văn phòng.'; const m = arg.match(/^(\S+)\s*([\s\S]*)$/); return await office.convert(m && m[1], m && m[2]); }
-        case 'thay': return office ? await office.replace(arg) : '⚠️ Máy này chưa có công cụ văn phòng.';
+        case 'doc': return office ? await office.read(arg, ctx && ctx.chatId) : '⚠️ Máy này chưa có công cụ văn phòng.';
+        case 'doi': { if (!office) return '⚠️ Máy này chưa có công cụ văn phòng.'; const m = arg.match(/^(\S+)\s*([\s\S]*)$/); return await office.convert(m && m[1], m && m[2], ctx && ctx.chatId); }
+        case 'thay': return office ? await office.replace(arg, ctx && ctx.chatId) : '⚠️ Máy này chưa có công cụ văn phòng.';
         case 'timchu': {
           if (!arg) return 'Cách dùng: /timchu <chữ>, ví dụ /timchu Gửi. Bot đọc chữ trên màn hình máy và báo toạ độ từng chỗ thấy.';
           const r = await desk.call({ cmd: 'findtext', text: arg });
@@ -273,15 +280,32 @@ function createQuick(o) {
         case 'lay': return remote ? remote.getFile(arg, links) : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'vao': {
           if (!vault) return '⚠️ Máy này chưa có kho mật khẩu máy từ xa.';
-          const list = vault.list();
-          if (!list.length) return 'Chưa lưu máy nào. Mở Cài đặt AgentOS (biểu tượng ⚙ trên màn hình máy, hoặc lệnh agentos-settings) → mục 🖥 Máy từ xa → nhập tên máy, ID và mật khẩu RustDesk MỘT lần. Mật khẩu nhập ở đó, đừng gửi vào chat.';
-          const m = vault.match(arg);
+          const list = access && ctx && ctx.uid != null ? access.visible(ctx.uid, vault.list()) : vault.list();
+          if (!list.length) return nonAdmin(ctx) ? 'Bạn chưa được giao máy từ xa nào. Nhờ chủ máy giao ở Cài đặt → Máy từ xa (hoặc /quyenmay).' : 'Chưa lưu máy nào. Mở Cài đặt AgentOS (biểu tượng ⚙ trên màn hình máy, hoặc lệnh agentos-settings) → mục 🖥 Máy từ xa → nhập tên máy, ID và mật khẩu RustDesk MỘT lần. Mật khẩu nhập ở đó, đừng gửi vào chat.';
+          const m = vault.match(arg, list.map((x) => x.name));
           if (!m.name) return (arg && m.many ? 'Có nhiều máy khớp "' + arg + '". ' : '') + 'Các máy đã lưu (gõ /vao <tên>):\n• ' + list.filter((x) => !m.list || m.list.includes(x.name)).map((x) => x.name + ' — ID ' + x.id + (x.note ? ' (' + x.note + ')' : '')).join('\n• ');
+          if (access && ctx && ctx.uid != null && !access.can(ctx.uid, m.name)) return 'Bạn chưa được giao máy "' + m.name + '".';
           const sec = vault.secret(m.name);
           const r = await desk.call({ cmd: 'rdconnect', id: sec.id, password: sec.password });
           if (!r.ok) return '⚠️ ' + r.error;
           await new Promise((res) => setTimeout(res, o.rdWaitMs === undefined ? 7000 : o.rdWaitMs));
           return await withShot('🖥 Đã mở RustDesk nối tới "' + sec.name + '" (ID ' + sec.id + ') bằng mật khẩu đã lưu. Xong việc gõ /dong rustdesk.');
+        }
+        case 'nhaman': return access && ctx && ctx.uid != null ? (access.releaseScreen(ctx.uid) ? '✅ Đã nhả màn hình máy, người khác dùng được ngay.' : 'Bạn đang không giữ màn hình máy.') : 'Máy này chưa có phân quyền máy.';
+        case 'quyenmay': {                                        // chủ máy giao máy cho từng ID: /quyenmay · /quyenmay <máy|@local> <ID ...|none>
+          if (!access) return '⚠️ Máy này chưa có phân quyền máy.';
+          if (nonAdmin(ctx)) return 'Chỉ chủ máy giao máy được.';
+          const snap2 = access.snapshot(), m = arg.match(/^(@local|"[^"]+"|\S+)\s*([\s\S]*)$/);
+          if (!m) {
+            const ks = Object.keys(snap2);
+            return '🖥 Quyền dùng máy theo ID (chủ máy luôn dùng được mọi máy):\n' + (ks.length ? ks.map((k) => '• ' + (k === access.LOCAL ? 'Màn hình máy này (@local)' : k) + ': ' + snap2[k].join(', ')).join('\n') : '(chưa giao máy nào cho ai)') +
+              '\n\nGiao: /quyenmay @local 123456789 (màn hình máy này) · /quyenmay "May van phong" 123456789,987654321 · bỏ hết: /quyenmay "May van phong" none';
+          }
+          const name = m[1].replace(/^"|"$/g, ''), rest = m[2].trim();
+          if (!rest) { const u = access.usersOf(name); return '🖥 ' + name + ': ' + (u.length ? u.join(', ') : 'chỉ chủ máy') + '.'; }
+          if (access.key(name) !== access.LOCAL && vault && !vault.has(name)) return 'Không có máy "' + name + '" trong kho mật khẩu (Cài đặt → Máy từ xa). Màn hình máy này dùng tên @local.';
+          const r = access.setUsers(name, /^(none|khong|xoa)$/i.test(rest) ? [] : rest);
+          return '✅ ' + (r.name === access.LOCAL ? 'Màn hình máy này' : r.name) + ': ' + (r.users.length ? r.users.join(', ') : 'chỉ chủ máy') + '.';
         }
         case 'maytinh': return remote ? await remote.sysinfo() : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'go': {

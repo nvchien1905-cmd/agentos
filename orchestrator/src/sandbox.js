@@ -19,7 +19,8 @@ function pathKind(p, statSync) {
 }
 
 // paths: { home, workdir, dataDir, jobDir, rw:[thư mục ghi thêm], hide:[đường dẫn che đi] }
-function buildArgs(paths, statSync) {
+// isolate (tùy chọn, riêng từng việc): { hide: [thư mục/tệp che thêm], bind: [thư mục mở lại để ghi được] } — che TRƯỚC rồi mở lại sau, nên chỉ phần được liệt kê trong bind là còn thấy.
+function buildArgs(paths, statSync, isolate) {
   statSync = statSync || fs.statSync;
   const a = ['--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp'];
   const bind = (flag, p) => { if (p && pathKind(p, statSync)) a.push(flag, p, p); };
@@ -32,6 +33,10 @@ function buildArgs(paths, statSync) {
     const k = pathKind(h, statSync);
     if (k === 'dir') a.push('--tmpfs', h);
     else if (k === 'file') a.push('--ro-bind', '/dev/null', h);
+  }
+  if (isolate) {
+    for (const h of isolate.hide || []) { const k = pathKind(h, statSync); if (k === 'dir') a.push('--tmpfs', h); else if (k === 'file') a.push('--ro-bind', '/dev/null', h); }
+    for (const b of isolate.bind || []) bind('--bind', b);
   }
   a.push('--unshare-pid', '--unshare-ipc', '--unshare-uts', '--unshare-cgroup-try', '--die-with-parent', '--new-session');
   return a;
@@ -59,7 +64,7 @@ function createSandbox({ mode, paths, bwrapBin, platform, run, statSync, log }) 
     // Bọc lệnh { bin, args, cwd } thành lệnh chạy trong sandbox. Chế độ bắt buộc mà không dùng được -> ném lỗi (việc báo lỗi).
     wrap(spec) {
       if (info.enabled) {
-        return { bin: bwrapBin, args: [...buildArgs(paths, statSync), '--chdir', spec.cwd, '--', spec.bin, ...spec.args], cwd: spec.cwd };
+        return { bin: bwrapBin, args: [...buildArgs(paths, statSync, spec.isolate), '--chdir', spec.cwd, '--', spec.bin, ...spec.args], cwd: spec.cwd };
       }
       if (mode === 'bwrap') throw new Error('SANDBOX=bwrap nhưng không dùng được (' + info.reason + ')');
       return spec;

@@ -81,7 +81,10 @@ function createMedia(o) {
 
   // Tải và mô tả các tệp của một hoặc nhiều tin nhắn (album). Trả { block, files, errors } — block là đoạn chữ gắn vào câu lệnh.
   async function prepare(msgs) {
-    fs.mkdirSync(dir, { recursive: true });
+    // Tệp của mỗi chat nằm thư mục riêng (inbox/<chat>) để hộp cô lập chỉ mở đúng phần của chat đó cho AI
+    const cid = msgs[0] && msgs[0].chat && msgs[0].chat.id != null ? String(msgs[0].chat.id).replace(/[^\w.-]/g, '_') : '';
+    const cdir = cid ? path.join(dir, cid) : dir;
+    fs.mkdirSync(cdir, { recursive: true });
     const lines = [], files = [], errors = [];
     let n = 0;
     for (const msg of msgs) {
@@ -89,7 +92,7 @@ function createMedia(o) {
         n++;
         if (a.size && a.size > MAX_BYTES) { errors.push('"' + a.name + '" nặng ' + Math.round(a.size / 1048576) + ' MB: Telegram chỉ cho bot tải tệp tới 20 MB. Tệp lớn thì gõ /guilen để nhận link gửi tệp tới 5 GB (hoặc bỏ tệp vào OneDrive rồi nhắn đường dẫn).'); continue; }
         const ext = (path.extname(a.name).slice(1) || EXT_BY_MIME[a.mime] || (a.kind === 'image' ? 'jpg' : a.kind === 'video' ? 'mp4' : 'bin')).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'bin';
-        const base = path.join(dir, stamp() + '-' + msg.message_id + '-' + n);
+        const base = path.join(cdir, stamp() + '-' + msg.message_id + '-' + n);
         const dest = base + '.' + ext;
         try { await tg.downloadFile(a.id, dest); } catch (e) { errors.push('Không tải được "' + a.name + '": ' + e.message); continue; }
         files.push({ path: dest, kind: a.kind, name: a.name });

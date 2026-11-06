@@ -72,9 +72,10 @@ function createVault(o) {
       return { name: k, id: all[k].id, password: all[k].password };
     },
     // Tìm máy theo chữ gõ (không dấu, khớp đúng hoặc là phần của tên duy nhất)
-    match(text) {
-      const a = load(), w = noAccent(text); if (!w) return { list: Object.keys(a) };
-      const names = Object.keys(a), exact = names.filter((n) => noAccent(n) === w);
+    // only (tùy chọn): chỉ xét các máy trong danh sách này (ID thường chỉ tìm trong máy được giao, không lộ máy khác)
+    match(text, only) {
+      const a = load(), w = noAccent(text), names = Object.keys(a).filter((n) => !only || only.includes(n)); if (!w) return { list: names };
+      const exact = names.filter((n) => noAccent(n) === w);
       if (exact.length === 1) return { name: exact[0] };
       const part = names.filter((n) => noAccent(n).includes(w));
       return part.length === 1 ? { name: part[0] } : { list: part.length ? part : names, many: part.length > 1 };

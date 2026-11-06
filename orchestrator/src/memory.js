@@ -36,6 +36,7 @@ function createMemory(o) {
   }
   const projOfScope = (scope) => { const s = String(scope), i = s.indexOf('#'); return i < 0 ? null : s.slice(i + 1); };
   const busy = new Set();
+  const isAdminChat = (chatId) => !o.isAdmin || o.isAdmin(chatId);          // không truyền isAdmin = coi mọi chat là chủ máy (như trước)
   try { const n = book.migrateLegacy(); if (n) log('đã chuyển ' + n + ' dòng ghi nhớ cũ sang sổ tay'); } catch (e) { log('chuyển ghi nhớ cũ lỗi: ' + e.message); }
   try { const n = book.numberAll(); if (n) log('đã đánh số ' + n + ' chương sổ tay (phần.thứ tự)'); } catch (e) { log('đánh số sổ tay lỗi: ' + e.message); }
 
@@ -75,18 +76,21 @@ function createMemory(o) {
   function contextBlock(job, hasSession, eng) {
     const chat = db.scopeOf(job), parts = [];
     if (job.project) parts.push(...projectParts(job, hasSession, eng));
-    // 1) Sổ tay: mục lục để "lướt" (gửi khi AI chưa có phiên, hoặc khi mục lục vừa đổi)
-    const toc = book.toc();
-    const tocH = book.tocHash(), sentKey = 'memsent:' + chat + ':' + eng;
-    if (toc && (!hasSession || db.kvGet(sentKey) !== tocH)) {
-      parts.push('[Sổ tay của chủ máy — MỤC LỤC' + (hasSession ? ' (CẬP NHẬT)' : '') + '. Mỗi dòng: chương (số mục): tóm tắt → tệp chi tiết. Lướt qua; khi yêu cầu liên quan chương nào thì xem phần chi tiết bên dưới hoặc mở tệp chương đó]\n' + toc);
-    }
-    db.kvSet(sentKey, tocH);
-    // 2) Chi tiết các chương LIÊN QUAN tới yêu cầu này (chương nào đã gửi trong phiên và chưa đổi thì không gửi lại)
-    for (const ch of book.relevant(job.prompt, cfg.relevantChapters)) {
-      const h = book.hashOf(ch.entries.map((e) => e.id).join(',') + ch.summary), k = 'bookch:' + chat + ':' + eng + ':' + ch.slug;
-      if (!hasSession || db.kvGet(k) !== h) parts.push('[Sổ tay — chi tiết chương liên quan]\n' + book.chapterText(ch));
-      db.kvSet(k, h);
+    // SỔ TAY CHUNG chỉ dành cho chủ máy: ID khác chỉ thấy sổ tay của dự án riêng của mình (dữ liệu các ID độc lập nhau)
+    if (isAdminChat(job.chat_id)) {
+      // 1) Sổ tay: mục lục để "lướt" (gửi khi AI chưa có phiên, hoặc khi mục lục vừa đổi)
+      const toc = book.toc();
+      const tocH = book.tocHash(), sentKey = 'memsent:' + chat + ':' + eng;
+      if (toc && (!hasSession || db.kvGet(sentKey) !== tocH)) {
+        parts.push('[Sổ tay của chủ máy — MỤC LỤC' + (hasSession ? ' (CẬP NHẬT)' : '') + '. Mỗi dòng: chương (số mục): tóm tắt → tệp chi tiết. Lướt qua; khi yêu cầu liên quan chương nào thì xem phần chi tiết bên dưới hoặc mở tệp chương đó]\n' + toc);
+      }
+      db.kvSet(sentKey, tocH);
+      // 2) Chi tiết các chương LIÊN QUAN tới yêu cầu này (chương nào đã gửi trong phiên và chưa đổi thì không gửi lại)
+      for (const ch of book.relevant(job.prompt, cfg.relevantChapters)) {
+        const h = book.hashOf(ch.entries.map((e) => e.id).join(',') + ch.summary), k = 'bookch:' + chat + ':' + eng + ':' + ch.slug;
+        if (!hasSession || db.kvGet(k) !== h) parts.push('[Sổ tay — chi tiết chương liên quan]\n' + book.chapterText(ch));
+        db.kvSet(k, h);
+      }
     }
     // 3) Ngữ cảnh cuộc trò chuyện (chỉ khi AI chưa có phiên)
     if (!hasSession) {
@@ -122,7 +126,7 @@ function createMemory(o) {
     // Chủ máy dặn rõ "nhớ…/từ nay…/luôn luôn…/đừng bao giờ…": ghi thẳng vào sổ tay (không phụ thuộc có khóa mô hình nén hay chưa)
     try {
       const p = String(job.prompt || '').trim();
-      if (p.length >= 8 && p.length <= 400 && !p.startsWith('/') && REMEMBER_RE.test(noAcc(p))) addFact(p, job.project || null).catch((e) => log('tự ghi sổ tay lỗi: ' + e.message));
+      if (p.length >= 8 && p.length <= 400 && !p.startsWith('/') && (job.project || isAdminChat(job.chat_id)) && REMEMBER_RE.test(noAcc(p))) addFact(p, job.project || null).catch((e) => log('tự ghi sổ tay lỗi: ' + e.message));
     } catch (e) { /* không chặn */ }
     const tk = 'turns:' + scope + ':' + eng;
     const turns = (Number(db.kvGet(tk)) || 0) + 1;
@@ -163,7 +167,8 @@ function createMemory(o) {
     db.kvSet(kSum(chat), text);
     db.kvSet(kUpto(chat), eligible[eligible.length - 1].id);
     const bk = bookFor(projOfScope(chat));
-    const ap = bk.applyNotes(notes);
+    const noGeneral = !projOfScope(chat) && !isAdminChat(String(chat).split('#')[0]);      // ID thường không có dự án: không ghi vào sổ tay chung
+    const ap = noGeneral ? { added: 0, replaced: 0 } : bk.applyNotes(notes);
     let compacted = 0;
     try { await bk.ingestInbox(); compacted = await bk.compactAll(); } catch (e) { log('dọn sổ tay lỗi: ' + e.message); }
     log('tóm tắt cuộc trò chuyện ' + chat + ': nén ' + eligible.length + ' việc (' + via + ')' + (ap.added ? ', ghi ' + ap.added + ' mục vào sổ tay' + (ap.replaced ? ' (thay ' + ap.replaced + ' mục cũ)' : '') : '') + (compacted ? ', gộp gọn ' + compacted + ' chương' : ''));

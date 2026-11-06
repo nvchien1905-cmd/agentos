@@ -61,7 +61,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
 const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien', 'vao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -197,7 +197,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
       }
       // Lệnh nhanh không qua AI (màn hình, mở/đóng ứng dụng, DeepSeek web, KiotViet): trả về Promise
       if (quick && quick.has(name)) {
-        if (!isAdmin(uid) && !(roles && roles.canQuick(uid, name))) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên' + (roles ? ' (vai của bạn: ' + roles.label(uid) + ')' : '') + '.';
+        if (!isAdmin(uid) && !(roles && roles.canQuick(uid, name)) && !(access && access.canRun(uid, name))) return 'Lệnh /' + name + ' chỉ dành cho quản trị viên' + (roles ? ' (vai của bạn: ' + roles.label(uid) + ')' : '') + '.';
         if (db.addAudit && AUDITED.has(name)) { try { db.addAudit({ tool: '/' + name, cls: 'remote', decision: 'allow', source: 'user', summary: name === 'go' ? '(' + String(cmd[3] || '').length + ' ký tự)' : String(cmd[3] || '').replace(/(token|pass\w*|mat\s?khau|secret|key)\S*\s*[=:]?\s*\S+/gi, '$1 ***') }); } catch (e) { /* nhật ký lỗi không chặn lệnh */ } }
         return quick.run(name, cmd[3], { chatId, uid });
       }

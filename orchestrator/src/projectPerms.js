@@ -3,13 +3,14 @@ const path = require('path');
 
 // CHẾ ĐỘ QUYỀN + LUẬT CHO/HỎI/CẤM THEO DỰ ÁN (giống permission modes của Claude Code). Chạy trong cổng duyệt (gate.js) SAU chính sách có sẵn (policy.js) và chỉ làm
 // quyết định chặt hơn hoặc nới trong phạm vi dự án — không bao giờ nới thứ chính sách đã CẤM cứng (đọc khóa/token, sudo…).
-//   hoi      HỎI TỪNG LẦN (mặc định, như trước): việc ghi/chạy lệnh hỏi chủ máy qua Telegram
+//   chay     TOÀN QUYỀN (MẶC ĐỊNH của mọi dự án): việc của chủ máy chạy một mạch, không hỏi xin phép (xem jobFull trong index.js). Việc của ID thường và việc từ webhook/sự kiện KHÔNG bao giờ được toàn quyền (tự hạ về "hỏi")
+//   hoi      HỎI TỪNG LẦN: việc ghi/chạy lệnh hỏi chủ máy qua Telegram
 //   tusua    TỰ SỬA trong thư mục dự án: ghi/sửa tệp nằm trong thư mục dự án thì tự cho phép; chạy lệnh vẫn hỏi
 //   kehoach  CHỈ LẬP KẾ HOẠCH: chỉ được đọc/xem web; không ghi, không chạy lệnh, không thao tác trang web — AI trình bày kế hoạch để duyệt
-//   chay     CHẠY THẲNG: mọi việc đang phải hỏi thì tự cho phép. CHỈ việc của chủ máy và CHỈ khi hộp cô lập đang bật (không thì tự hạ về "hỏi")
 // Luật (mỗi dòng "Công cụ" hoặc "Công cụ(mẫu)", ví dụ Bash(git push*), Write(*.xlsx), mcp__browser__*): CẤM thắng mọi chế độ; HỎI buộc hỏi dù đang tự cho phép; CHO tự cho phép việc đang phải hỏi.
 const MODES = ['hoi', 'tusua', 'kehoach', 'chay'];
-const MODE_NAMES = { hoi: 'Hỏi từng lần', tusua: 'Tự sửa trong dự án', kehoach: 'Chỉ lập kế hoạch', chay: 'Chạy thẳng' };
+const DEFAULT_MODE = 'chay';
+const MODE_NAMES = { hoi: 'Hỏi từng lần', tusua: 'Tự sửa trong dự án', kehoach: 'Chỉ lập kế hoạch', chay: 'Toàn quyền' };
 const MAX_RULES = 30, MAX_RULE_LEN = 120;
 
 const esc = (s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
@@ -48,8 +49,8 @@ function createProjectPerms(o) {
 
   // Chế độ thực sự áp dụng cho việc (sau khi kiểm điều kiện của "chạy thẳng")
   function effectiveMode(job, p) {
-    const m = MODES.includes(p && p.mode) ? p.mode : 'hoi';
-    if (m === 'chay' && !(isAdmin(String(job.chat_id)) && sandboxOn())) return 'hoi';
+    const m = MODES.includes(p && p.mode) ? p.mode : DEFAULT_MODE;
+    if (m === 'chay' && (!isAdmin(String(job.chat_id)) || job.lane === 'hook' || job.lane === 'event')) return 'hoi';      // toàn quyền chỉ cho việc của chủ máy, không cho ID thường / webhook / sự kiện
     return m;
   }
   const inside = (file, dir) => { if (!file || !dir) return false; const r = path.relative(path.resolve(dir), path.resolve(String(file))); return !!r && !r.startsWith('..') && !path.isAbsolute(r); };
@@ -85,4 +86,4 @@ function createProjectPerms(o) {
   return { apply, denies, effectiveMode };
 }
 
-module.exports = { createProjectPerms, parseRule, matches, cleanRules, MODES, MODE_NAMES, MAX_RULES };
+module.exports = { createProjectPerms, parseRule, matches, cleanRules, MODES, MODE_NAMES, DEFAULT_MODE, MAX_RULES };

@@ -105,7 +105,9 @@ async function main() {
   const isFull = () => { const v = db.kvGet('fullAccess'); return v === null ? cfg.fullAccess : v === '1'; };
   { const r = require('./mode').reconcile(db, cfg.fullAccess); if (r.changed) log('chế độ toàn quyền đổi theo cấu hình (Cài đặt/hướng dẫn): ' + (r.value === '1' ? 'BẬT' : 'TẮT')); }
   // Việc của người KHÔNG phải chủ máy (nhân viên, kế toán), từ webhook hoặc sự kiện tự kích hoạt (dữ liệu từ ngoài như tên khách) LUÔN chạy chế độ bảo vệ, kể cả khi máy đang ở chế độ toàn quyền.
-  const jobFull = (job) => isFull() && cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event';
+  // TOÀN QUYỀN: công tắc chung (/toanquyen) HOẶC dự án đang ở chế độ "toàn quyền" (MẶC ĐỊNH của mọi dự án). Luôn chỉ cho việc của chủ máy, không cho webhook/sự kiện.
+  const projectFull = (job) => { try { if (!job.project) return false; const p = projects.get(job.project); return !!p && (p.mode || 'chay') === 'chay'; } catch (e) { return false; } };
+  const jobFull = (job) => (isFull() || projectFull(job)) && cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event';
   // Hàng rào trong chế độ toàn quyền (mặc định BẬT): cấm đọc khóa/biến môi trường, hỏi chủ máy khi gửi dữ liệu ra ngoài hoặc dính tiền (policy.decideGuard)
   const guardOn = () => db.kvGet('guard') !== '0';
   // Nhìn / điều khiển MÀN HÌNH THẬT của máy (qua trợ lý màn hình agentos-deskd). Quy tắc về Zalo/DeepSeek/KiotViet nằm ngay trong lời nhắc.

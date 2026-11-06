@@ -702,7 +702,7 @@ function createSettings(o) {
         const P = projectsLib(), S = createSessions({ db: null, projects: P });
         const rows = S.rowsFor(db.raw, null, 120).map((r) => {
           const p = r.project ? P.get(r.project) : null, st = S.stateOf(r);
-          return { chat: r.chat, project: r.project, name: r.project ? (p ? (p.home ? 'Chung (dự án tổng)' : p.name) : r.project + ' (đã xóa)') : 'Chế độ chung', mode: (p && p.mode) || 'hoi', state: st.key, icon: st.icon, label: st.label, running: r.running, queued: r.queued, total: r.total, lastId: r.last_id, prompt: r.last ? String(r.last.prompt || '').slice(0, 160) : '', at: r.last ? (r.last.finished_at || r.last.started_at || r.last.created_at) : 0 };
+          return { chat: r.chat, project: r.project, name: r.project ? (p ? (p.home ? 'Chung (dự án tổng)' : p.name) : r.project + ' (đã xóa)') : 'Chế độ chung', mode: (p && p.mode) || 'chay', state: st.key, icon: st.icon, label: st.label, running: r.running, queued: r.queued, total: r.total, lastId: r.last_id, prompt: r.last ? String(r.last.prompt || '').slice(0, 160) : '', at: r.last ? (r.last.finished_at || r.last.started_at || r.last.created_at) : 0 };
         });
         return { sessions: rows };
       });

@@ -97,7 +97,7 @@ function createProjectCommands(o) {
         const m2 = rest.match(/^(\S+)\s*([\s\S]*)$/), k2 = m2 ? na(m2[1]) : '', pat = m2 ? m2[2].trim() : '';
         if (!k2) {
           const lines = ['deny', 'ask', 'allow'].flatMap((k) => cur[k].map((r) => VN[k] + ' ' + r));
-          return '🛡 Luật của ' + label(t.p) + ' (chế độ: ' + (t.p.mode || 'hoi') + '):\n' + (lines.length ? lines.join('\n') : '(chưa có luật nào)') +
+          return '🛡 Luật của ' + label(t.p) + ' (chế độ: ' + (t.p.mode || 'chay') + '):\n' + (lines.length ? lines.join('\n') : '(chưa có luật nào)') +
             '\n\nThêm: /duan luat cam Bash(rm *) · /duan luat hoi Write(*.xlsx) · /duan luat cho Bash(git status*)\nBỏ: /duan luat bo <đúng nội dung luật>. CẤM thắng mọi chế độ; HỎI buộc hỏi; CHO tự cho phép việc đang phải hỏi. Đổi chế độ: /cheodo';
         }
         const e = need(); if (e) return e;

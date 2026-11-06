@@ -8,7 +8,7 @@
 // Trạng thái suy ra từ bảng việc (db.sessions) + danh sách việc đang chờ duyệt (approvals.pendingJobIds), không lưu riêng nên không bao giờ lệch.
 const cut = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 const ORDER = { cho: 0, lam: 1, hang: 2, moi: 5 };
-const MODE_LABEL = { hoi: 'hỏi từng lần', tusua: 'tự sửa trong dự án', kehoach: 'chỉ lập kế hoạch', chay: 'chạy thẳng' };
+const MODE_LABEL = { hoi: 'hỏi từng lần', tusua: 'tự sửa trong dự án', kehoach: 'chỉ lập kế hoạch', chay: 'toàn quyền' };
 
 // Truy vấn bảng việc theo phiên (raw = đối tượng better-sqlite3, đọc thôi). chatId trống = mọi chat.
 function queryRows(raw, chatId, limit) {
@@ -48,15 +48,15 @@ function createSessions(o) {
     const out = [];
     for (const p of usable) {
       const s = byProj.get(p.id) || null;
-      out.push({ id: p.id, name: p.home ? 'Chung (dự án tổng)' : p.name, project: p, s, state: stateOf(s), mode: p.mode || 'hoi', at: s && s.last ? (s.last.finished_at || s.last.started_at || s.last.created_at) : p.created || 0 });
+      out.push({ id: p.id, name: p.home ? 'Chung (dự án tổng)' : p.name, project: p, s, state: stateOf(s), mode: p.mode || 'chay', at: s && s.last ? (s.last.finished_at || s.last.started_at || s.last.created_at) : p.created || 0 });
     }
     const gen = byProj.get('');
-    if (gen) out.push({ id: '-', name: 'Chế độ chung (chưa gắn dự án)', project: null, s: gen, state: stateOf(gen), mode: 'hoi', at: gen.last.finished_at || gen.last.created_at });
+    if (gen) out.push({ id: '-', name: 'Chế độ chung (chưa gắn dự án)', project: null, s: gen, state: stateOf(gen), mode: 'chay', at: gen.last.finished_at || gen.last.created_at });
     return out.sort((a, b) => (ORDER[a.state.key] === undefined ? 3 : ORDER[a.state.key]) - (ORDER[b.state.key] === undefined ? 3 : ORDER[b.state.key]) || b.at - a.at);
   }
 
   function lineOf(r, cur) {
-    const head = (cur && cur.id === r.id ? '▶️ ' : '') + r.state.icon + ' ' + r.name + ' — ' + r.state.label + (r.mode !== 'hoi' ? ' · chế độ: ' + (MODE_LABEL[r.mode] || r.mode) : '');
+    const head = (cur && cur.id === r.id ? '▶️ ' : '') + r.state.icon + ' ' + r.name + ' — ' + r.state.label + (r.mode !== 'chay' ? ' · chế độ: ' + (MODE_LABEL[r.mode] || r.mode) : '');
     const l = r.s && r.s.last ? '\n    “' + cut(r.s.last.prompt, 70) + '”' : '';
     return head + l;
   }
@@ -66,7 +66,7 @@ function createSessions(o) {
     if (!r.s || !r.s.last) return '📁 ' + r.name + '\n' + r.state.icon + ' ' + r.state.label + '\nDự án này chưa có việc nào. Bấm "▶️ Tiếp tục" rồi nhắn việc.';
     const l = r.s.last;
     const body = l.status === 'done' ? cut(l.result, 1400) : l.status === 'error' ? 'Lỗi: ' + cut(l.error, 500) : l.status === 'running' ? 'Đang chạy… (kết quả gửi về ngay khi xong)' : cut(l.result || l.error || '', 600);
-    return '📁 ' + r.name + '\n' + r.state.icon + ' ' + r.state.label + (r.mode !== 'hoi' ? ' · chế độ: ' + (MODE_LABEL[r.mode] || r.mode) : '') + '\nViệc #' + l.id + ': “' + cut(l.prompt, 200) + '”' + (body ? '\n→ ' + body : '');
+    return '📁 ' + r.name + '\n' + r.state.icon + ' ' + r.state.label + (r.mode !== 'chay' ? ' · chế độ: ' + (MODE_LABEL[r.mode] || r.mode) : '') + '\nViệc #' + l.id + ': “' + cut(l.prompt, 200) + '”' + (body ? '\n→ ' + body : '');
   }
 
   return { stateOf, list, lineOf, peek, ago, MODE_LABEL, rowsFor: (raw, chatId, limit) => queryRows(raw, chatId, limit) };

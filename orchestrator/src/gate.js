@@ -22,7 +22,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     const tool = String(body.tool || '');
     const input = body.input && typeof body.input === 'object' ? body.input : {};
     // Luật CẤM của dự án thắng mọi thứ (kể cả tự cho phép)
-    if (!entry.guard && perms) { let why = null; try { why = perms.denies(entry.job, tool, input); } catch (e) { why = null; } if (why) { audit(entry.job.id, tool, { cls: 'policy', summary: String(input.command || input.file_path || input.url || '') }, 'deny', 'policy'); return { behavior: 'deny', message: 'Bị chặn: ' + why + '. Đừng thử lại cách này; báo người dùng nếu cần.' }; } }
+    if (perms) { let why = null; try { why = perms.denies(entry.job, tool, input); } catch (e) { why = null; } if (why) { audit(entry.job.id, tool, { cls: 'policy', summary: String(input.command || input.file_path || input.url || '') }, 'deny', 'policy'); return { behavior: 'deny', message: 'Bị chặn: ' + why + '. Đừng thử lại cách này; báo người dùng nếu cần.' }; } }
     // Thao tác đã được chủ máy cho phép sẵn bằng cấu hình (vd. ghi sổ chứng từ của dự án bật chế độ chứng từ): tự cho phép, vẫn ghi nhật ký
     if (!entry.guard && autoAllow) { let ok = false; try { ok = !!autoAllow(entry.job, tool, input); } catch (e) { ok = false; } if (ok) { audit(entry.job.id, tool, { cls: 'auto', summary: String(input.command || input.file_path || '') }, 'allow', 'auto'); return { behavior: 'allow', updatedInput: input }; } }
     let d = (entry.guard ? decideGuard : decide)({ tool, input, policy: entry.policy, workdir, extraDirs: entry.extraDirs || extraDirs, state: entry.state });

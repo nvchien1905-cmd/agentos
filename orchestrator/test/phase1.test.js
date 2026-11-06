@@ -39,8 +39,8 @@ function gateEnv(project, extra) {
   const asked = [];
   const approvals = { request: async (job, tool, d) => { asked.push({ tool, summary: d.summary, warn: d.warn }); return { allowed: false, source: 'user' }; }, cancelJob() {} };
   const gate = createGate({ db: { addAudit() {} }, approvals, workdir: dir, log() {}, extraDirs: [pdir], perms, autoAllow: extra && extra.autoAllow });
-  const job = (chat) => ({ id: 1, chat_id: chat || ADMIN, project: 'du-an' });
-  const run = async (tool, input, chat) => { const j = job(chat); gate.begin(j, { policy: {} }); const r = await gate.evaluate({ jobId: 1, tool, input }); gate.end(1); return r; };
+  const job = (chat, lane) => ({ id: 1, chat_id: chat || ADMIN, project: 'du-an', lane });
+  const run = async (tool, input, chat, lane, opts) => { const j = job(chat, lane); gate.begin(j, { policy: {} }, opts); const r = await gate.evaluate({ jobId: 1, tool, input }); gate.end(1); return r; };
   return { run, asked, proj, pdir, setSandbox: (v) => { sandbox = v; } };
 }
 
@@ -66,13 +66,29 @@ test('chế độ tự sửa: ghi trong thư mục dự án tự cho phép; ghi 
   await E.run('Write', { file_path: path.join(os.tmpdir(), 'ngoai.txt'), content: 'x' }); assert.ok(E.asked.length >= 2 || true);
 });
 
-test('chế độ chạy thẳng: chỉ việc của chủ máy VÀ khi hộp cô lập bật; không thì tự hạ về hỏi; vẫn không nới thứ chính sách cấm cứng', async () => {
-  const E = gateEnv({ mode: 'chay' }, { sandbox: false });
-  await E.run('Bash', { command: 'ls' }); assert.equal(E.asked.length, 1, 'hộp cô lập tắt: vẫn hỏi');
-  E.setSandbox(true);
-  assert.equal((await E.run('Bash', { command: 'ls' })).behavior, 'allow'); assert.equal(E.asked.length, 1);
-  await E.run('Bash', { command: 'ls' }, A); assert.equal(E.asked.length, 2, 'việc của ID thường không được chạy thẳng');
+test('chế độ TOÀN QUYỀN (mặc định của mọi dự án): việc của chủ máy không hỏi; ID thường, webhook và sự kiện vẫn bị hỏi; vẫn không nới thứ chính sách cấm cứng', async () => {
+  const E = gateEnv({ mode: 'chay' });
+  assert.equal((await E.run('Bash', { command: 'ls' })).behavior, 'allow'); assert.equal(E.asked.length, 0, 'chủ máy: tự cho phép, không hỏi');
+  await E.run('Bash', { command: 'ls' }, A); assert.equal(E.asked.length, 1, 'việc của ID thường không bao giờ được toàn quyền');
+  await E.run('Bash', { command: 'ls' }, ADMIN, 'hook'); assert.equal(E.asked.length, 2, 'webhook vẫn phải hỏi');
+  await E.run('Bash', { command: 'ls' }, ADMIN, 'event'); assert.equal(E.asked.length, 3, 'sự kiện tự kích hoạt vẫn phải hỏi');
   const sudo = await E.run('Bash', { command: 'sudo rm -rf /' }); assert.equal(sudo.behavior, 'deny'); assert.match(sudo.message, /Bị chặn/);
+});
+
+test('mặc định: dự án chưa đặt chế độ = TOÀN QUYỀN cho chủ máy (và hạ về hỏi cho ID thường/webhook/sự kiện); mã nguồn index.js gắn jobFull với chế độ dự án', () => {
+  const perms = createProjectPerms({ projects: { get: () => null }, isAdmin });
+  const p = { id: 'x', name: 'x' };
+  assert.equal(perms.effectiveMode({ chat_id: ADMIN }, p), 'chay'); assert.equal(perms.effectiveMode({ chat_id: A }, p), 'hoi');
+  assert.equal(perms.effectiveMode({ chat_id: ADMIN, lane: 'hook' }, p), 'hoi'); assert.equal(perms.effectiveMode({ chat_id: ADMIN, lane: 'event' }, p), 'hoi');
+  assert.equal(perms.effectiveMode({ chat_id: ADMIN }, { mode: 'kehoach' }), 'kehoach'); assert.equal(perms.effectiveMode({ chat_id: ADMIN }, { mode: 'linh-tinh' }), 'chay');
+  const idx = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
+  assert.match(idx, /const projectFull = [^\n]*\(p\.mode \|\| 'chay'\) === 'chay'/);
+  assert.match(idx, /const jobFull = \(job\) => \(isFull\(\) \|\| projectFull\(job\)\) && cfg\.adminUserIds\.has\(String\(job\.chat_id\)\) && job\.lane !== 'hook' && job\.lane !== 'event'/);
+});
+
+test('luật CẤM vẫn áp dụng khi AI chạy toàn quyền có hàng rào (guard)', async () => {
+  const E = gateEnv({ mode: 'chay', rules: { deny: ['Bash(rm *)'] } });
+  const d = await E.run('Bash', { command: 'rm -rf x' }, ADMIN, undefined, { guard: true }); assert.equal(d.behavior, 'deny'); assert.match(d.message, /luật của dự án cấm/);
 });
 
 test('luật: CẤM thắng mọi chế độ và cả tự cho phép; HỎI buộc hỏi dù đang tự sửa; CHO tự cho phép việc đang phải hỏi', async () => {
@@ -164,7 +180,7 @@ test('/cheodo: thẻ chọn chế độ quyền theo dự án đang ở; bấm �
   assert.match((await E.say(ADMIN, '/cheodo')).text, /chế độ chung|dự án/);
   await E.say(ADMIN, '/moi Kế toán'); await E.say(ADMIN, 'Kế toán');                 // tạo dự án mới và đặt tên
   const p = E.P.active(ADMIN); assert.equal(p.name, 'Kế toán');
-  const card = await E.say(ADMIN, '/cheodo'); assert.match(card.text, /Chế độ quyền của .*hỏi từng lần/);
+  const card = await E.say(ADMIN, '/cheodo'); assert.match(card.text, /Chế độ quyền của .*toàn quyền/); assert.match(card.buttons.flat().find((b) => b.data === 'pj:mode:chay').text, /^✅ /);
   assert.deepEqual(card.buttons.flat().map((b) => b.data).sort(), ['pj:mode:chay', 'pj:mode:hoi', 'pj:mode:kehoach', 'pj:mode:tusua']);
   assert.equal(await E.press(ADMIN, 'pj:mode:kehoach'), 'Đã đổi chế độ'); assert.equal(E.P.get(p.id).mode, 'kehoach');
   assert.match(String(E.sent[E.sent.length - 1].text), /chỉ lập kế hoạch/);
@@ -175,7 +191,7 @@ test('/cheodo: thẻ chọn chế độ quyền theo dự án đang ở; bấm �
   assert.match(await E.say(ADMIN, '/duan luat bo Bash(rm *)'), /Đã bỏ 1 luật/); assert.deepEqual(E.P.get(p.id).rules.deny, []);
   // ID thường (được gán dự án riêng): không thấy nút chạy thẳng, không sửa được luật
   await E.say(A, '/moi Việc riêng'); await E.say(A, 'Việc riêng');
-  const cardA = await E.say(A, '/cheodo'); assert.ok(!cardA.buttons.flat().some((b) => b.data === 'pj:mode:chay'));
+  const cardA = await E.say(A, '/cheodo'); assert.ok(!cardA.buttons.flat().some((b) => b.data === 'pj:mode:chay')); assert.match(cardA.text, /hỏi từng lần \(bạn là ID thường/);
   assert.match(await E.press(A, 'pj:mode:chay'), /Chỉ chủ máy/); assert.match(await E.say(A, '/duan luat cam Bash(ls)'), /chỉ dành cho chủ máy/);
   assert.match(await E.say(A, '/duan luat'), /chưa có luật nào/);
 });

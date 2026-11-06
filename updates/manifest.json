@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.10",
-  "file": "agentos-update-2026.11.06.10.tar.gz",
-  "size": 407355,
-  "sha256": "f784595c769b6190d159432f679b062b0dbd99cd27366bccd5c54237cb1bfc5a",
+  "version": "2026.11.06.11",
+  "file": "agentos-update-2026.11.06.11.tar.gz",
+  "size": 407660,
+  "sha256": "81c44af7682c46c2125c4c2bbc55fabe03bf5a16582ee7382e65977bdfc776e6",
   "date": "2026-11-06",
-  "notes": "Bảng phiên (/phien) có trạng thái + nút Xem/Tiếp tục/Dừng; chế độ quyền + luật cho/hỏi/cấm theo dự án (/cheodo, /duan luat); ghép ID bằng mã (/ghepdoi)"
+  "notes": "Chế độ quyền theo dự án mặc định là TOÀN QUYỀN cho việc của chủ máy (ID thường, webhook, sự kiện vẫn bảo vệ)"
 }

@@ -54,15 +54,17 @@ function createProjectFlow(o) {
       '\n\nBấm tên để xem nhanh · ▶️ Tiếp tục để làm việc trong cuộc đó · ⏹ Dừng để hủy việc đang chạy/chờ. Chế độ quyền của cuộc hiện tại: /cheodo' };
   }
   // /cheodo: thẻ chọn chế độ quyền của dự án đang ở (hỏi từng lần / tự sửa / chỉ lập kế hoạch / chạy thẳng)
-  const MODE_HELP = { hoi: 'mọi việc ghi/chạy lệnh đều hỏi anh qua Telegram', tusua: 'tự sửa tệp trong thư mục dự án; chạy lệnh vẫn hỏi', kehoach: 'chỉ được đọc/xem web, không sửa hay chạy gì — AI trình bày kế hoạch để anh duyệt', chay: 'tự cho phép mọi việc đang phải hỏi (chỉ chủ máy, chỉ khi hộp cô lập đang bật)' };
+  const MODE_HELP = { hoi: 'mọi việc ghi/chạy lệnh đều hỏi anh qua Telegram', tusua: 'tự sửa tệp trong thư mục dự án; chạy lệnh vẫn hỏi', kehoach: 'chỉ được đọc/xem web, không sửa hay chạy gì — AI trình bày kế hoạch để anh duyệt', chay: 'MẶC ĐỊNH — AI làm một mạch, không hỏi xin phép (chỉ việc của chủ máy; ID thường luôn ở chế độ bảo vệ)' };
+  const shown0 = (cur, uid) => (cur === 'chay' && !isAdmin(uid) ? 'hoi' : cur);
   function modeCard(chatId, uid) {
     const p = projects.active(chatId);
     if (!p) return { text: 'Anh đang ở chế độ chung, chưa có dự án để đặt chế độ quyền. Gõ /duan để vào một dự án.' };
-    const cur = p.mode || 'hoi', R = p.rules || {}, nr = (R.allow || []).length + (R.ask || []).length + (R.deny || []).length;
+    const cur = p.mode || 'chay', R = p.rules || {}, nr = (R.allow || []).length + (R.ask || []).length + (R.deny || []).length;
     const names = (sess && sess.MODE_LABEL) || {};
-    const modes = ['hoi', 'tusua', 'kehoach'].concat(isAdmin(uid) ? ['chay'] : []);
-    const rows = []; for (let i = 0; i < modes.length; i += 2) rows.push(modes.slice(i, i + 2).map((m) => ({ text: (cur === m ? '✅ ' : '') + (names[m] || m), data: 'pj:mode:' + m })));
-    return { text: '🛡 Chế độ quyền của ' + label(p) + ': ' + (names[cur] || cur) + '\n' + modes.map((m) => '• ' + (names[m] || m) + ': ' + MODE_HELP[m]).join('\n') + '\n\nLuật riêng: ' + (nr ? nr + ' luật (xem /duan luat)' : 'chưa có (thêm bằng /duan luat cam|hoi|cho …)'), buttons: rows };
+    const modes = (isAdmin(uid) ? ['chay'] : []).concat(['hoi', 'tusua', 'kehoach']);
+    const rows = []; for (let i = 0; i < modes.length; i += 2) rows.push(modes.slice(i, i + 2).map((m) => ({ text: (shown0(cur, uid) === m ? '✅ ' : '') + (names[m] || m), data: 'pj:mode:' + m })));
+    const shown = cur === 'chay' && !isAdmin(uid) ? 'hoi' : cur;      // ID thường không bao giờ được toàn quyền
+    return { text: '🛡 Chế độ quyền của ' + label(p) + ': ' + (names[shown] || shown) + (shown !== cur ? ' (bạn là ID thường nên luôn ở chế độ bảo vệ)' : '') + '\n' + modes.map((m) => '• ' + (names[m] || m) + ': ' + MODE_HELP[m]).join('\n') + '\n\nLuật riêng: ' + (nr ? nr + ' luật (xem /duan luat)' : 'chưa có (thêm bằng /duan luat cam|hoi|cho …)'), buttons: rows };
   }
 
   function picker(chatId, uid, text) {

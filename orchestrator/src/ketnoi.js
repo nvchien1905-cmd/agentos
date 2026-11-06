@@ -96,6 +96,7 @@ const OSNAME = { linux: 'Linux', windows: 'Windows' };
 
 function createKetNoi(o) {
   const { fleet, ask, edit, send, log } = o;
+  const vault = o.vault || null;                             // kho mật khẩu mã hóa (ưu tiên); không có thì ghi tệp credsFile như trước
   const keyDir = o.keyDir || process.env.AGENTOS_SSH_DIR || '/var/lib/agentos/.ssh';
   const run = o.run || ((bin, args, opt) => new Promise((resolve) => { const c = execFile(bin, args, { timeout: (opt && opt.timeout) || 30000 }, (err, stdout, stderr) => resolve({ ok: !err, out: String(stdout || ''), err: String(stderr || ''), msg: String((err && err.message) || '') })); if (opt && opt.input != null && c.stdin) c.stdin.end(opt.input); }));
   const tsPeers = o.tsPeers || (async () => ({ running: false, peers: [] }));      // () -> { running, self, peers: [{ ip, host, os }] } (máy khác cùng tài khoản Tailscale đang bật)
@@ -258,7 +259,7 @@ function createKetNoi(o) {
       if (again.ok) { good++; lines.push('✅ ' + a.label + ': vừa cài'); if (a.rustdesk) rdId = await rustdeskCreds(name, r); } else lines.push('❌ ' + a.label + ': không cài được — ' + reason(res));
     }
     logf('ketnoi: ứng dụng trên ' + name + ': ' + good + '/' + list.length + ' sẵn sàng');
-    return (good === list.length ? '✅' : '⚠️') + ' Ứng dụng: ' + good + '/' + list.length + ' sẵn sàng' + (lines.length ? '\n' + lines.join('\n') : '') + (rdId ? '\n🖥 RustDesk ID: ' + rdId + ' (mật khẩu đã lưu ở máy này)' : '');
+    return (good === list.length ? '✅' : '⚠️') + ' Ứng dụng: ' + good + '/' + list.length + ' sẵn sàng' + (lines.length ? '\n' + lines.join('\n') : '') + (rdId ? '\n🖥 RustDesk ID: ' + rdId + ' (mật khẩu đã lưu mã hóa ở máy này, gõ /vao ' + name + ' để đăng nhập)' : '');
   }
 
   // RustDesk trên máy Windows: script cài đặt đã đặt mật khẩu ngẫu nhiên và ghi rustdesk.json; máy này đọc qua SSH, lưu lại (0600) để mình tự vào được, không ai phải gõ gì.
@@ -267,7 +268,8 @@ function createKetNoi(o) {
       const q = await run('ssh', sshArgs(r, PS("Get-Content 'C:\\ProgramData\\AgentOS\\rustdesk.json' -Raw")));
       const j = q.ok ? JSON.parse(q.out.replace(/^\uFEFF/, '')) : null;
       if (!j || !/^\d{6,12}$/.test(String(j.id)) || !j.password) return '';
-      if (credsFile) {
+      if (vault) vault.put(name, { id: String(j.id), password: String(j.password), note: 'từ /ketnoi' });
+      else if (credsFile) {
         let all = {}; try { all = JSON.parse(fs.readFileSync(credsFile, 'utf8')); } catch (e) { /* tệp mới */ }
         all[name] = { id: String(j.id), password: String(j.password), at: new Date().toISOString() };
         fs.writeFileSync(credsFile, JSON.stringify(all, null, 1), { mode: 0o600 });

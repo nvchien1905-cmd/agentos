@@ -5,14 +5,14 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng] [tên chi nhánh]  /ton <sản phẩm>  /hanghoa  -> KiotViet API chính thức, chỉ đọc (cả khi hỏi bằng câu thường: "doanh thu hôm nay")
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien', 'vao'];
 
 const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
 
 function createQuick(o) {
   o = o || {};
-  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, fleet = o.fleet, iot = o.iot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
+  const desk = o.desk, kv = o.kiotviet, od = o.onedrive, sched = o.schedule, ts = o.tailscale, printing = o.printing, upd = o.update, mem = o.memory, projects = o.projects, vault = o.vault, remote = o.remote, links = o.links, snap = o.snapshot, backup = o.backup, usage = o.usage, alerts = o.alerts, fleet = o.fleet, iot = o.iot, wol = o.wol, devices = o.devices || { get: () => ({}), set: () => {} }, office = o.office, guard = o.guard, selftest = o.selftest, triggers = o.triggers, shotWaitMs = o.shotWaitMs === undefined ? 900 : o.shotWaitMs;
   // Sau mỗi thao tác điều khiển: chờ màn hình cập nhật rồi chụp lại gửi kèm (không phải gõ /manhinh)
   async function withShot(text) {
     if (shotWaitMs) await new Promise((r) => setTimeout(r, shotWaitMs));
@@ -262,6 +262,18 @@ function createQuick(o) {
         case 'guilen': return links ? await links.uploadLink(ctx && ctx.chatId) : '⚠️ Máy này chưa có tính năng gửi tệp lớn.';
         case 'lenh': return remote ? await remote.runShell(arg) : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'lay': return remote ? remote.getFile(arg, links) : '⚠️ Máy này chưa có điều khiển từ xa.';
+        case 'vao': {
+          if (!vault) return '⚠️ Máy này chưa có kho mật khẩu máy từ xa.';
+          const list = vault.list();
+          if (!list.length) return 'Chưa lưu máy nào. Mở Cài đặt AgentOS (biểu tượng ⚙ trên màn hình máy, hoặc lệnh agentos-settings) → mục 🖥 Máy từ xa → nhập tên máy, ID và mật khẩu RustDesk MỘT lần. Mật khẩu nhập ở đó, đừng gửi vào chat.';
+          const m = vault.match(arg);
+          if (!m.name) return (arg && m.many ? 'Có nhiều máy khớp "' + arg + '". ' : '') + 'Các máy đã lưu (gõ /vao <tên>):\n• ' + list.filter((x) => !m.list || m.list.includes(x.name)).map((x) => x.name + ' — ID ' + x.id + (x.note ? ' (' + x.note + ')' : '')).join('\n• ');
+          const sec = vault.secret(m.name);
+          const r = await desk.call({ cmd: 'rdconnect', id: sec.id, password: sec.password });
+          if (!r.ok) return '⚠️ ' + r.error;
+          await new Promise((res) => setTimeout(res, o.rdWaitMs === undefined ? 7000 : o.rdWaitMs));
+          return await withShot('🖥 Đã mở RustDesk nối tới "' + sec.name + '" (ID ' + sec.id + ') bằng mật khẩu đã lưu. Xong việc gõ /dong rustdesk.');
+        }
         case 'maytinh': return remote ? await remote.sysinfo() : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'go': {
           if (!arg) return 'Cách dùng: /go <chữ> - gõ chữ vào ô đang chọn trên màn hình máy (dùng /manhinh để xem trước).';

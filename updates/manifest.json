@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.05.1",
-  "file": "agentos-update-2026.11.05.1.tar.gz",
-  "size": 364459,
-  "sha256": "acd52f3848c593068b083f40e6662b11d0a36262ecd251fcd47de5c579f96da1",
-  "date": "2026-11-05",
-  "notes": "Đổi cách đặt tên bản theo ngày (nội dung như .28.45: KiotViet tự thử lại khi 429, không báo sự cố giả)"
+  "version": "2026.11.06.1",
+  "file": "agentos-update-2026.11.06.1.tar.gz",
+  "size": 368405,
+  "sha256": "d99d8458035dc20325fb787af4a82800e8c588abaa1758a34bc9956df1915897",
+  "date": "2026-11-06",
+  "notes": "Kho mật khẩu RustDesk mã hóa: nhập một lần ở Cài đặt → Máy từ xa, /vao <máy> tự đăng nhập"
 }

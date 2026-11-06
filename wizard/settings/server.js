@@ -14,6 +14,7 @@ const tgLib = require('../lib/telegram');
 const engines = require('../lib/engines');
 const apikeys = require('../lib/apikeys');
 const kvLib = require('../lib/kiotviet');
+const { createVault } = require('../../orchestrator/src/vault');
 const envfile = require('../lib/envfile');
 const fullaccess = require('../lib/fullaccess');
 const odauth = require('../lib/odauth');
@@ -240,6 +241,7 @@ function createSettings(o) {
     });
   }
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const vaultLib = () => createVault({ file: o.vaultFile || '/var/lib/agentos/data/vault.enc', keyFile: o.vaultKey || '/var/lib/agentos/vault.key', chown: (f) => chownAgentos(f) });
   const chownAgentos = (p) => { try { const l = fs.readFileSync('/etc/passwd', 'utf8').split('\n').find((x) => x.startsWith('agentos:')).split(':'); fs.chownSync(p, Number(l[2]), Number(l[3])); } catch (e) { /* máy thử */ } };
 
   // ---------- xử lý yêu cầu ----------
@@ -308,6 +310,11 @@ function createSettings(o) {
       saveEnv(kvLib.remove(needEnv(), b.retailer)); await restart('agentos-orchestrator');
       return { deleted: true };
     },
+
+    // ----- Máy từ xa: kho mật khẩu RustDesk (mã hóa). Mật khẩu chỉ đi MỘT chiều vào kho, không bao giờ trả ra màn hình/chat -----
+    async 'GET /api/vault'() { return { machines: vaultLib().list() }; },
+    async 'POST /api/vault/save'(b) { const r = vaultLib().put(b.name, { id: b.id, password: b.password, note: b.note }); return { saved: true, name: r.name, id: r.id }; },
+    async 'POST /api/vault/delete'(b) { if (!vaultLib().remove(b.name)) throw new Error('Không có máy này trong kho.'); return { deleted: true }; },
 
     // ----- Ứng dụng -----
     async 'GET /api/apps'() {

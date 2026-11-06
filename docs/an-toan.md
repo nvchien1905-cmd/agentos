@@ -448,3 +448,10 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.11.05.1 — đặt tên bản theo ngày
 - Từ nay phiên bản dạng NĂM.THÁNG.NGÀY.SỐ-BẢN-TRONG-NGÀY (vd 2026.11.05.1, 2026.11.05.2). Không có thay đổi chức năng so với 2026.10.28.45; so sánh phiên bản theo từng số nên bản mới vẫn lớn hơn bản cũ.
+
+## 2026.11.06.1 — Kho mật khẩu máy từ xa: lưu RustDesk một lần, /vao tự đăng nhập
+- Cài đặt AgentOS → tab 🖥 "Máy từ xa": nhập tên máy + ID + mật khẩu RustDesk MỘT lần (mật khẩu chỉ đi một chiều vào kho, không hiện lại, không qua chat). Telegram: `/vao` liệt kê máy đã lưu (không có mật khẩu), `/vao <tên>` mở RustDesk trên màn hình máy này, nối thẳng tới máy đó bằng mật khẩu đã lưu rồi gửi ảnh màn hình.
+- Kho (orchestrator/src/vault.js): AES-256-GCM; tệp kho `data/vault.enc`, khóa mã hóa là tệp riêng `/var/lib/agentos/vault.key` (0600) NGOÀI thư mục dữ liệu → bản sao lưu thư mục dữ liệu không chứa khóa; trong sandbox AI thư mục dữ liệu bị che. Không có lệnh nào trả mật khẩu ra (list/Telegram/Cài đặt chỉ thấy ID); chỉ `/vao` (lệnh cố định, không qua AI) đọc kho rồi gửi cho trợ lý màn hình.
+- Trợ lý màn hình (deskd) có lệnh mới `rdconnect` (id + mật khẩu kiểm đầu vào chặt, chạy `rustdesk --connect ID --password MK` dưới người ngồi máy, không qua shell, từ chối khi màn hình khóa). Đã thử RustDesk 1.5.0 thật trên máy ảo: mở cửa sổ "ID - Remote Desktop". Mật khẩu nằm trên dòng lệnh tiến trình RustDesk trong lúc chạy (chỉ tài khoản trên máy này xem được).
+- `/ketnoi` lưu mật khẩu RustDesk của máy con vào kho (không còn tệp rõ); tệp rõ cũ `rustdesk-may-con.json` được nhập vào kho rồi xóa lần khởi động đầu.
+- Không tự đăng nhập được khi máy kia tắt/khác mật khẩu/RustDesk chặn kết nối — khi đó ảnh màn hình sẽ hiện hộp thoại tương ứng. Test: wizard/test/vault.test.js, settings.test.js, desk/test/desk.test.js.

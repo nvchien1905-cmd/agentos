@@ -222,3 +222,15 @@ test('fbbot (trình duyệt của bot để đăng nhập Facebook): mở bằng
   const kill = calls.find((x) => x.cmd === 'kill'); assert.deepEqual(kill.args, ['-TERM', '500']);
   assert.ok(calls.some((x) => x.args.includes('-SI:localuser:agentos')), 'thu hồi quyền vẽ khi đóng');
 });
+
+test('rdconnect: nối RustDesk tới máy khác bằng ID + mật khẩu, dưới người dùng màn hình chính, không qua shell; từ chối đầu vào xấu và màn hình khóa', async () => {
+  const { desk, detached } = make();
+  const r = await desk.handle({ cmd: 'rdconnect', id: '264372510', password: 'Mat khau; rm -rf /' });
+  assert.equal(r.ok, true);
+  const [cmd, args] = detached[0];
+  assert.equal(cmd, 'runuser'); assert.deepEqual(args.slice(-5), ['/usr/bin/rustdesk', '--connect', '264372510', '--password', 'Mat khau; rm -rf /']);
+  for (const bad of [{ id: 'a b' }, { id: '12; reboot' }, { id: '' }, { id: '264372510', password: '' }, { id: '264372510', password: '--evil' }, { id: '264372510', password: 'a\nb' }, { id: '264372510', password: 'x'.repeat(200) }]) assert.equal((await desk.handle(Object.assign({ cmd: 'rdconnect', password: 'ok' }, bad))).ok, false);
+  assert.equal(detached.length, 1);
+  const locked = make({ sess: Object.assign({}, SESS, { active: false }) });
+  assert.equal((await locked.desk.handle({ cmd: 'rdconnect', id: '264372510', password: 'ok' })).ok, false);
+});

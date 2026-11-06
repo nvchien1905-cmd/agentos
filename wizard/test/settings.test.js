@@ -223,3 +223,22 @@ test('settings: sổ tay — thêm ghi chú vào chương, sửa/xóa chương (
     const g = await S.call('GET', 'memory'); assert.deepEqual([g.body.config.enabled, g.body.config.route, g.body.config.provider], [false, false, 'gemini']);
   } finally { await S.s.close(); }
 });
+
+test('Máy từ xa: lưu ID + mật khẩu vào kho mã hóa, danh sách không lộ mật khẩu, sửa/xóa; tab có trong trang', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vlt-'));
+  const S = await boot({ vaultFile: path.join(dir, 'd', 'vault.enc'), vaultKey: path.join(dir, 'vault.key') });
+  try {
+    assert.deepEqual((await S.call('GET', 'vault')).body.machines, []);
+    const r = await S.call('POST', 'vault/save', { name: 'Máy văn phòng', id: '264372510', password: 'Bí mật 1', note: 'tầng 2' });
+    assert.equal(r.body.saved, true);
+    const l = await S.call('GET', 'vault');
+    assert.deepEqual(l.body.machines.map((m) => [m.name, m.id, m.hasPassword]), [['Máy văn phòng', '264372510', true]]);
+    assert.ok(!l.text.includes('Bí mật'));
+    assert.ok(!fs.readFileSync(path.join(dir, 'd', 'vault.enc')).includes('Bí mật'));
+    assert.equal((await S.call('POST', 'vault/save', { name: 'Máy văn phòng', id: '264372511', password: '' })).body.saved, true);   // giữ mật khẩu cũ
+    assert.equal((await S.call('POST', 'vault/save', { name: 'X', id: 'a b', password: 'p' })).status >= 400, true);
+    assert.equal((await S.call('POST', 'vault/delete', { name: 'máy văn phòng' })).body.deleted, true);
+    assert.equal((await S.call('POST', 'vault/delete', { name: 'khong co' })).status >= 400, true);
+    const page = await fetch('http://127.0.0.1:' + S.port + '/'); assert.match(await page.text(), /Máy từ xa/);
+  } finally { await S.s.close(); }
+});

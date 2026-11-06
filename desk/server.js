@@ -179,6 +179,19 @@ function createDesk(o) {
       return { ok: true, app: app.label, pid };
     },
 
+    // Mở RustDesk và nối thẳng tới một máy khác bằng ID + mật khẩu đã lưu (kho mật khẩu của máy này gửi tới, không qua AI).
+    // Mật khẩu nằm trên dòng lệnh của tiến trình RustDesk trong lúc chạy (chỉ tài khoản trên máy này thấy), không ghi tệp/nhật ký.
+    async rdconnect(req) {
+      const id = String(req.id || '');
+      if (!/^[A-Za-z0-9._@:-]{4,64}$/.test(id)) return fail('ID RustDesk không hợp lệ.');
+      const pw = String(req.password || '');
+      if (!pw || pw.length > 128 || /[\x00-\x1f]/.test(pw) || pw.startsWith('-')) return fail('Mật khẩu không hợp lệ.');
+      const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
+      if (!live(s)) return fail(LOCKED);
+      const pid = detach('runuser', userArgs(s, ['/usr/bin/rustdesk', '--connect', id, '--password', pw]), process.env);
+      return { ok: true, app: 'RustDesk', pid };
+    },
+
     async close(req) {
       const key = String(req.app || '').toLowerCase(); const app = APPS[key];
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));

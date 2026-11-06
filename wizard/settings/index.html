@@ -33,7 +33,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -189,6 +189,25 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           api('POST', 'kiotviet/test', { retailer: rt }).then(function (j) { box.innerHTML = j.ok ? '<span class="ok">✓ ' + esc(j.detail) + '</span>' : '<span class="bad">✗ ' + esc(j.detail) + '</span>'; }).catch(function (e) { box.innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; });
         }; });
         [].forEach.call(main.querySelectorAll('button[data-d]'), function (b) { b.onclick = function () { if (ask('Xóa gian hàng này khỏi bot? (Không ảnh hưởng dữ liệu trên KiotViet.)')) api('POST', 'kiotviet/delete', { retailer: b.getAttribute('data-d') }).then(render).catch(fail); }; });
+      }).catch(fail);
+    },
+    vault: function () {
+      api('GET', 'vault').then(function (r) {
+        var h = '<h2>Máy từ xa (RustDesk)</h2><p class="mute">Lưu <b>ID và mật khẩu RustDesk</b> của từng máy một lần ở đây. Sau đó gõ <b>/vao tên-máy</b> trên Telegram là máy này tự mở RustDesk và đăng nhập, không phải gõ lại. Mật khẩu được <b>mã hóa</b>, chỉ đi một chiều vào kho: không hiện lại, không gửi vào chat, AI không đọc được.</p>';
+        r.machines.forEach(function (m) {
+          h += '<div class="card"><div class="row"><h3 class="grow" style="margin:0">🖥 ' + esc(m.name) + '</h3><button class="b d" data-vd="' + esc(m.name) + '">Xóa</button></div>' +
+            '<p class="mute" style="margin:6px 0">ID: <b>' + esc(m.id) + '</b> · Mật khẩu: ' + (m.hasPassword ? '●●●●●●●● (đã lưu)' : 'chưa có') + (m.note ? ' · ' + esc(m.note) : '') + '</p></div>';
+        });
+        if (!r.machines.length) h += '<div class="card"><p class="mute">Chưa lưu máy nào. Thêm bên dưới.</p></div>';
+        h += '<div class="card"><h3>Thêm hoặc sửa máy</h3><p class="mute">Sửa máy đã có: nhập đúng tên máy đó; để trống mật khẩu = giữ mật khẩu cũ.</p>' +
+          '<div class="row"><input type="text" id="vn" placeholder="Tên máy, ví dụ: Máy văn phòng"><input type="text" id="vi" placeholder="ID RustDesk, ví dụ: 264372510" autocomplete="off"></div>' +
+          '<div class="row" style="margin-top:8px"><input type="password" id="vp" placeholder="Mật khẩu RustDesk của máy đó" autocomplete="off"><input type="text" id="vo" placeholder="Ghi chú (không bắt buộc)"><button class="b p" id="vadd">Lưu</button></div></div>';
+        set(h);
+        on('vadd', function () {
+          var v = function (id) { return document.getElementById(id).value.trim(); };
+          api('POST', 'vault/save', { name: v('vn'), id: v('vi'), password: document.getElementById('vp').value, note: v('vo') }).then(function (j) { toast('✔ Đã lưu "' + j.name + '". Gõ /vao ' + j.name + ' trên Telegram để đăng nhập.'); render(); }).catch(fail);
+        });
+        [].forEach.call(main.querySelectorAll('button[data-vd]'), function (b) { b.onclick = function () { if (ask('Xóa máy này khỏi kho mật khẩu?')) api('POST', 'vault/delete', { name: b.getAttribute('data-vd') }).then(function () { toast('Đã xóa'); render(); }).catch(fail); }; });
       }).catch(fail);
     },
     bot: function () {

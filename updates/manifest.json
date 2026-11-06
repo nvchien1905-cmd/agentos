@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.2",
-  "file": "agentos-update-2026.11.06.2.tar.gz",
-  "size": 369065,
-  "sha256": "afab12494ed913d29454f5151655715ed974f6f484640745cce398c786f5ed10",
+  "version": "2026.11.06.3",
+  "file": "agentos-update-2026.11.06.3.tar.gz",
+  "size": 369068,
+  "sha256": "79f8b045ef4e897ada2ff341bb47c39eea394491b82bb84646268320b38a84ae",
   "date": "2026-11-06",
-  "notes": "Đội máy một chiều: máy con không điều khiển ngược máy đầu não/máy khác được"
+  "notes": "USB cài máy con Windows: cắm, bấm đúp CAI-MAY-CON.bat là thành máy con"
 }

@@ -139,3 +139,14 @@ test('Nhật ký: danh sách lệnh đang chạy/chờ, nút Chạy lại tạo 
   assert.equal(ctl.apply({ action: 'job.rerun', id: a }), true);
   const copy = db.recentJobs('1', 1)[0]; assert.equal(copy.prompt, 'đang chờ'); assert.equal(copy.status, 'queued'); assert.notEqual(copy.id, a);
 });
+
+test('hàng đợi: mỗi CUỘC TRÒ CHUYỆN (chat + dự án) tuần tự, các cuộc khác nhau của CÙNG một ID chạy song song', () => {
+  const db = openDb(':memory:');
+  const o = { perChat: true, exclusiveProfiles: [] };
+  const a1 = db.addJob('1', 'a1', null, null, 'main', 'du-an-a'), a2 = db.addJob('1', 'a2', null, null, 'main', 'du-an-a'), b1 = db.addJob('1', 'b1', null, null, 'main', 'du-an-b'), g1 = db.addJob('1', 'g1');
+  assert.equal(db.claimNext(Date.now(), ['main'], o).id, a1);
+  assert.equal(db.claimNext(Date.now(), ['main'], o).id, b1, 'dự án B của cùng ID chạy ngay khi dự án A đang bận');
+  assert.equal(db.claimNext(Date.now(), ['main'], o).id, g1, 'chế độ chung (không dự án) cũng là một cuộc riêng');
+  assert.equal(db.claimNext(Date.now(), ['main'], o), null, 'a2 chờ a1 (cùng cuộc trò chuyện)');
+  db.finishJob(a1, 'done'); assert.equal(db.claimNext(Date.now(), ['main'], o).id, a2);
+});

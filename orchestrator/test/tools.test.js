@@ -16,7 +16,7 @@ const { createBot } = require('../src/bot');
 
 const ROOT = path.join(__dirname, '..');
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'agentos-t-'));
-const VARS = { DATA_DIR: '/d', OUT_DIR: '/o', DISPLAY: ':99', WORKDIR: '/w' };
+const VARS = { DATA_DIR: '/d', OUT_DIR: '/o', DISPLAY: ':99', WORKDIR: '/w', NODE_BIN: '/usr/bin/node', SRC_DIR: '/s' };
 
 function writeTools(obj) { const f = path.join(tmp(), 'tools.json'); fs.writeFileSync(f, JSON.stringify(obj)); return f; }
 
@@ -43,7 +43,7 @@ test('tools: nạp tools.example.json và tools.linux.json không lỗi, profile
     assert.deepEqual(t.profile('lam').engines, ['claude']);
     assert.deepEqual(t.profile('lam').policy.allowExec, ['^pwd$', '^ls( -[a-zA-Z]+)?$']);
     assert.deepEqual(Object.keys(t.mcpServersFor(web)), ['browser']);
-    assert.match(JSON.stringify(t.servers.browser.args), /"\/d\/browser-profile"/);   // đã thay ${DATA_DIR}
+    assert.match(JSON.stringify(t.servers.browser.args), name === 'tools.linux.json' ? /"__CDP__"/ : /"\/d\/browser-profile"/);   // linux: địa chỉ Chrome dùng chung thế theo từng việc; mẫu khác: đã thay ${DATA_DIR}
     assert.equal(t.profile('da-xoa').name, 'chung');                                   // profile không còn -> mặc định
   }
 });
@@ -54,12 +54,13 @@ test('tools: ghi cấu hình MCP cho mọi profile (rỗng cũng ghi) và tham s
   t.writeMcpConfigs(dir);
   assert.deepEqual(JSON.parse(fs.readFileSync(t.profile('chung').mcpConfig, 'utf8')), { mcpServers: {} });
   const w = JSON.parse(fs.readFileSync(t.profile('web').mcpConfig, 'utf8'));
-  assert.equal(w.mcpServers.browser.command, '/opt/agentos/tools/node_modules/.bin/playwright-mcp');
-  assert.deepEqual(w.mcpServers.browser.env, { DISPLAY: ':99' });
+  assert.equal(w.mcpServers.browser.command, '/usr/bin/node');                           // browser-mcp.js: mỗi AI một tab trong Chrome dùng chung
+  assert.deepEqual(w.mcpServers.browser.args.slice(0, 3), ['/s/browser-mcp.js', '--cdp', '__CDP__']);
+  assert.deepEqual(w.mcpServers.browser.env, { AGENTOS_TOOLS_DIR: '/opt/agentos/tools' });
   const a = t.codexArgs(t.profile('web'));
-  assert.equal(a[0], '-c'); assert.equal(a[1], 'mcp_servers.browser.command="/opt/agentos/tools/node_modules/.bin/playwright-mcp"');
-  assert.match(a[3], /^mcp_servers\.browser\.args=\["--browser","chrome"/);
-  assert.equal(a[5], 'mcp_servers.browser.env={DISPLAY=":99"}');
+  assert.equal(a[0], '-c'); assert.equal(a[1], 'mcp_servers.browser.command="/usr/bin/node"');
+  assert.match(a[3], /^mcp_servers\.browser\.args=\["\/s\/browser-mcp\.js","--cdp","__CDP__"/);
+  assert.equal(a[5], 'mcp_servers.browser.env={AGENTOS_TOOLS_DIR="/opt/agentos/tools"}');
   assert.deepEqual(t.codexArgs(t.profile('chung')), []);
 });
 

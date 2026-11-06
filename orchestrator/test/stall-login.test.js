@@ -58,9 +58,10 @@ test('trình duyệt: chỉ dùng Google Chrome đã cài (không Chromium), b�
   const root = path.join(__dirname, '..', '..');
   const t = JSON.parse(fs.readFileSync(path.join(root, 'orchestrator', 'tools.linux.json'), 'utf8'));
   const args = t.servers.browser.args;
-  assert.equal(args[args.indexOf('--browser') + 1], 'chrome');
-  assert.equal(args[args.indexOf('--executable-path') + 1], '/usr/bin/google-chrome-stable');
-  assert.equal(args[args.indexOf('--image-responses') + 1], 'omit', 'không nhét ảnh chụp màn hình vào phiên (phình hàng chục MB)');
+  assert.ok(args[0].endsWith('browser-mcp.js'), 'AI dùng browser-mcp.js: mỗi AI một tab trong MỘT Chrome dùng chung');
+  assert.equal(args[args.indexOf('--cdp') + 1], '__CDP__', 'địa chỉ Chrome dùng chung được thế theo từng việc');
+  assert.ok(!args.includes('--user-data-dir') && !args.includes('--images'), 'hồ sơ do Chrome dùng chung giữ; mặc định không nhét ảnh chụp màn hình vào phiên (phình hàng chục MB)');
+  assert.match(fs.readFileSync(path.join(root, 'orchestrator', 'src', 'browserHost.js'), 'utf8'), /google-chrome-stable/);
   assert.ok(!JSON.stringify(t).includes('chromium'));
   assert.match(t.profiles.web.hint, /CẦN ĐĂNG NHẬP/);
   assert.doesNotMatch(fs.readFileSync(path.join(root, 'iso', 'config', 'package-lists', 'agentos.list.chroot'), 'utf8'), /^chromium$/m);

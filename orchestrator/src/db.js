@@ -107,7 +107,7 @@ function openDb(file) {
     scopeOf(job) { return String(job.chat_id) + (job.project ? '#' + job.project : ''); },
     getJob(id) { return q.get.get(id); },
     // Lấy việc tới lượt (đang xếp hàng, hoặc đang chờ hạn mức mà đã tới giờ) và đánh dấu đang chạy.
-    // opt.perChat: không nhận việc của chat đang có việc chạy (mỗi ID Telegram làm tuần tự, các ID khác nhau chạy song song).
+    // opt.perChat: không nhận việc của CUỘC TRÒ CHUYỆN đang có việc chạy (cuộc trò chuyện = chat + dự án: mỗi cuộc làm tuần tự, các cuộc khác nhau — kể cả của cùng một ID — chạy song song).
     // opt.exclusiveProfiles: các bộ công cụ dùng chung MỘT tài nguyên (trình duyệt đã đăng nhập) nên chỉ một việc chạy tại một thời điểm.
     claimNext(at, lanes, opt) {
       lanes = lanes && lanes.length ? lanes : ['main'];
@@ -116,7 +116,7 @@ function openDb(file) {
       const ph = (a) => a.map(() => '?').join(',');
       if (!st) {
         st = db.prepare("SELECT * FROM jobs j WHERE (j.status = 'queued' OR (j.status = 'waiting' AND j.run_after <= ?)) AND COALESCE(j.lane,'main') IN (" + ph(lanes) + ')' +
-          (perChat ? " AND NOT EXISTS (SELECT 1 FROM jobs r WHERE r.status = 'running' AND r.chat_id = j.chat_id AND COALESCE(r.lane,'main') IN (" + ph(lanes) + '))' : '') +
+          (perChat ? " AND NOT EXISTS (SELECT 1 FROM jobs r WHERE r.status = 'running' AND r.chat_id = j.chat_id AND COALESCE(r.project,'') = COALESCE(j.project,'') AND COALESCE(r.lane,'main') IN (" + ph(lanes) + '))' : '') +
           (ex.length ? " AND NOT (COALESCE(j.profile,'') IN (" + ph(ex) + ") AND EXISTS (SELECT 1 FROM jobs r2 WHERE r2.status = 'running' AND COALESCE(r2.profile,'') IN (" + ph(ex) + ')))' : '') +
           ' ORDER BY j.id LIMIT 1');
         nextByLanes.set(key, st);

@@ -1,9 +1,9 @@
 {
   "servers": {
     "browser": {
-      "command": "/opt/agentos/tools/node_modules/.bin/playwright-mcp",
-      "args": ["--browser", "chrome", "--executable-path", "/usr/bin/google-chrome-stable", "--image-responses", "omit", "--no-sandbox", "--user-data-dir", "${DATA_DIR}/browser-profile", "--output-dir", "${OUT_DIR}/browser"],
-      "env": { "DISPLAY": "${DISPLAY}" }
+      "command": "${NODE_BIN}",
+      "args": ["${SRC_DIR}/browser-mcp.js", "--cdp", "__CDP__", "--output-dir", "${OUT_DIR}/browser"],
+      "env": { "AGENTOS_TOOLS_DIR": "/opt/agentos/tools" }
     }
   },
   "profiles": {

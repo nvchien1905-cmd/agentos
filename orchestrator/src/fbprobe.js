@@ -33,7 +33,15 @@ function createProbe(o) {
 
   async function open() {
     let pw; try { pw = load(); } catch (e) { return { error: 'thiếu thư viện trình duyệt (' + firstLine(e) + ')' }; }
-    try {
+    if (o.endpoint) {                       // Chrome dùng chung: nối qua CDP và mở TAB riêng, không giành hồ sơ với AI
+      try {
+        const browser = await pw.chromium.connectOverCDP(await o.endpoint(), { timeout: 30000 });
+        const base = browser.contexts()[0] || await browser.newContext();
+        const mine = []; let closedFn = null; browser.on('disconnected', () => { if (closedFn) closedFn(); });
+        ctx = { pages: () => [], newPage: async () => { const p = await base.newPage(); mine.push(p); return p; }, on: (ev, fn) => { if (ev === 'close') closedFn = fn; },
+          close: async () => { for (const p of mine) { try { await p.close(); } catch (e) { /* đã đóng */ } } try { await browser.close(); } catch (e) { /* chỉ ngắt kết nối */ } } };
+      } catch (e) { ctx = null; return { error: 'không nối được trình duyệt dùng chung: ' + firstLine(e) }; }
+    } else try {
       ctx = await pw.chromium.launchPersistentContext(o.profileDir, {
         executablePath: exe, headless: !!o.headless, timeout: 30000, viewport: { width: 1100, height: 800 },
         args: ['--no-sandbox', '--no-first-run', '--no-default-browser-check', '--password-store=basic', '--disable-features=Translate'],

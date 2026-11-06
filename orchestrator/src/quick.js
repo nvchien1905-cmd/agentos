@@ -49,6 +49,7 @@ function createQuick(o) {
           if (!arg) return 'Cách dùng: /' + name + ' <ứng dụng>. Ứng dụng: zalo, deepseek, chrome, rustdesk, webbot (trình duyệt của bot, để đăng nhập trang AI cần)' + (name === 'mo' ? ', claude, codex, gemini' : '') + '.';
           const key = appKey(arg);
           if ((key === 'fbbot' || key === 'webbot') && name === 'mo' && o.onFbOpen) await o.onFbOpen(true).catch(() => {});        // trợ lý Facebook nhả hồ sơ trình duyệt để cửa sổ đăng nhập dùng
+          if (name === 'mo' && o.browserHost && /^(fbbot|webbot)$/.test(key)) { try { await o.browserHost.stop('admin'); } catch (e) { /* bỏ qua */ } }   // cùng hồ sơ với Chrome dùng chung của AI: dừng nó để cửa sổ đăng nhập mở được; AI tự mở lại Chrome lần sau
           const r = await desk.call({ cmd: name === 'mo' ? 'open' : 'close', app: key });
           if ((key === 'fbbot' || key === 'webbot') && name === 'dong' && o.onFbOpen) await o.onFbOpen(false).catch(() => {});      // đóng cửa sổ: trợ lý Facebook kiểm lại ngay
           if (!r.ok) return '⚠️ ' + r.error;

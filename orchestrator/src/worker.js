@@ -173,7 +173,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       await safeNotify(job.chat_id, why);
       return true;
     }
-    const notReady = preflight ? preflight(job) : null;
+    const notReady = preflight ? await preflight(job) : null;
     if (notReady) {
       db.finishJob(job.id, 'error', { error: notReady });
       await safeNotify(job.chat_id, 'Việc #' + job.id + ' chưa chạy được: ' + notReady);

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.8",
-  "file": "agentos-update-2026.11.06.8.tar.gz",
-  "size": 390427,
-  "sha256": "e5c6afe7c43f37d3389720d2350007442fccc1c65852ddc95e5ae5386f77f0ad",
+  "version": "2026.11.06.9",
+  "file": "agentos-update-2026.11.06.9.tar.gz",
+  "size": 396347,
+  "sha256": "7f1e089525e6d50f5eb67babb311b78815161e290ed83dcde114827b255f8e79",
   "date": "2026-11-06",
-  "notes": "Mỗi ID Telegram dùng màn hình ảo riêng trên cùng máy (nhiều ID cùng lúc không đụng nhau); chủ máy vẫn dùng màn hình thật"
+  "notes": "Nhiều cuộc trò chuyện chạy song song; một Chrome dùng chung, mỗi AI một tab riêng (không đè nhau); Chrome riêng cho từng ID"
 }

@@ -26,6 +26,7 @@ const { createMultiKiotViet } = require('./kiotviet');
 const { THINK_HINT, kiotvietHint } = require('./thinking');
 const { createKvContext } = require('./kvcontext');
 const { createVault } = require('./vault');
+const { createBrowserHost } = require('./browserHost');
 const { createMachineAccess } = require('./machineAccess');
 const { createQuick } = require('./quick');
 const { createOneDrive } = require('./onedrive');
@@ -149,13 +150,16 @@ async function main() {
   const tools = loadTools({
     file: cfg.toolsFile,
     fallbackAllow: cfg.allowedTools,
-    vars: { DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath },
+    vars: { DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath, NODE_BIN: process.execPath, SRC_DIR: __dirname },
   });
   if (tools.errors.length) { tools.errors.forEach((e) => console.error('LỖI CẤU HÌNH CÔNG CỤ: ' + e)); process.exit(1); }
   // Hộp thư ra RIÊNG từng ID: trình duyệt của việc lưu ảnh vào out/<ID>/browser và chỉ quét out/<ID> để gửi, nên ID này không nhận nhầm tệp của ID kia
   const chatOutDir = (chatId) => path.join(outDir, String(chatId).replace(/[^\w.-]/g, '_'));
   const swapOut = (v, from, to) => (typeof v === 'string' ? v.split(from).join(to) : Array.isArray(v) ? v.map((x) => swapOut(x, from, to)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, swapOut(x, from, to)])) : v);
-  const perChatServers = (servers, job) => swapOut(servers || {}, path.join(outDir, 'browser'), path.join(chatOutDir(job.chat_id), 'browser'));
+  // TRÌNH DUYỆT DÙNG CHUNG: bộ điều phối giữ MỘT Chrome (của chủ máy; mỗi ID thường một Chrome riêng) — mọi AI nối vào đó qua browser-mcp.js và chỉ điều khiển TAB của chính nó
+  // (nhiều cuộc trò chuyện chạy song song không đè lên nhau). Địa chỉ Chrome của việc được chuẩn bị ở preflight (browserFor) rồi thế vào chỗ __CDP__ của cấu hình công cụ.
+  const cdpOfJob = new Map();
+  const perChatServers = (servers, job) => swapOut(swapOut(servers || {}, path.join(outDir, 'browser'), path.join(chatOutDir(job.chat_id), 'browser')), '__CDP__', cdpOfJob.get(job.id) || '');
   const jobDir = path.join(dataDir, 'jobs');
   fs.rmSync(jobDir, { recursive: true, force: true });       // file cấu hình tạm của lần chạy trước (có token cổng)
   fs.mkdirSync(jobDir, { recursive: true, mode: 0o700 });
@@ -163,9 +167,11 @@ async function main() {
   // Cô lập tiến trình AI (Linux + bubblewrap). Hồ sơ trình duyệt phải ghi được; dữ liệu bộ điều phối và /etc/agentos bị che.
   const browserProfile = path.join(dataDir, 'browser-profile');
   fs.mkdirSync(browserProfile, { recursive: true });
+  const browserProfilesDir = path.join(dataDir, 'browser-profiles');
+  const browserHost = createBrowserHost({ chromeBin: cfg.chromePath || '/usr/bin/google-chrome-stable', display: cfg.display, stateFile: path.join(dataDir, 'browser-hosts.json'), log });
   const sandbox = createSandbox({
     mode: cfg.sandboxMode, log,
-    paths: { home: process.env.HOME || require('os').homedir(), workdir: cfg.workdir, dataDir, jobDir, rw: [browserProfile, cfg.oneDriveDir], hide: [...cfg.sandboxHide, path.join(__dirname, '..', '.env')] },
+    paths: { home: process.env.HOME || require('os').homedir(), workdir: cfg.workdir, dataDir, jobDir, rw: [cfg.oneDriveDir], hide: [...cfg.sandboxHide, path.join(__dirname, '..', '.env')] },
   });
   log('Cô lập tiến trình AI: ' + cfg.sandboxMode + ' · ' + (sandbox.enabled ? 'ĐANG BẬT' : 'KHÔNG bật (' + sandbox.info.reason + ')'));
   if (cfg.sandboxMode === 'auto' && !sandbox.enabled) notices.push('⚠️ AI đang chạy KHÔNG có cô lập (' + sandbox.info.reason + ').');
@@ -236,6 +242,16 @@ async function main() {
 
   // Toàn quyền: mọi máy chủ MCP của tools.json (trình duyệt...) đều có sẵn cho mọi việc, không cần chọn /web.
   const allMcp = () => ({ mcp: Object.keys(tools.servers || {}) });
+  // Việc có dùng trình duyệt của AI thì bảo đảm Chrome dùng chung của danh tính đó đang chạy (chủ máy: Chrome đã đăng nhập; ID thường: Chrome riêng, không thấy đăng nhập của chủ máy)
+  const needsBrowser = (job) => { try { return JSON.stringify(tools.mcpServersFor(jobFull(job) ? allMcp() : tools.profile(job.profile)) || {}).includes('__CDP__'); } catch (e) { return false; } };
+  async function browserFor(job) {
+    if (!needsBrowser(job)) return null;
+    const adm = isAdmin(String(job.chat_id));
+    const ep = await browserHost.ensure(adm ? 'admin' : 'id-' + safeChat(job.chat_id), adm ? browserProfile : path.join(browserProfilesDir, safeChat(job.chat_id)));
+    cdpOfJob.set(job.id, ep); if (cdpOfJob.size > 300) cdpOfJob.delete(cdpOfJob.keys().next().value);
+    return ep;
+  }
+  setInterval(() => { browserHost.reap(30 * 60000).catch(() => {}); }, 5 * 60000).unref();      // Chrome của ID thường nhàn rỗi thì tắt cho đỡ tốn RAM
 
   // Khóa API (nếu chủ máy nhập): chỉ khóa của đúng AI được đổi sang biến môi trường mà CLI của hãng đọc (apikeys.js)
   // Gemini CLI đính kèm tệp bằng @đường-dẫn: đổi các đường dẫn ảnh trong câu lệnh thành @đường-dẫn
@@ -374,14 +390,14 @@ async function main() {
   const media = createMedia({ tg, dir: inboxDir, log, voice });
   // Hàng đợi chính: mỗi ID Telegram làm tuần tự nhưng các ID khác nhau chạy SONG SONG (mainParallel worker dùng chung hàng đợi, db.claimNext perChat).
   // Bộ công cụ có trình duyệt (/web) dùng chung MỘT hồ sơ Chrome đã đăng nhập nên chỉ một việc /web chạy tại một thời điểm.
-  const exclusiveProfiles = Object.keys(tools.profiles).filter((n) => (tools.profiles[n].mcp || []).includes('browser'));
+  const exclusiveProfiles = [];                              // trước đây chỉ một việc dùng trình duyệt một lúc (chung hồ sơ); nay mỗi AI một tab trong Chrome dùng chung (browser-mcp.js) nên chạy song song được
   const makeMain = () => createWorker({
     db, log, notify, engines, ui: live, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     outbox: createOutbox(outDir, null, chatOutDir), sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
     retryDelaysMs: cfg.retryDelaysMs, perChat: true, exclusiveProfiles,
     // Ổ đĩa gần đầy thì không nhận việc (Chromium/AI ghi nhiều file tạm; đầy đĩa làm hỏng cả cơ sở dữ liệu).
-    preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB, cần ít nhất ' + cfg.minFreeMb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
+    preflight: async (job) => { const mb = maint.diskFreeMb(cfg.workdir); if (mb < cfg.minFreeMb) return 'ổ đĩa gần đầy (còn ' + mb + ' MB, cần ít nhất ' + cfg.minFreeMb + ' MB). Hãy dọn bớt dữ liệu.'; try { await browserFor(job); } catch (e) { return '⚠️ ' + e.message; } return null; },
   });
   const mainWorkers = Array.from({ length: cfg.mainParallel }, makeMain);
   const worker = mainWorkers[0];
@@ -389,7 +405,7 @@ async function main() {
   const bgWorkers = [1, 2].map(() => createWorker({
     db, log, notify, engines, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)), retryDelaysMs: cfg.retryDelaysMs, lanes: ['bg', 'event', 'hook'],
-    preflight: () => { const mb = maint.diskFreeMb(cfg.workdir); return mb < cfg.minFreeMb ? 'ổ đĩa gần đầy (còn ' + mb + ' MB). Hãy dọn bớt dữ liệu.' : null; },
+    preflight: async (job) => { const mb = maint.diskFreeMb(cfg.workdir); if (mb < cfg.minFreeMb) return 'ổ đĩa gần đầy (còn ' + mb + ' MB). Hãy dọn bớt dữ liệu.'; try { await browserFor(job); } catch (e) { return '⚠️ ' + e.message; } return null; },
   }));
   const allWorkers = [...mainWorkers, ...bgWorkers];
   const crew = {
@@ -440,7 +456,7 @@ async function main() {
   });
   const facebook = createFacebook({
     file: path.join(dataDir, 'facebook.json'), log, admin: adminChat,
-    probe: createProbe({ profileDir: browserProfile, display: ':99' }),              // giữ tab Messenger mở, đọc số tin chưa đọc mỗi 30 giây, không dùng AI (fbprobe.js)
+    probe: createProbe({ profileDir: browserProfile, display: ':99', endpoint: () => browserHost.ensure('admin', browserProfile) }),              // giữ tab Messenger mở, đọc số tin chưa đọc mỗi 30 giây, không dùng AI (fbprobe.js)
     isBusy: () => !!crew.currentJobId(),                                             // đang có việc AI: không giữ hồ sơ trình duyệt
     // MÁY TRỰC (/facebook may <tên>): kiểm nhanh bằng tiêu đề cửa sổ Chrome của máy Windows trong Đội máy, và giao việc đọc/soạn/gửi cho AI chạy NGAY TRÊN Chrome thật của máy đó (đã đăng nhập, mạng quen)
     remote: {
@@ -575,7 +591,7 @@ async function main() {
       if (reply && typeof reply === 'object') { for (const f of reply.files || []) { try { await tg.sendFile(chat, f); } catch (e) { log('gửi ' + f.name + ' lỗi: ' + e.message); } finally { if (f.temp) fs.rm(f.path, { force: true }, () => {}); } } if (reply.text) { if (reply.buttons) await tg.sendButtons(chat, reply.text, reply.buttons); else await tg.sendMessage(chat, reply.text); } }
       else if (reply) await tg.sendMessage(chat, reply);
     },
-    quick: createQuick({ vault, access, isAdmin, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
+    quick: createQuick({ vault, access, isAdmin, browserHost, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: {
       get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); },

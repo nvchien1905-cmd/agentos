@@ -73,7 +73,8 @@ function globToRe(p) { return new RegExp('^' + p.replace(/[.+^${}()|\\]/g, '\\$&
 
 // Từ một lệnh Bash → { paths: [{p, recursive, meta}], unsafe: [mô tả] }
 function targetsOfBash(cmd, cwd, depth) {
-  const out = { paths: [], unsafe: [] };
+  const out = { paths: [], unsafe: [], state: [] };
+  const st = (x) => { if (!out.state.some((y) => y.kind === x.kind && JSON.stringify(y) === JSON.stringify(x))) out.state.push(x); };       // trạng thái hệ thống cần lưu (stateUndo.js)
   const add = (p, rec, meta) => out.paths.push({ p, recursive: !!rec, meta: !!meta });
   const unsafe = (m) => { if (!out.unsafe.includes(m)) out.unsafe.push(m); };
   for (const seg of lex(cmd)) {
@@ -118,13 +119,28 @@ function targetsOfBash(cmd, cwd, depth) {
       if (rest.some((a) => ['-delete', '-exec', '-execdir', '-ok'].includes(strOf(a)))) each(roots.length ? roots : ['.'], true);
     } else if (name === 'git') {
       const sub = ops[0] ? strOf(ops[0]) : '';
-      if (GIT_MUTATING.has(sub)) unsafe('git ' + sub + ' có thể sửa nhiều tệp trong kho');
+      if (GIT_MUTATING.has(sub)) st({ kind: 'git', clean: sub === 'clean' || sub === 'checkout' || sub === 'switch' });
+    } else if (['apt', 'apt-get', 'aptitude', 'dpkg'].includes(name)) {
+      if (/(^|\s)(install|remove|purge|autoremove|upgrade|dist-upgrade|full-upgrade|reinstall|-i|-r|-P|--install|--remove|--purge)(\s|$)/.test(rest.map(strOf).join(' '))) st({ kind: 'apt' });
+    } else if (name === 'systemctl' || name === 'service') {
+      const VERBS = /^(start|stop|restart|reload|enable|disable|mask|unmask|try-restart|reload-or-restart)$/;
+      const o2 = ops.map(strOf);
+      const verb = name === 'systemctl' ? o2[0] : o2[1], units = name === 'systemctl' ? o2.slice(1) : [o2[0]];
+      if (VERBS.test(String(verb)) && units.length) st({ kind: 'systemd', units: units.filter(Boolean) });
+    } else if (name === 'crontab') {
+      if (!/(^|\s)-l(\s|$)/.test(opts)) st({ kind: 'cron' });
+    } else if (name === 'tar' || name === 'unzip') {
+      const o2 = rest.map(strOf); let file = null, dirx = '.';
+      if (name === 'tar') {
+        if (/^-?[a-zA-Z]*x[a-zA-Z]*f$/.test(o2[0] || '')) file = o2[1];
+        for (let k = 0; k < o2.length; k++) { if (o2[k] === '-C' || o2[k] === '--directory') dirx = o2[++k]; else if (!file && (o2[k] === '-f' || o2[k] === '--file')) file = o2[++k]; }
+        if (file && !/(^|\s)-?[a-zA-Z]*x/.test(o2.join(' '))) file = null;           // không phải giải nén
+      } else { for (let k = 0; k < o2.length; k++) { if (o2[k] === '-d') dirx = o2[++k]; else if (!file && !/^-/.test(o2[k])) file = o2[k]; } }
+      if (file) st({ kind: 'archive', tool: name, file, dir: dirx }); else if (name === 'unzip') unsafe('unzip giải nén ghi nhiều tệp');
     } else if (UNSAFE_CMDS.has(name)) {
-      if (name === 'tar') { if (/(^|\s)-?[a-zA-Z]*x/.test(rest.map(strOf).join(' '))) unsafe('tar giải nén ghi nhiều tệp'); }
-      else if (name === 'rsync') { unsafe('rsync có thể ghi/xóa nhiều tệp'); }
+      if (name === 'rsync') { unsafe('rsync có thể ghi/xóa nhiều tệp'); }
       else if (name === 'curl' || name === 'wget') { const o = rest.map(strOf); for (let k = 0; k < o.length; k++) { if (/^(-o|-O|--output|--output-document)$/.test(o[k]) && o[k + 1]) add(o[k + 1], false); } }
       else if (name === 'psql' || name === 'mysql' || name === 'sqlite3') unsafe(name + ' có thể đổi dữ liệu trong cơ sở dữ liệu');
-      else if (name === 'unzip') unsafe('unzip giải nén ghi nhiều tệp');
       else if (['npm', 'pnpm', 'yarn', 'pip', 'pip3', 'pipx', 'gem', 'cargo'].includes(name) && !/(^|\s)(-g|--global|--user|--break-system-packages)(\s|$)/.test(opts)) { /* cài vào thư mục dự án: đã có mốc của dự án */ }
       else unsafe(name + ' đổi trạng thái hệ thống (gói/dịch vụ/tài khoản…)');
     }
@@ -135,9 +151,9 @@ function targetsOfBash(cmd, cwd, depth) {
 
 function targetsOf(tool, input, cwd) {
   input = input || {};
-  if (FILE_TOOLS[tool]) { const p = input[FILE_TOOLS[tool]]; return p ? { paths: [{ p: String(p), recursive: false, meta: false }], unsafe: [] } : { paths: [], unsafe: [] }; }
+  if (FILE_TOOLS[tool]) { const p = input[FILE_TOOLS[tool]]; return p ? { paths: [{ p: String(p), recursive: false, meta: false }], unsafe: [], state: [] } : { paths: [], unsafe: [], state: [] }; }
   if (tool === 'Bash' && typeof input.command === 'string') return targetsOfBash(input.command, cwd || process.cwd(), 0);
-  return { paths: [], unsafe: [] };
+  return { paths: [], unsafe: [], state: [] };
 }
 
 // ---------- Kho nhật ký ----------
@@ -148,6 +164,7 @@ function createJournal(o) {
   const off = SYSTEM_OFF.concat(o.exclude || [], [dir]).map((p) => path.resolve(p));
   const home = o.home || os.homedir();
   const chains = new Map();
+  const stateUndo = o.stateUndo || null;           // hoàn tác trạng thái hệ thống (gói/dịch vụ/git/crontab…): stateUndo.js
 
   const blocked = (abs) => off.some((b) => abs === b || abs.startsWith(b + path.sep));
   const chain = (id, fn) => { const prev = chains.get(id) || Promise.resolve(); const next = prev.catch(() => {}).then(fn); chains.set(id, next.catch(() => {})); return next; };
@@ -235,14 +252,26 @@ function createJournal(o) {
     before(job, tool, input) {
       const cwd = job && job.id != null ? cwdOf(job) : process.cwd();
       const t = targetsOf(tool, input, cwd);
-      if (!t.paths.length && !t.unsafe.length) return Promise.resolve();
-      return chain(String(job.id), () => captureTargets(String(job.id), t, cwd, { label: String(job.prompt || '').replace(/\s+/g, ' ').slice(0, 120), project: job.project || null }));
+      if (!t.paths.length && !t.unsafe.length && !t.state.length) {
+        // Lệnh Bash không hiểu được (script, python x.py…): chỉ ghi mốc giờ để cuối việc dò xem script đã đổi tệp nào (finish)
+        if (tool === 'Bash' && job && job.id != null) return chain(String(job.id), async () => { const m = await load(String(job.id), { label: String(job.prompt || '').replace(/\s+/g, ' ').slice(0, 120), project: job.project || null }); if (!m.bashAt) { m.bashAt = now(); await save(String(job.id), m); } });
+        return Promise.resolve();
+      }
+      return chain(String(job.id), async () => {
+        const meta = { label: String(job.prompt || '').replace(/\s+/g, ' ').slice(0, 120), project: job.project || null };
+        let extra = [];
+        if (stateUndo && t.state.length) { const r = await stateUndo.capture(String(job.id), t.state, cwd); extra = (r.paths || []).map((p) => ({ p, recursive: false, meta: false })); }
+        else for (const x of t.state) t.unsafe.push(x.kind + ' đổi trạng thái hệ thống (chưa bật hoàn tác trạng thái)');
+        const m = await captureTargets(String(job.id), { paths: t.paths.concat(extra), unsafe: t.unsafe }, cwd, meta);
+        if (stateUndo && t.state.length && !m.hasState) { m.hasState = true; await save(String(job.id), m); }
+        return m;
+      });
     },
     // Danh sách nhật ký (mới nhất trước) có tệp được lưu hoặc có cảnh báo
     async list(limit) {
       let names; try { names = await fsp.readdir(dir); } catch (e) { return []; }
       const out = [];
-      for (const n of names) { const m = await readJson(path.join(dir, n, 'meta.json'), null); if (m) out.push({ id: m.id, at: m.at, label: m.label, project: m.project, files: m.files, bytes: m.bytes, unsafe: m.unsafe, partial: m.partial }); }
+      for (const n of names) { const m = await readJson(path.join(dir, n, 'meta.json'), null); if (m) out.push({ id: m.id, at: m.at, label: m.label, project: m.project, files: m.files, bytes: m.bytes, unsafe: m.unsafe, partial: m.partial, state: !!m.hasState }); }
       out.sort((a, b) => b.at - a.at);
       return out.slice(0, limit || 30);
     },
@@ -259,6 +288,7 @@ function createJournal(o) {
         else if (e.k === 'dir') { if (!st) out.push({ p: e.p, act: 'tạo lại thư mục' }); }
         else if (e.k === 'link') { if (!st) out.push({ p: e.p, act: 'tạo lại liên kết' }); }
       }
+      if (stateUndo) { try { out.push(...await stateUndo.plan(id)); } catch (e) { /* bỏ qua */ } }
       return out;
     },
     // Quay lại: trước hết lưu trạng thái hiện tại (nhật ký "u…") để hoàn tác được
@@ -289,9 +319,28 @@ function createJournal(o) {
           }
         } catch (er) { errors.push(e.p + ': ' + er.message); }
       }
-      return { ok: errors.length === 0, restored, deleted, skipped, errors: errors.slice(0, 5), undoId: uid, unsafe: m.unsafe };
+      let stateRes = null;
+      if (stateUndo && m.hasState) { try { stateRes = await stateUndo.restore(id); restored += stateRes.done.length; for (const f of stateRes.failed) errors.push(f); } catch (er) { errors.push('trạng thái hệ thống: ' + er.message); } }
+      return { ok: errors.length === 0, restored, deleted, skipped, errors: errors.slice(0, 5), undoId: uid, unsafe: m.unsafe, state: stateRes };
     },
-    async forget(id) { await fsp.rm(jdir(id), { recursive: true, force: true }).catch(() => {}); },
+    async forget(id) { await fsp.rm(jdir(id), { recursive: true, force: true }).catch(() => {}); if (stateUndo) await stateUndo.forget(id); },
+    // CUỐI VIỆC: dò tệp bị đổi trong lúc việc chạy mà nhật ký KHÔNG có bản gốc (script/chương trình AI chạy tự ghi tệp) → báo thật "không hoàn tác được"
+    async finish(job) {
+      if (!job || job.id == null || o.scan === false) return null;
+      const id = String(job.id), m = await load(id, null);
+      if (!m || !m.bashAt) return null;
+      const roots = (o.scanRoots || [cwdOf(job), home, '/srv', '/etc', '/opt', '/usr/local']).filter((r, i, a) => r && a.indexOf(r) === i && fs.existsSync(r));
+      const args = roots.concat(['-xdev', '(', '-path', '*/node_modules', '-o', '-path', '*/.cache', '-o', '-path', '*/.git', '-o', '-path', '/proc', '-o', '-path', '/sys', '-o', '-path', '/dev', '-o', '-path', '/run', '-o', '-path', dir, ')', '-prune', '-o', '-type', 'f', '-newermt', '@' + Math.floor(m.bashAt / 1000 - 1), '-print']);
+      const found = await new Promise((resolve) => require('child_process').execFile('find', args, { timeout: 25000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => resolve(String(out || '').split('\n').filter(Boolean))));
+      const known = new Set((await this.entries(id)).map((e) => e.p));
+      const extra = found.filter((p) => !known.has(p) && !blocked(path.resolve(p)) && !p.endsWith('.jsonl') && !/\.agentos-restore\d*$/.test(p));
+      if (!extra.length) return { unrecorded: 0 };
+      m.unrecorded = extra.slice(0, 50); m.unrecordedN = extra.length;
+      const note = 'Script/chương trình đã đổi ' + extra.length + ' tệp mà bot không có bản gốc (vd ' + extra.slice(0, 3).join(', ') + ') — không hoàn tác được tự động';
+      if (!m.unsafe.includes(note)) m.unsafe.push(note);
+      await save(id, m);
+      return { unrecorded: extra.length };
+    },
     // Dọn: quá hạn, quá số lượng, quá tổng dung lượng (cũ nhất trước)
     async gc() {
       const all = (await this.list(100000)).slice().sort((a, b) => a.at - b.at);

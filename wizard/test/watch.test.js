@@ -45,6 +45,7 @@ test('màn hình AI: tệp đã đổi (mới tạo / sửa / xóa) kèm khác b
   assert.equal(by['xoa.md'].status, 'deleted'); assert.equal(by['xoa.md'].del, 1); assert.equal(by['xoa.md'].add, 0);
   assert.equal(by['anh.bin'].status, 'modified'); assert.match(by['anh.bin'].note, /không phải chữ/); assert.equal(by['anh.bin'].rows, undefined);
   assert.equal(by['giu.txt'], undefined, 'chỉ đổi giờ sửa, nội dung y hệt → không liệt kê');
+  assert.equal(c.total, c.files.length, 'tổng số đúng bằng số tệp liệt kê (không đếm tệp chỉ đổi giờ sửa)');
   assert.equal((await w.changes(999)).exists, false);
 });
 

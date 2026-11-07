@@ -12,6 +12,7 @@ const MAX_HTML = 2 * 1024 * 1024, MAX_PER_JOB = 2, MAX_PNG = 10 * 1024 * 1024;
 function createRenderer(o) {
   const log = o.log || (() => {});
   const timeoutMs = o.timeoutMs || 40000;
+  const js = o.javaScript !== false;                       // báo cáo có biểu đồ/tương tác (như Artifacts của Claude) chạy được JavaScript — vẫn CHẶN MỌI MẠNG, chỉ đọc tệp trong thư mục báo cáo
   const loadPw = o.loadPlaywright || (() => { const tdir = process.env.AGENTOS_TOOLS_DIR || '/opt/agentos/tools'; return require(require.resolve('playwright-core', { paths: [tdir] })); });
   const endpointFor = o.endpointFor;                       // async (job) -> địa chỉ CDP của Chrome dùng chung của danh tính này
 
@@ -25,10 +26,11 @@ function createRenderer(o) {
       const ep = await endpointFor(job); if (!ep) throw new Error('chưa có trình duyệt dùng chung');
       const { chromium } = loadPw();
       browser = await chromium.connectOverCDP(ep, { timeout: 15000 });
-      ctx = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 760, height: 900 }, deviceScaleFactor: 1.5, serviceWorkers: 'block' });
+      ctx = await browser.newContext({ javaScriptEnabled: js, viewport: { width: 760, height: 900 }, deviceScaleFactor: 1.5, serviceWorkers: 'block' });
       await ctx.route('**/*', (route) => { const u = route.request().url(); if (u === self || u.startsWith(dirUrl)) return route.continue(); return route.abort(); });
       const page = await ctx.newPage();
       await page.goto(self, { waitUntil: 'load', timeout: 20000 });
+      if (js && page.waitForTimeout) await page.waitForTimeout(800);          // cho biểu đồ/hoạt ảnh vẽ xong
       await page.screenshot({ path: png, fullPage: true, type: 'png', timeout: 20000 });
       const sz = fs.statSync(png).size;
       if (sz > MAX_PNG || sz === 0) { fs.rmSync(png, { force: true }); throw new Error(sz ? 'ảnh chụp quá lớn' : 'ảnh chụp rỗng'); }

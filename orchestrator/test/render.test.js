@@ -33,7 +33,7 @@ test('render: chụp báo cáo HTML thành ảnh dài — tắt JavaScript, ch�
   const r = await R.renderHtml(html, { id: 1, chat_id: '111' });
   assert.ok(r.ok); assert.equal(r.png, path.join(dir, '.bao-cao.preview.png')); assert.ok(fs.existsSync(r.png));
   assert.deepEqual(F.calls.connect, ['http://127.0.0.1:41000', { timeout: 15000 }]);
-  assert.equal(F.calls.ctxOpts.javaScriptEnabled, false); assert.equal(F.calls.ctxOpts.serviceWorkers, 'block');
+  assert.equal(F.calls.ctxOpts.javaScriptEnabled, true, 'báo cáo chạy được JavaScript (Artifacts) nhưng mọi mạng bị chặn'); assert.equal(F.calls.ctxOpts.serviceWorkers, 'block');
   assert.equal(F.calls.goto[0], self); assert.equal(F.calls.shot.fullPage, true);
   assert.deepEqual(F.calls.continued.sort(), [self, sibling].sort(), 'chỉ cho đọc chính báo cáo và tệp cùng thư mục');
   assert.equal(F.calls.aborted.length, 5, 'mạng, tệp hệ thống, thư mục anh em, thư mục cha đều bị chặn');

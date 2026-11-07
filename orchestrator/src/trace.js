@@ -2,7 +2,7 @@
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
-const { describe, clean } = require('./progress');
+const { describe, clean, maskSecrets, isTodoTool } = require('./progress');
 
 // DẤU VẾT TỪNG BƯỚC của AI (để màn hình "Việc AI" trong Cài đặt xem trực tiếp như màn hình Claude Code): mỗi việc một tệp JSON-từng-dòng
 // {t giờ, k loại, n tên công cụ, l nhãn một dòng, i tóm tắt đầu vào, todos danh sách việc cần làm, text lời AI}. Đã che khóa/mật khẩu; KHÔNG lưu nội dung tệp.
@@ -23,7 +23,7 @@ function summarize(name, input) {
 }
 
 function todosOf(name, input) {
-  if (name !== 'TodoWrite' || !input || !Array.isArray(input.todos)) return null;
+  if (!isTodoTool(name) || !input || !Array.isArray(input.todos)) return null;
   return input.todos.slice(0, DEFAULTS.maxTodos).map((t) => ({ c: clean(t && (t.content || t.activeForm), 140), a: clean(t && t.activeForm, 140), s: ['completed', 'in_progress', 'pending'].includes(t && t.status) ? t.status : 'pending' })).filter((t) => t.c);
 }
 
@@ -31,6 +31,7 @@ function createTrace(o) {
   const dir = o.dir, now = o.now || Date.now, log = o.log || (() => {});
   const L = Object.assign({}, DEFAULTS, o.limits || {});
   const sizes = new Map();
+  const bufs = new Map();                              // chữ AI đang gõ, gom ~300 ms một dòng (màn hình Việc AI chạy chữ từng chữ)
   const file = (id) => { if (!/^\d{1,12}$/.test(String(id))) throw new Error('mã việc không hợp lệ'); return path.join(dir, id + '.jsonl'); };
   let ready = false;
   const put = (id, ev, force) => {
@@ -43,19 +44,25 @@ function createTrace(o) {
       fs.appendFileSync(file(id), line);
     } catch (e) { log('dấu vết lỗi: ' + e.message); }
   };
+  const flush = (id) => { const b = bufs.get(id); if (!b || !b.s) return; if (b.timer) clearTimeout(b.timer); b.timer = null; const s = b.s; b.s = ''; put(id, { t: now(), k: 'delta', text: s }); };
   return {
     todosOf,
+    delta(job, text) {
+      const id = String(job.id); let b = bufs.get(id); if (!b) { b = { s: '', timer: null }; bufs.set(id, b); }
+      b.s += maskSecrets(text); if (b.s.length > 6000) { flush(id); return; }
+      if (!b.timer) { b.timer = setTimeout(() => flush(id), 300); if (b.timer.unref) b.timer.unref(); }
+    },
     begin(job) { put(String(job.id), { t: now(), k: 'start', chat: String(job.chat_id), project: job.project || null, lane: job.lane || 'main', prompt: clean(job.prompt, 400) }, true); },
     // ev: { kind:'tool'|'text', name, input, text } (progress.js)
     step(job, ev) {
       if (!ev) return;
-      const id = String(job.id);
+      const id = String(job.id); flush(id);
       if (ev.kind === 'text') { const t = clean(ev.text, 900); if (t) put(id, { t: now(), k: 'text', text: t }); return; }
       const td = todosOf(ev.name, ev.input);
       if (td) { put(id, { t: now(), k: 'todo', todos: td }); return; }
       put(id, { t: now(), k: 'tool', n: String(ev.name || ''), l: describe(ev) || ('🔧 ' + clean(ev.name, 40)), i: summarize(ev.name, ev.input) });
     },
-    end(job, info) { put(String(job.id), { t: now(), k: 'end', ok: !!(info && info.ok), secs: info && info.secs, steps: info && info.steps }, true); },
+    end(job, info) { flush(String(job.id)); bufs.delete(String(job.id)); put(String(job.id), { t: now(), k: 'end', ok: !!(info && info.ok), secs: info && info.secs, steps: info && info.steps }, true); },
     // Đọc từ dòng thứ `from`; trả { events, next, done, todos } (todos = danh sách mới nhất)
     async read(id, from) {
       let txt; try { txt = await fsp.readFile(file(id), 'utf8'); } catch (e) { return { events: [], next: 0, done: false, todos: null, exists: false }; }

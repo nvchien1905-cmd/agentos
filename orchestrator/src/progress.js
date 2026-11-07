@@ -22,6 +22,9 @@ const SECRET = /(sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|\b\d{8,}:[A-Za-z0-
 const clean = (s, n) => { s = String(s == null ? '' : s).replace(/\s+/g, ' ').replace(SECRET, '***').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 const base = (p) => { p = String(p || ''); const parts = p.split('/').filter(Boolean); return parts.length > 3 ? '…/' + parts.slice(-3).join('/') : p; };
 
+// Công cụ lập danh sách việc cần làm: TodoWrite của Claude Code (bản không tương tác (-p) KHÔNG có) hoặc todo_set của máy chủ MCP agentos_todo (todo-mcp.js)
+const isTodoTool = (n) => n === 'TodoWrite' || n === 'mcp__agentos_todo__todo_set';
+
 // Nhãn một dòng cho một bước
 function describe(step) {
   if (!step) return '';
@@ -35,7 +38,7 @@ function describe(step) {
   if (n === 'WebFetch') return '🌐 Mở ' + clean(i.url, 80);
   if (n === 'WebSearch') return '🌐 Tìm web: ' + clean(i.query, 70);
   if (n === 'Task' || n === 'Agent') return '🤖 ' + clean(i.description || 'Giao việc phụ', 80);
-  if (n === 'TodoWrite' || n === 'ExitPlanMode') return '';
+  if (isTodoTool(n) || n === 'ExitPlanMode') return '';
   if (/^mcp__/.test(n)) return '🔌 ' + clean(n.replace(/^mcp__/, '').replace(/__/g, ' › '), 70);
   return '🔧 ' + clean(n, 40);
 }
@@ -63,4 +66,6 @@ function fromCodex(ev, emit) {
   }
 }
 
-module.exports = { lineReader, describe, fromClaude, fromCodex, clean };
+const maskSecrets = (s) => String(s == null ? '' : s).replace(SECRET, '***');
+
+module.exports = { lineReader, describe, fromClaude, fromCodex, clean, maskSecrets, isTodoTool };

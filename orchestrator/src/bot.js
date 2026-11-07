@@ -318,7 +318,10 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'phien': { if (!flow) return 'Máy này chưa hỗ trợ dự án.'; const b = flow.board(chatId, uid); return { text: b.empty ? 'Chưa có cuộc trò chuyện nào. Nhắn việc hoặc gõ /moi để bắt đầu.' : b.text, buttons: b.rows }; }
         case 'cheodo': case 'quyen': return flow ? flow.modeCard(chatId, uid) : 'Máy này chưa hỗ trợ dự án.';
         case 'kynang': case 'skill': return skillsUi ? skillsUi.command(chatId, uid, cmd[3]) : 'Máy này chưa hỗ trợ kỹ năng dự án.';
-        case 'cho': case 'plugin': return pluginsUi ? pluginsUi.command(chatId, uid, cmd[3]) : 'Máy này chưa hỗ trợ chợ kỹ năng.';
+        case 'cho': case 'plugin': {
+          if (!pluginsUi) return 'Máy này chưa hỗ trợ chợ kỹ năng.';
+          return Promise.resolve(pluginsUi.command(chatId, uid, cmd[3])).then((r) => (r && r.run ? submit(chatId, r.run) : r));       // lệnh của plugin → việc mới
+        }
         case 'dichvu': return connectorsUi ? connectorsUi.command(chatId, uid, cmd[3], msg) : 'Máy này chưa hỗ trợ kết nối dịch vụ.';
         case 'hoantac': case 'khoiphuc': return flow ? flow.checkCard(chatId, uid) : 'Máy này chưa hỗ trợ dự án.';
         case 'moi': {

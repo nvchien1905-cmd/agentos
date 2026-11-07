@@ -5,13 +5,16 @@ const { LABEL } = require('./policy');
 //   ask(chatId, text, buttons) -> Promise<messageId>     buttons: [[{text, data}]]
 //   edit(chatId, messageId, text) -> Promise
 //   isAdmin(userId) -> bool        người không phải admin không duyệt được lệnh/ghi file/công cụ lạ
-function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat }) {
+function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat, snapshotFile }) {
   log = log || (() => {});
   now = now || Date.now;
   isAdmin = isAdmin || (() => true);
   timeoutMs = timeoutMs || 300000;
   const pending = new Map();
   let seq = 0;
+  // Ảnh chụp các yêu cầu đang chờ → trang Cài đặt (màn hình Việc AI) hiện và cho bấm duyệt ngay trên máy (qua control.js 'approval.answer')
+  const list = () => [...pending.entries()].map(([id, p]) => ({ id, jobId: p.job.id, cls: p.d.cls, label: LABEL[p.d.cls] || 'Dùng công cụ', summary: String(p.d.summary || '').slice(0, 600), warn: p.d.warn || '', canRemember: !!p.d.canRemember, since: p.since }));
+  const persist = () => { if (!snapshotFile) return; try { const f = require('fs'); const t = snapshotFile + '.tmp'; f.writeFileSync(t, JSON.stringify(list())); f.renameSync(t, snapshotFile); } catch (e) { /* bỏ qua */ } };
 
   const header = (job, d) => '🔐 Việc #' + job.id + (job.lane === 'hook' ? ' (từ webhook)' : '') + ' xin quyền: ' + (LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
     (d.warn ? '\n\n⚠️ ' + d.warn : '');
@@ -19,7 +22,7 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat 
   async function finish(id, allowed, remember, source, by, label) {
     const p = pending.get(id);
     if (!p) return false;
-    pending.delete(id);
+    pending.delete(id); persist();
     clearTimeout(p.timer);
     try { db.addAudit({ jobId: p.job.id, tool: p.tool, cls: p.d.cls, decision: allowed ? 'allow' : 'deny', source, summary: p.d.summary }); } catch (e) { log('ghi nhật ký lỗi: ' + e.message); }
     if (p.msgId) edit(p.target, p.msgId, header(p.job, p.d) + '\n\n' + label).catch(() => {});
@@ -32,8 +35,8 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat 
     request(job, tool, d) {
       const id = String(++seq) + Math.random().toString(36).slice(2, 6);
       return new Promise((resolve) => {
-        const p = { job, tool, d, resolve, msgId: null, timer: null, target: askChat ? askChat(job) : job.chat_id };
-        pending.set(id, p);
+        const p = { job, tool, d, resolve, msgId: null, timer: null, target: askChat ? askChat(job) : job.chat_id, since: now() };
+        pending.set(id, p); persist();
         p.timer = setTimeout(() => finish(id, false, false, 'timeout', null, '⏱ Hết thời gian chờ, đã tự từ chối.'), timeoutMs);
         const row = [{ text: '✅ Cho phép', data: 'ap:' + id + ':y' }];
         if (d.canRemember) row.push({ text: '✅ Cho phép cả việc này', data: 'ap:' + id + ':r' });
@@ -61,6 +64,7 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat 
     cancelJob(jobId) {
       for (const [id, p] of [...pending]) if (p.job.id === jobId) finish(id, false, false, 'cancel', null, '🚫 Việc đã dừng.');
     },
+    list,
     pendingCount() { return pending.size; },
     pendingJobIds() { return new Set([...pending.values()].map((p) => p.job.id)); },          // việc đang chờ chủ máy bấm duyệt (trạng thái "cần anh trả lời" của phiên)
     now,

@@ -68,6 +68,7 @@ const { createLive } = require('./live');
 const { createCheckpoints } = require('./checkpoints');
 const { createJournal } = require('./journal');
 const { createTrace } = require('./trace');
+const { createStateUndo } = require('./stateUndo');
 const { createConnectors, mcpNamesFor } = require('./connectors');
 const { createPlugins } = require('./plugins');
 const { createPluginsUi } = require('./pluginsUi');
@@ -143,7 +144,8 @@ async function main() {
     'KHÔNG dùng bảng nhiều cột (điện thoại hẹp, bảng bị vỡ): liệt kê bằng gạch đầu dòng, mỗi mục một dòng "**tên** — thông tin". Không bịa số liệu; chưa kiểm chứng thì nói rõ. Xưng "em", gọi chủ máy theo cách họ tự xưng.';
   // Tư duy trước khi làm + quy tắc KiotViet (API trước, web sau cùng): gắn vào mọi lần chạy AI (thinking.js)
   const KV_ON = cfg.kiotviet.shops.length > 0;
-  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON);
+  const TODO_HINT = 'DANH SÁCH VIỆC: với việc từ 3 bước trở lên, TRƯỚC KHI làm hãy gọi công cụ todo_set (máy chủ agentos_todo) để lập danh sách các bước (mục đầu đặt in_progress), và gọi lại để cập nhật mỗi khi xong một bước (luôn gửi toàn bộ danh sách; chỉ một mục in_progress). Việc ngắn 1–2 bước thì không cần. Không nhắc tới công cụ này trong câu trả lời cho người dùng.';
+  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT;
   const LOGIN_HINT ='TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập, mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
   const fullHint = (canCli) => 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
     'Hãy tự làm trọn vẹn việc được giao, một mạch, không hỏi xin phép vụn vặt giữa chừng (chỉ hỏi lại khi thiếu thông tin thật sự không thể đoán, hoặc trước việc không hoàn tác được). ' +
@@ -167,6 +169,9 @@ async function main() {
     vars: { DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath, NODE_BIN: process.execPath, SRC_DIR: __dirname },
   });
   if (tools.errors.length) { tools.errors.forEach((e) => console.error('LỖI CẤU HÌNH CÔNG CỤ: ' + e)); process.exit(1); }
+  // Công cụ lập danh sách việc cần làm cho AI (todo-mcp.js): Claude Code chạy không tương tác không có TodoWrite → tự cấp; hiện ☑/▶️/☐ trên Telegram và màn hình Việc AI
+  const TODO_SERVER = { command: process.execPath, args: [path.join(__dirname, 'todo-mcp.js')] };
+  tools.servers.agentos_todo = TODO_SERVER;
   // Hộp thư ra RIÊNG từng ID: trình duyệt của việc lưu ảnh vào out/<ID>/browser và chỉ quét out/<ID> để gửi, nên ID này không nhận nhầm tệp của ID kia
   const chatOutDir = (chatId) => path.join(outDir, String(chatId).replace(/[^\w.-]/g, '_'));
   const swapOut = (v, from, to) => (typeof v === 'string' ? v.split(from).join(to) : Array.isArray(v) ? v.map((x) => swapOut(x, from, to)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, swapOut(x, from, to)])) : v);
@@ -198,14 +203,14 @@ async function main() {
   // Cổng duyệt: mọi lần AI dùng công cụ đều hỏi cổng; chính sách quyết định tự cho phép / hỏi qua Telegram / cấm.
   const isAdmin = (uid) => cfg.adminUserIds.has(String(uid));
   const approvals = createApprovals({
-    db, log, isAdmin, timeoutMs: cfg.approvalTimeoutMs,
+    db, log, isAdmin, timeoutMs: cfg.approvalTimeoutMs, snapshotFile: path.join(dataDir, 'approvals-pending.json'),
     askChat: (job) => (cfg.adminUserIds.has(String(job.chat_id)) ? job.chat_id : [...cfg.adminUserIds][0]),
     ask: (chatId, text, buttons) => tg.sendButtons(chatId, text, buttons),
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
   });
   // DỰ ÁN: mỗi dự án có thư mục, chỉ dẫn, sổ tay, phiên riêng (projects.js). Dữ liệu do AgentOS giữ nên mọi AI dùng chung được.
   const pluginRef = { v: null };             // chợ kỹ năng/plugin (plugins.js), tạo sau khi có kết nối dịch vụ
-  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log, extraSkillDirs: () => (pluginRef.v ? pluginRef.v.skillDirs() : []) });
+  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log, extraSkillDirs: () => (pluginRef.v ? pluginRef.v.skillDirs() : []), extraAgentDirs: () => (pluginRef.v ? pluginRef.v.agentDirs() : []) });
   // CÁCH LY DỮ LIỆU THEO ID: AI của ID thường (không phải chủ máy) chạy trong hộp cô lập mà thư mục AgentOS của OneDrive (dự án, sổ tay chung, danh sách dự án), thư mục tệp gửi/nhận của mọi chat
   // đều bị che; chỉ mở lại đúng dự án của mình + thư mục tệp riêng của chat đó. Chủ máy không bị che. Cần SANDBOX=auto|bwrap (xem sandbox.js); tắt thì chỉ còn cách ly theo thư mục.
   const safeChat = (c) => String(c).replace(/[^\w.-]/g, '_');
@@ -231,7 +236,7 @@ async function main() {
   const subRef = { v: null };           // trợ lý phụ (tạo sau khi có engines); cổng nội bộ gọi qua đây
   const subGate = { enabled: () => !!(subRef.v && subRef.v.enabled()), spawn: (...a) => subRef.v.spawn(...a), wait: (...a) => subRef.v.wait(...a), list: (...a) => subRef.v.list(...a), cancel: (...a) => subRef.v.cancel(...a) };
   // Nhật ký "trước khi sửa" toàn máy (journal.js): cổng duyệt lưu bản gốc của tệp sắp bị sửa/xóa (ở bất kỳ đâu, tệp lớn cũng được) trước khi công cụ chạy. Tắt cùng CHECKPOINTS=0.
-  const journal = cfg.checkpoints.enabled ? createJournal({ dir: path.join(dataDir, 'journal'), log, cwdOf, exclude: [dataDir] }) : null;
+  const journal = cfg.checkpoints.enabled ? createJournal({ dir: path.join(dataDir, 'journal'), log, cwdOf, exclude: [dataDir], stateUndo: createStateUndo({ dir: path.join(dataDir, 'journal-state'), log }) }) : null;
   if (journal) { journal.gc().catch(() => {}); setInterval(() => { journal.gc().catch(() => {}); }, 6 * 3600 * 1000).unref(); }
   const gate = createGate({ db, approvals, journal, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
   const gatePort = await gate.listen(0);
@@ -242,6 +247,7 @@ async function main() {
     const env = { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(job.id) };
     const mcpServers = Object.assign({}, perChatServers(tools.mcpServersFor(profile), job), {
       agentos_gate: { command: process.execPath, args: [path.join(__dirname, 'gate-mcp.js')], env },
+      agentos_todo: TODO_SERVER,
     });
     const waitSec = Math.ceil(cfg.approvalTimeoutMs / 1000) + 30;
     const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
@@ -292,6 +298,7 @@ async function main() {
   const idleFor = (job) => (job && job.lane === 'bg' ? cfg.jobIdleBgMs : cfg.jobIdleMs);
   const claudeRun = (name, { job, prompt, resumeId, onProgress }) => {
       const kenv = keyEnv(name);
+      const onDelta = onProgress && traced(job) ? (t) => trace.delta(job, t) : undefined;          // chữ AI đang gõ → màn hình Việc AI
       if (jobFull(job)) {
         const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
         fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: perChatServers(tools.mcpServersFor(allMcp()), job) }), { mode: 0o600 });
@@ -301,7 +308,7 @@ async function main() {
         const hf = gf || jf;
         const h = startClaude({
           bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cwdOf(job), prompt, resumeId,
-          skipPermissions: true, mcpConfig, settings: hf ? hf.settings : undefined, appendSystemPrompt: fullHint(!!gf), timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: Object.assign({}, kenv, hf ? hf.env : {}), onProgress,   // không wrap: không sandbox
+          skipPermissions: true, mcpConfig, settings: hf ? hf.settings : undefined, appendSystemPrompt: fullHint(!!gf) + ' ' + TODO_HINT, timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: Object.assign({}, kenv, hf ? hf.env : {}), onProgress, onDelta,   // không wrap: không sandbox
         });
         const cleanup = () => { fs.rmSync(mcpConfig, { force: true }); if (hf) { gate.end(job.id); fs.rmSync(hf.settings, { force: true }); } };
         return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
@@ -315,7 +322,7 @@ async function main() {
         prompt, resumeId, allowedTools: tools.allowFor(p).join(','),
         mcpConfig: files.mcpConfig, settings: files.settings, env: Object.assign({}, kenv, files.env),
         permissionPromptTool: 'mcp__agentos_gate__approve',   // dự phòng: công cụ nào hook bỏ sót vẫn bị cổng từ chối
-        appendSystemPrompt: [p.hint, BRAIN_HINT, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: wrapFor(job), onProgress,
+        appendSystemPrompt: [p.hint, BRAIN_HINT, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: wrapFor(job), onProgress, onDelta,
       });
       const cleanup = () => { gate.end(job.id); for (const f of [files.mcpConfig, files.settings]) fs.rmSync(f, { force: true }); };
       return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
@@ -447,7 +454,7 @@ async function main() {
   const live = {
     begin: (job) => { if (traced(job)) trace.begin(job); return isQuietJob(job) ? undefined : live0.begin(job); },
     step: (job, ev) => { if (traced(job)) trace.step(job, ev); return isQuietJob(job) ? undefined : live0.step(job, ev); },
-    end: async (job) => { if (isQuietJob(job)) return { secs: 0, steps: 0 }; const r = await live0.end(job); if (traced(job)) trace.end(job, { ok: true, secs: r.secs, steps: r.steps }); return r; },
+    end: async (job) => { if (isQuietJob(job)) return { secs: 0, steps: 0 }; const r = await live0.end(job); if (traced(job)) trace.end(job, { ok: true, secs: r.secs, steps: r.steps }); if (journal) journal.finish(job).catch(() => {}); return r; },
   };
   // Ghi rõ cuộc trò chuyện (dự án) nào đang trả lời khi có nhiều cuộc chạy song song hoặc anh đã chuyển sang cuộc khác
   const projTag = (job) => { try { const p = job.project ? projects.get(job.project) : null; if (!p || p.home) return ''; const act = projects.active(job.chat_id); return (!act || act.id !== p.id || db.runningInChat(job.chat_id) > 0) ? '📁 ' + p.name + '\n' : ''; } catch (e) { return ''; } };
@@ -682,7 +689,7 @@ async function main() {
   // KẾT NỐI DỊCH VỤ (/dichvu): máy chủ MCP thêm từ Telegram; chỉ gắn vào việc chủ máy ở chế độ toàn quyền (allMcp đọc tools.servers mỗi lần chạy)
   const connectors = createConnectors({ file: path.join(dataDir, 'connectors.json'), log, extraCatalog: () => (pluginRef.v ? pluginRef.v.extraCatalog() : []) });
   // CHỢ KỸ NĂNG / PLUGIN: danh mục nằm trong bản cài (tự cập nhật theo bản cập nhật có chữ ký); sync() cài plugin mặc định mới + nâng phiên bản plugin đã cài
-  const plugins = createPlugins({ dir: process.env.PLUGINS_DIR || path.join(__dirname, '..', '..', 'wizard', 'plugins'), stateFile: path.join(dataDir, 'plugins.json'), connectors, log });
+  const plugins = createPlugins({ dir: process.env.PLUGINS_DIR || path.join(__dirname, '..', '..', 'wizard', 'plugins'), stateFile: path.join(dataDir, 'plugins.json'), userDir: path.join(path.dirname(dataDir), 'plugins-user'), connectors, log });
   pluginRef.v = plugins;
   const syncPlugins = () => { const r = plugins.sync(); const n = connectors.apply(tools); if (r.installed.length || r.updated.length) { const lines = r.installed.map((x) => '➕ ' + x.name + ' v' + x.version + ' (tự cài)').concat(r.updated.map((x) => '⬆️ ' + x.name + ' ' + x.from + ' → ' + x.to)); for (const a of cfg.adminUserIds) tg.sendMessage(a, '🧩 Chợ kỹ năng vừa cập nhật theo bản AgentOS mới:\n' + lines.join('\n') + '\nXem: /cho').catch(() => {}); } return n; };
   const connNames = syncPlugins();
@@ -724,7 +731,7 @@ async function main() {
   crew.wake();
   // Điều khiển từng việc từ trang Cài đặt (tệp yêu cầu trong thư mục control, xem control.js)
   const controlDir = path.join(dataDir, 'control'); try { fs.mkdirSync(controlDir, { recursive: true, mode: 0o700 }); } catch (e) { /* tick sẽ bỏ qua nếu không có thư mục */ }
-  const control = createControl({ dir: controlDir, db, worker: crew, schedule, projects, log });
+  const control = createControl({ dir: controlDir, db, worker: crew, schedule, projects, log, approvals, adminId: [...cfg.adminUserIds][0] });
   setInterval(() => { try { control.tick(); } catch (e) { log('điều khiển lỗi: ' + e.message); } }, 2000).unref();
   // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
   const tick = setInterval(() => { crew.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); updates.tick().catch((e) => log('kiểm bản cập nhật lỗi: ' + e.message)); updates.autoTick().catch((e) => log('tự cập nhật lỗi: ' + e.message)); updates.announceResult().catch((e) => log('báo kết quả cập nhật lỗi: ' + e.message)); }, 30000);

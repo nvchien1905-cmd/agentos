@@ -9,6 +9,9 @@ const cp = require('child_process');
 //  - Kết nối chỉ gắn vào việc của chủ máy ở chế độ toàn quyền (tools.servers → allMcp()); ID thường không bao giờ thấy. Công cụ có tác dụng ghi/gửi của kết nối bị hàng rào hỏi trước (policy.js).
 //  - Tên máy chủ MCP luôn có tiền tố "c_" để không đụng "browser" / "agentos_gate".
 const CATALOG = [
+  { key: 'google', label: 'Google (Lịch + Gmail)', about: 'Máy chủ Google RIÊNG của AgentOS: CHỈ ĐỌC theo mặc định (xem lịch, tìm/đọc thư); công cụ tạo/sửa/xóa sự kiện, soạn nháp, gửi thư chỉ có khi chủ máy bật "cho phép ghi" và luôn hỏi trước.',
+    command: 'node', args: [path.join(__dirname, 'google-mcp.js')], secrets: [],
+    manual: 'Đăng nhập một lần ở Cài đặt → Kết nối và kỹ năng → Google (nhập khóa ứng dụng Google, bấm Đăng nhập).' },
   { key: 'notion', label: 'Notion', about: 'Đọc/ghi trang và cơ sở dữ liệu Notion (bản chính thức của Notion).',
     command: 'npx', args: ['-y', '@notionhq/notion-mcp-server'],
     secrets: [{ name: 'NOTION_TOKEN', ask: 'Mã tích hợp Notion: vào notion.so/profile/integrations → New integration → copy mã (bắt đầu bằng ntn_ hoặc secret_). Nhớ vào trang Notion cần dùng → ⋯ → Connections → chọn tích hợp đó.' }] },
@@ -114,7 +117,7 @@ function createConnectors(o) {
       const c = allCatalog().find((x) => x.key === key);
       if (!c) return { ok: false, error: 'Không có mục "' + key + '" trong danh mục.' };
       if (find(c.key)) return { ok: false, error: c.label + ' đã được thêm rồi.' };
-      items.push({ id: c.key, label: c.label, about: c.about, command: c.command, args: c.args.slice(), secrets: c.secrets.map((s) => Object.assign({}, s)), env: {}, manual: c.manual || '', enabled: false, last: null, addedAt: now(), plugin: c.plugin || undefined });
+      items.push({ id: c.key, label: c.label, about: c.about, command: c.command, args: c.args.slice(), secrets: c.secrets.map((s) => Object.assign({}, s)), env: c.key === 'google' ? { GOOGLE_DIR: o.googleDir || path.join(path.dirname(file), 'google') } : {}, manual: c.manual || '', enabled: false, last: null, addedAt: now(), plugin: c.plugin || undefined });
       save(); return { ok: true, id: c.key };
     },
     addCustom({ label, command, args }) {

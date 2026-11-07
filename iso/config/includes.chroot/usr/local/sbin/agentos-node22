@@ -1,0 +1,79 @@
+#!/bin/bash
+# agentos-node22 — nâng Node của hệ điều hành lên 22 (LTS) cho AgentOS. Chạy bằng root, an toàn để chạy lại nhiều lần.
+#   agentos-node22            nâng (nếu chưa là 22 trở lên)
+#   agentos-node22 --check    chỉ báo tình trạng, không đổi gì
+#   agentos-node22 --rollback quay về Node 20 của Debian
+# Vì sao cần: gói Gmail và vài gói MCP dùng thư viện cũ lỗi trên Node 20; Node 22 là bản LTS còn được hỗ trợ.
+# Cách làm (có đường lùi): tải bản chính thức từ nodejs.org, KIỂM SHA256 → giải nén vào /opt/node22 → biên dịch lại thư viện SQLite của bot cho Node 22
+# (bản cũ sao lưu ở /opt/agentos/backup-node20) → dpkg-divert /usr/bin/node (Debian không ghi đè lại) rồi trỏ sang Node 22 → khởi động lại dịch vụ → kiểm; lỗi bước nào thì TỰ LÙI về Node 20.
+set -u
+MAJOR=22
+DIR=/opt/node22
+BK=/opt/agentos/backup-node20
+SQ=/opt/agentos/orchestrator/node_modules/better-sqlite3
+LOG=/var/log/agentos-node22.log
+SERVICES="agentos-orchestrator agentos-settings agentos-deskd"
+exec > >(tee -a "$LOG") 2>&1
+say() { echo "$(date '+%F %T') [node22] $*"; }
+major_of() { "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0; }
+restart_all() { for s in $SERVICES; do systemctl is-active --quiet "$s" && systemctl restart "$s"; done; }
+wait_up() { local i; for i in $(seq 1 30); do systemctl is-active --quiet agentos-orchestrator && return 0; sleep 2; done; return 1; }
+
+rollback() {
+  say "LÙI về Node 20: $1"
+  [ -L /usr/bin/node ] && rm -f /usr/bin/node
+  dpkg-divert --list /usr/bin/node 2>/dev/null | grep -q 'node.node20' && dpkg-divert --remove --rename /usr/bin/node >/dev/null
+  if [ -d "$BK/better-sqlite3" ] && [ -d "$SQ" ]; then rm -rf "$SQ" && cp -a "$BK/better-sqlite3" "$SQ"; fi
+  restart_all
+  say "đang dùng Node $(/usr/bin/node -v 2>/dev/null)"
+}
+
+CUR=$(major_of /usr/bin/node)
+case "${1:-}" in
+  --check) say "Node hệ thống: $(/usr/bin/node -v 2>/dev/null) · /opt/node22: $([ -x $DIR/bin/node ] && $DIR/bin/node -v || echo không có)"; exit 0 ;;
+  --rollback) rollback "theo yêu cầu"; exit 0 ;;
+esac
+if [ "${CUR:-0}" -ge "$MAJOR" ]; then say "Node hệ thống đã là $(/usr/bin/node -v) — không cần nâng."; exit 0; fi
+[ "$(id -u)" = 0 ] || { say "cần chạy bằng root"; exit 1; }
+# Chỉ làm khi /usr/bin/node là của gói Debian (không đụng bản Node cài theo cách khác)
+if ! dpkg -S /usr/bin/node >/dev/null 2>&1; then say "/usr/bin/node không phải của gói Debian — bỏ qua, không đụng."; exit 0; fi
+
+case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64) ARCH=arm64 ;; *) say "kiến trúc $(uname -m) chưa hỗ trợ — bỏ qua"; exit 0 ;; esac
+
+# 1) Có sẵn bản đúng ở /opt/node22 thì dùng; không thì tải + kiểm SHA256
+if [ "$(major_of $DIR/bin/node)" != "$MAJOR" ]; then
+  T=$(mktemp -d) || exit 1
+  trap 'rm -rf "$T"' EXIT
+  curl -fsS --max-time 30 https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt -o "$T/SHA" || { say "không tải được danh sách bản Node (mạng?) — thử lại lần sau"; exit 0; }
+  LINE=$(grep "linux-$ARCH.tar.xz" "$T/SHA" | head -1); FILE=$(echo "$LINE" | awk '{print $2}'); SUM=$(echo "$LINE" | awk '{print $1}')
+  [ -n "$FILE" ] || { say "không thấy bản cho $ARCH"; exit 0; }
+  say "tải $FILE"
+  curl -fsS --max-time 900 "https://nodejs.org/dist/latest-v22.x/$FILE" -o "$T/node.tar.xz" || { say "tải Node lỗi — thử lại lần sau"; exit 0; }
+  [ "$(sha256sum "$T/node.tar.xz" | awk '{print $1}')" = "$SUM" ] || { say "SHA256 KHÔNG KHỚP — dừng, không cài"; exit 1; }
+  rm -rf "$DIR.new" && mkdir "$DIR.new" && tar -xJf "$T/node.tar.xz" -C "$DIR.new" --strip-components=1 || { say "giải nén lỗi"; rm -rf "$DIR.new"; exit 1; }
+  rm -rf "$DIR" && mv "$DIR.new" "$DIR"
+fi
+say "đã có Node $($DIR/bin/node -v) ở $DIR"
+
+# 2) Biên dịch lại thư viện SQLite của bot cho Node 22 (sao lưu bản cũ trước)
+if [ -d "$SQ" ]; then
+  mkdir -p "$BK"; [ -d "$BK/better-sqlite3" ] || cp -a "$SQ" "$BK/better-sqlite3"
+  OWNER=$(stat -c '%U:%G' "$SQ")
+  command -v gcc >/dev/null && command -v make >/dev/null && command -v python3 >/dev/null || { say "thiếu trình biên dịch → cài build-essential"; DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential python3 >/dev/null 2>&1; }
+  ( cd /opt/agentos/orchestrator && PATH="$DIR/bin:$PATH" npm rebuild better-sqlite3 --nodedir="$DIR" 2>&1 | tail -3 )
+  chown -R "$OWNER" "$SQ"
+  "$DIR/bin/node" -e "const D=require('$SQ');const d=new D(':memory:');d.exec('create table t(x)');d.prepare('insert into t values (1)').run();" \
+    || { say "thư viện SQLite không chạy trên Node 22"; [ -d "$BK/better-sqlite3" ] && { rm -rf "$SQ"; cp -a "$BK/better-sqlite3" "$SQ"; }; exit 1; }
+  say "SQLite chạy tốt trên Node 22"
+fi
+
+# 3) Chuyển /usr/bin/node sang Node 22 (dpkg-divert để gói Debian không ghi đè; --rollback gỡ divert)
+dpkg-divert --list /usr/bin/node 2>/dev/null | grep -q 'node.node20' || dpkg-divert --add --rename --divert /usr/bin/node.node20 /usr/bin/node >/dev/null || { say "dpkg-divert lỗi"; exit 1; }
+ln -sf "$DIR/bin/node" /usr/bin/node
+[ "$(major_of /usr/bin/node)" = "$MAJOR" ] || { rollback "/usr/bin/node không chạy được"; exit 1; }
+
+# 4) Khởi động lại dịch vụ dùng Node và kiểm
+restart_all
+if wait_up; then say "XONG: Node $(/usr/bin/node -v), dịch vụ đang chạy"; exit 0; fi
+rollback "bot không khởi động được sau khi nâng"
+exit 1

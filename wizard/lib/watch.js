@@ -39,6 +39,8 @@ function createWatch(o) {
   return {
     limits: L,
     trace: (id, from) => trace.read(String(id), Number(from) || 0),
+    // Dấu hiệu đổi của tệp dấu vết (kích thước) — để luồng trực tiếp chỉ đọc lại khi có thêm dòng
+    traceSig(id) { try { if (!/^\d{1,12}$/.test(String(id))) return -1; return fs.statSync(path.join(o.traceDir, String(id) + '.jsonl')).size; } catch (e) { return -1; } },
 
     // Những tệp việc #id đã đổi: tạo mới / sửa / xóa, kèm khác biệt từng dòng (tệp chữ ≤ 1 MB)
     async changes(id) {
@@ -68,7 +70,7 @@ function createWatch(o) {
         const old = await readIf(path.join(o.journalDir, String(id), 'b', e.blob), L.diffBytes);
         if (old && old.buf && looksText(old.buf) && (!cur || (cur.buf && looksText(cur.buf)))) {
           const d = diffLines(old.buf.toString('utf8'), cur && cur.buf ? cur.buf.toString('utf8') : '');
-          if (curSt && !d.add && !d.del) continue;                              // chỉ đổi giờ sửa, nội dung y hệt
+          if (curSt && !d.add && !d.del) { total--; continue; }                 // chỉ đổi giờ sửa, nội dung y hệt (không tính là "đã đổi")
           f.add = d.add; f.del = d.del; f.rows = d.rows.slice(0, L.rows); f.cut = d.rows.length > L.rows; f.truncated = d.truncated;
         } else f.note = (old && old.big) || (cur && cur.big) ? 'tệp lớn, không so sánh từng dòng' : 'tệp không phải chữ';
         out.push(f);

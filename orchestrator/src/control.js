@@ -11,17 +11,29 @@ const path = require('path');
 //   sched.pause {scope, id} / sched.resume {scope, id} / sched.remove {scope, id}   việc định kỳ: tạm dừng / bật lại / xóa
 //   sched.project {id, project}  chuyển việc hẹn giờ chung vào một dự án
 //   sched.removeMatching {text}  xóa việc định kỳ có nội dung chứa đoạn chữ này và hủy các việc đang chờ/chạy cùng nội dung
-const ACTIONS = ['job.cancel', 'job.hold', 'job.release', 'job.project', 'job.rerun', 'sched.pause', 'sched.resume', 'sched.remove', 'sched.project', 'sched.removeMatching'];
+const ACTIONS = ['approval.answer', 'job.submit', 'job.cancel', 'job.hold', 'job.release', 'job.project', 'job.rerun', 'sched.pause', 'sched.resume', 'sched.remove', 'sched.project', 'sched.removeMatching'];
 const MAX_BYTES = 10000;
 
 function createControl(o) {
   const { db, worker, schedule, projects } = o, dir = o.dir, log = o.log || (() => {});
+  const approvals = o.approvals || null, adminId = o.adminId || null;
 
   function apply(req) {
     const a = String(req.action || '');
     const id = Number(req.id);
     const projectOk = (p) => !p || (projects && projects.get(String(p)));
     switch (a) {
+      // Duyệt từ trang Cài đặt (như bấm nút trên Telegram): decision y = cho phép, r = cho phép cả việc, n = từ chối
+      case 'approval.answer': {
+        if (!approvals || !adminId || !/^\w{1,40}$/.test(String(req.approval)) || !/^[yrn]$/.test(String(req.decision))) return false;
+        approvals.answer('ap:' + req.approval + ':' + req.decision, adminId).catch(() => {}); return true;
+      }
+      // Giao việc mới từ trang Cài đặt (cho chủ máy), có thể gắn dự án
+      case 'job.submit': {
+        const text = String(req.text || '').trim().slice(0, 4000);
+        if (!text || !adminId || !projectOk(req.project)) return false;
+        db.addJob(adminId, text, null, null, 'main', req.project ? projects.get(String(req.project)).id : null); if (worker) setImmediate(() => worker.wake()); return true;
+      }
       case 'job.cancel': {
         if (!Number.isInteger(id)) return false;
         if (db.cancelJobById(id)) return true;

@@ -73,7 +73,7 @@ function createProjectFlow(o) {
   async function checkCard(chatId, uid) {
     const base = await checkCardBase(chatId, uid);
     if (!jr || !isAdmin(uid)) return base;
-    let list = []; try { list = (await jr.list(10)).filter((x) => x.files || (x.unsafe && x.unsafe.length)).slice(0, 5); } catch (e) { list = []; }
+    let list = []; try { list = (await jr.list(10)).filter((x) => x.files || x.state || (x.unsafe && x.unsafe.length)).slice(0, 5); } catch (e) { list = []; }
     if (!list.length) return base;
     const mb = (b) => (b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1048576)) + ' MB');
     const lines = list.map((x) => '#' + x.id + ' · ' + clock(x.at) + ' · ' + cut(x.label || 'việc', 34) + ' · ' + x.files + ' mục, ' + mb(x.bytes) + (x.unsafe && x.unsafe.length ? ' · ⚠️ ' + x.unsafe.length + ' việc không hoàn tác được tự động' : ''));

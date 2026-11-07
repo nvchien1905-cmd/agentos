@@ -26,7 +26,7 @@ async function boot() {
   const s = createSettings({
     port: 0, host: '127.0.0.1', peerUid: () => 1000, allowedUids: () => new Set([1000]), pageFile: path.join(__dirname, '..', 'settings', 'index.html'),
     run: async () => ({ code: 0, out: '', err: '' }), versionFile: path.join(dir, 'VERSION'), backupDir: path.join(dir, 'bk'), onedriveConf: path.join(dir, 'od-conf'), onedriveDir: path.join(dir, 'odir'), memFallback: path.join(dir, 'so-tay'), exit: () => {},
-    fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'dropin', '10-x.conf') }, connectorsFile: path.join(data, 'connectors.json'), pluginsFile: path.join(data, 'plugins.json'), pluginsDir: plug, projects, connSpawn, traceDir, journalDir: path.join(dir, 'journal'),
+    fullAccessPaths: { sudoers: path.join(dir, 'sudoers.d', '90-x'), dropin: path.join(dir, 'dropin', '10-x.conf') }, connectorsFile: path.join(data, 'connectors.json'), pluginsFile: path.join(data, 'plugins.json'), pluginsDir: plug, projects, connSpawn, traceDir, journalDir: path.join(dir, 'journal'), streamTickMs: 15, approvalsFile: path.join(dir, 'approvals.json'), controlDir: path.join(dir, 'control'), pluginsUserDir: path.join(dir, 'pl-user'),
   });
   const port = await s.listen();
   const call = async (method, p, body) => {
@@ -34,7 +34,7 @@ async function boot() {
     const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* html */ }
     return { status: r.status, body: j, text };
   };
-  return { s, call, dir, data, proj, projects };
+  return { s, call, dir, data, proj, projects, port, tr, traceDir };
 }
 
 test('trang Cài đặt: chợ plugin → cài, thêm kết nối kèm theo, nhập khóa (không bao giờ trả lại), thử thật, bật, xóa', async () => {
@@ -109,4 +109,34 @@ test('trang Cài đặt có mục "Màn hình AI" và "Kết nối và kỹ năn
   assert.match(html, /\['watch', '👁', 'Màn hình AI'\]/); assert.match(html, /\['conn', '🧩', 'Kết nối và kỹ năng'\]/);
   assert.match(html, /\n    watch: function \(\) \{/); assert.match(html, /\n    conn: function \(\) \{/);
   const m = html.match(/<script>([\s\S]*)<\/script>/); assert.doesNotThrow(() => new Function(m[1]), 'script của trang không có lỗi cú pháp');
+});
+
+test('trang Cài đặt: Google — lưu khóa, bắt đầu đăng nhập (mặc định chỉ đọc), trang bắt mã từ chối phiên lạ, ngắt kết nối phải xác nhận', async () => {
+  const dir = tmp(); const gdir = path.join(dir, 'google');
+  const S = await (async () => {
+    const o = {};
+    const b = await boot(); o.b = b; return b;
+  })();
+  try { await S.s.close(); } catch (e) { /* khởi tạo lại bên dưới với googleDir riêng */ }
+  const { createSettings: mk } = require('../settings/server');
+  const s = mk({ port: 0, host: '127.0.0.1', peerUid: () => 1000, allowedUids: () => new Set([1000]), pageFile: path.join(__dirname, '..', 'settings', 'index.html'), run: async () => ({ code: 0, out: '', err: '' }),
+    versionFile: path.join(dir, 'VERSION'), backupDir: path.join(dir, 'bk'), onedriveConf: path.join(dir, 'oc'), onedriveDir: path.join(dir, 'od'), memFallback: path.join(dir, 'st'), exit: () => {}, fullAccessPaths: { sudoers: path.join(dir, 's'), dropin: path.join(dir, 'd') },
+    connectorsFile: path.join(dir, 'connectors.json'), pluginsFile: path.join(dir, 'plugins.json'), pluginsDir: path.join(dir, 'plugins'), googleDir: gdir, googleRedirectBase: 'http://127.0.0.1:8089' });
+  const port = await s.listen();
+  const call = async (m, p, body) => { const r = await fetch('http://127.0.0.1:' + port + '/api/' + p, { method: m, headers: { 'content-type': 'application/json', 'x-agentos-settings': '1' }, body: m === 'GET' ? undefined : JSON.stringify(body || {}) }); const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* html */ } return { status: r.status, body: j, text }; };
+  try {
+    assert.deepEqual((await call('GET', 'google')).body, { clientSet: false, connected: false, write: false, scopes: [], at: 0, connector: null });
+    assert.equal((await call('POST', 'google/start', {})).status, 400, 'chưa có khóa');
+    assert.equal((await call('POST', 'google/client', { json: '{"installed":{"client_id":"sai","client_secret":"x"}}' })).status, 400);
+    const ok = await call('POST', 'google/client', { json: { installed: { client_id: '123-abc.apps.googleusercontent.com', client_secret: 'GOCSPX-secret-for-tests' } } });
+    assert.equal(ok.status, 200); assert.equal(ok.body.clientSet, true); assert.doesNotMatch(ok.text, /GOCSPX/, 'không trả khóa ra trang');
+    const st = await call('POST', 'google/start', { write: false }); const u = new URL(st.body.url);
+    assert.equal(u.origin + u.pathname, 'https://accounts.google.com/o/oauth2/v2/auth'); assert.equal(u.searchParams.get('redirect_uri'), 'http://127.0.0.1:8089/google/callback');
+    assert.doesNotMatch(u.searchParams.get('scope'), /compose|events/, 'mặc định chỉ đọc');
+    assert.match(new URL((await call('POST', 'google/start', { write: true })).body.url).searchParams.get('scope'), /gmail\.compose/);
+    const cb = await fetch('http://127.0.0.1:' + port + '/google/callback?code=x&state=khong-phai'); assert.equal(cb.status, 400); assert.match(await cb.text(), /Chưa kết nối được/);
+    assert.equal((await fetch('http://127.0.0.1:' + port + '/google/callback?error=access_denied')).status, 400);
+    assert.equal((await call('POST', 'google/disconnect', {})).status, 400, 'phải xác nhận');
+    const off = await call('POST', 'google/disconnect', { confirm: true, removeClient: true }); assert.equal(off.body.clientSet, false);
+  } finally { await s.close(); }
 });

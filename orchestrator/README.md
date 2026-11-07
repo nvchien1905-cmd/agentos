@@ -98,3 +98,5 @@ test/                 67 test (fake-claude.js, fake-codex.js, fake-tree.js)
 - Dịch vụ systemd cho ISO đã viết (`iso/config/includes.chroot/etc/systemd/system/agentos-*.service`) nhưng chưa chạy thử.
 
 Từ 2026.11.08.1: máy CHỈ DÙNG CLAUDE (`CLAUDE_ONLY=0` để bỏ); `/cho` (chợ kỹ năng/plugin, tự cập nhật theo bản AgentOS); `/hoantac` có thêm mục "Việc đã sửa tệp trên máy" (nhật ký trước-khi-sửa toàn máy, tệp đến 8 GB); tin "Đang làm…" hiện danh sách việc cần làm; trang Cài đặt có "Màn hình AI" (xem từng bước, tệp đã đổi, duyệt tệp dự án) và "Kết nối và kỹ năng".
+
+Từ 2026.11.08.2: `/cho dung <plugin/lệnh>` (lệnh của plugin), `/cho them <liên kết .tar.gz>` (plugin từ nguồn tin cậy, có xem trước + xác nhận), kết nối Google riêng chỉ-đọc (đăng nhập ở Cài đặt), `/hoantac` hoàn tác cả gói/dịch vụ/git/crontab/giải nén; trang Cài đặt → Màn hình AI chạy chữ từng chữ, duyệt xin quyền, giao/dừng/chạy lại việc; `agentos-node22` nâng Node cho mọi máy.

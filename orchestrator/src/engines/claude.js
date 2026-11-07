@@ -22,7 +22,7 @@ function parseOutput(stdout) {
 function startClaude(opts) {
   // Có onProgress: dùng luồng sự kiện (stream-json) để báo từng bước đang làm như màn hình Claude Code; kết quả cuối lấy từ sự kiện type 'result'.
   const stream = typeof opts.onProgress === 'function';
-  const args = [].concat(opts.binArgs || [], ['-p', '--output-format', stream ? 'stream-json' : 'json'], stream ? ['--verbose'] : []);
+  const args = [].concat(opts.binArgs || [], ['-p', '--output-format', stream ? 'stream-json' : 'json'], stream ? ['--verbose'] : [], stream && typeof opts.onDelta === 'function' ? ['--include-partial-messages'] : []);          // onDelta: nhận từng chữ AI đang gõ (màn hình Việc AI chạy chữ từng chữ)
   // Chế độ toàn quyền: bỏ mọi bước hỏi xin phép của Claude Code (chỉ dùng cho máy cá nhân của chủ, xem index.js FULL_HINT)
   if (opts.skipPermissions) args.push('--dangerously-skip-permissions');
   if (opts.allowedTools) args.push('--allowedTools', opts.allowedTools);
@@ -40,7 +40,9 @@ function startClaude(opts) {
   let finalEv = null;
   const reader = stream ? lineReader((line) => {
     let ev; try { ev = JSON.parse(line); } catch (e) { return; }
-    if (ev && ev.type === 'result') finalEv = ev; else fromClaude(ev, opts.onProgress);
+    if (ev && ev.type === 'result') finalEv = ev;
+    else if (ev && ev.type === 'stream_event') { const d = ev.event && ev.event.type === 'content_block_delta' && ev.event.delta; if (d && d.type === 'text_delta' && d.text && typeof opts.onDelta === 'function') { try { opts.onDelta(d.text); } catch (e) { /* không làm hỏng việc */ } } }
+    else fromClaude(ev, opts.onProgress);
   }) : null;
   const p = runProcess({ bin: opts.bin, args, cwd: opts.cwd, input: opts.prompt, timeoutMs: opts.timeoutMs, idleMs: stream ? opts.idleMs : undefined, env: opts.env, wrap: opts.wrap, onStdout: reader ? reader.push : undefined });
   const done = p.done.then((r) => {

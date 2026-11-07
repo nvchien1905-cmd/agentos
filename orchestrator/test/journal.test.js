@@ -29,15 +29,20 @@ test('phân tích lệnh Bash: rm/mv/cp/sed -i/tee/dd/chmod/find -delete/chuyể
 
 test('lệnh đổi trạng thái hệ thống / tên tệp có biến → ghi cảnh báo "không hoàn tác được", không đoán bừa', () => {
   const t = (c) => targetsOfBash(c, '/w', 0).unsafe;
-  assert.ok(t('sudo apt-get install -y vlc').some((x) => /apt-get/.test(x)));
-  assert.ok(t('systemctl restart nginx').some((x) => /systemctl/.test(x)));
-  assert.ok(t('git checkout main').some((x) => /git checkout/.test(x)));
+  const s = (c) => targetsOfBash(c, '/w', 0).state;           // gói/dịch vụ/git/crontab/giải nén: có THỂ hoàn tác bằng stateUndo.js
+  assert.deepEqual(s('sudo apt-get install -y vlc'), [{ kind: 'apt' }]); assert.deepEqual(s('apt-get update'), [], 'update không đổi gói');
+  assert.deepEqual(s('systemctl restart nginx'), [{ kind: 'systemd', units: ['nginx'] }]); assert.deepEqual(s('service cron stop'), [{ kind: 'systemd', units: ['cron'] }]); assert.deepEqual(s('systemctl status nginx'), []);
+  assert.deepEqual(s('git checkout main'), [{ kind: 'git', clean: true }]); assert.deepEqual(s('git status'), []);
+  assert.deepEqual(s('crontab -e'), [{ kind: 'cron' }]); assert.deepEqual(s('crontab -l'), []);
+  assert.deepEqual(s('tar -xzf a.tgz -C /srv/x'), [{ kind: 'archive', tool: 'tar', file: 'a.tgz', dir: '/srv/x' }]); assert.deepEqual(s('tar xzf a.tgz'), [{ kind: 'archive', tool: 'tar', file: 'a.tgz', dir: '.' }]);
+  assert.deepEqual(s('tar -czf out.tgz dir'), [], 'nén không phải giải nén'); assert.deepEqual(s('unzip -o b.zip -d out'), [{ kind: 'archive', tool: 'unzip', file: 'b.zip', dir: 'out' }]);
+  assert.ok(t('pip3 install -g x --user').some((x) => /pip3/.test(x)), 'cài gói Python toàn cục vẫn chỉ báo');
   assert.ok(t('rm -rf $DIR').some((x) => /biến/.test(x)));
   assert.ok(t('echo a > $F').some((x) => /biến/.test(x)));
   assert.deepEqual(t('npm install'), [], 'npm trong dự án: đã có mốc của dự án');
   assert.ok(t('npm i -g x').length === 1);
   assert.deepEqual(t('ls -la; cat a; grep x y'), []);
-  assert.deepEqual(targetsOf('Read', { file_path: '/a' }, '/w'), { paths: [], unsafe: [] });
+  assert.deepEqual(targetsOf('Read', { file_path: '/a' }, '/w'), { paths: [], unsafe: [], state: [] });
   assert.deepEqual(targetsOf('Write', { file_path: '/a/b' }, '/w').paths, [{ p: '/a/b', recursive: false, meta: false }]);
 });
 
@@ -92,7 +97,7 @@ test('quyền truy cập (chmod) được trả lại; lệnh không hiểu đư
   const j = createJournal({ dir: path.join(root, 'j'), cwdOf: () => work });
   await j.before({ id: 9, prompt: 'p' }, 'Bash', { command: 'chmod 777 s.sh; apt-get remove -y foo' });
   fs.chmodSync(f, 0o777);
-  const l = await j.list(); assert.equal(l.length, 1); assert.ok(l[0].unsafe.some((x) => /apt-get/.test(x)));
+  const l = await j.list(); assert.equal(l.length, 1); assert.ok(l[0].unsafe.some((x) => /apt/.test(x)));
   assert.equal((await j.restore(9)).ok, true);
   assert.equal(fs.statSync(f).mode & 0o777, 0o640);
 });

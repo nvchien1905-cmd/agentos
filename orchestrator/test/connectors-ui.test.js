@@ -24,7 +24,7 @@ test('/dichvu: chỉ chủ máy; danh sách trống có nút thêm từ danh m�
   const E = env();
   assert.match(await E.U.command('9', '2', ''), /Chỉ chủ máy/); assert.equal(await E.press('cn:add:notion', 2), 'Chỉ chủ máy dùng được.');
   const card = await E.U.command('9', '1', '');
-  assert.match(card.text, /Kết nối dịch vụ[\s\S]*Chưa có kết nối nào/); assert.deepEqual(card.buttons.flat().map((b) => b.data), ['cn:add:notion', 'cn:add:lich', 'cn:add:gmail']);
+  assert.match(card.text, /Kết nối dịch vụ[\s\S]*Chưa có kết nối nào/); assert.deepEqual(card.buttons.flat().map((b) => b.data), ['cn:add:google', 'cn:add:notion', 'cn:add:lich', 'cn:add:gmail']);
   assert.equal(await E.press('cn:add:notion'), 'Đã thêm');
   assert.match(E.all(), /Đã thêm Notion[\s\S]*NOTION_TOKEN[\s\S]*XÓA tin đó/);
   assert.equal(E.C.pendingOf('9').name, 'NOTION_TOKEN');

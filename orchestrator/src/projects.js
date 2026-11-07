@@ -214,6 +214,9 @@ function createProjects(o) {
     for (const n of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']) { const t = readHead(path.join(base, n), INSTR_MAX + 1); if (t && t.trim()) { parts.push('(Từ tệp ' + n + ' trong thư mục dự án)\n' + (t.length > INSTR_MAX ? t.slice(0, INSTR_MAX) + '\n…(đã cắt bớt)' : t).trim()); break; } }
     const sk = skillsOf(id);
     if (sk.length) parts.push('KỸ NĂNG CỦA DỰ ÁN (mỗi kỹ năng là một tệp hướng dẫn cách làm một loại việc; khi việc đang làm khớp mô tả thì ĐỌC tệp đó rồi làm theo):\n' + sk.map((k) => '- ' + k.name + ': ' + k.description + ' → ' + k.file).join('\n'));
+    // TÁC NHÂN PHỤ của plugin (agents/*.md): vai trò chuyên môn; khi giao việc cho trợ lý phụ cần vai trò đó thì chép phần hướng dẫn trong tệp vào mô tả việc
+    const ag = []; try { for (const d of (o.extraAgentDirs ? o.extraAgentDirs() : [])) for (const f of fs.readdirSync(d)) if (/\.md$/i.test(f)) { const raw = readHead(path.join(d, f), 1500); if (raw === null) continue; const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/), pick = (k) => { const m = fm && fm[1].match(new RegExp('^' + k + '\\s*:\\s*(.+)$', 'mi')); return m ? m[1].trim() : ''; }; ag.push('- ' + (pick('name') || f.replace(/\.md$/i, '')) + ': ' + (pick('description') || '').slice(0, 140) + ' [' + path.join(d, f) + ']'); } } catch (e) { /* không có */ }
+    if (ag.length) parts.push('TÁC NHÂN PHỤ CÓ SẴN (vai trò chuyên môn): khi giao việc cho trợ lý phụ cần vai trò nào thì ĐỌC tệp tương ứng và chép phần hướng dẫn vào mô tả việc rồi mới giao:\n' + ag.slice(0, 20).join('\n'));
     return parts.join('\n\n');
   }
   function rawInstructions(id) { try { return fs.readFileSync(fileOf(id), 'utf8'); } catch (e) { return ''; } }

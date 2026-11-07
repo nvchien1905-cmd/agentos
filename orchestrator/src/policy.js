@@ -43,6 +43,7 @@ function classify(tool, input) {
   if (tool === 'Bash') return 'exec';
   if (BROWSE_WEB.has(tool)) return 'browse';
   const mcp = parseMcp(tool);
+  if (mcp && mcp.server === 'agentos_todo') return 'read';                  // chỉ ghi danh sách việc cần làm, không đụng gì khác
   if (mcp && /^browser/.test(mcp.server)) return BROWSE_ACTIONS.test(mcp.name) ? 'browse' : 'interact';
   return 'other';
 }

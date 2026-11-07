@@ -404,7 +404,31 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     },
     // ----- Kết nối dịch vụ (MCP), chợ kỹ năng/plugin, kỹ năng của dự án — cùng tính năng với /dichvu, /cho, /kynang trên Telegram -----
     conn: function () {
-      var data = null, projects = [], proj = '', skills = null, viewing = null;
+      var data = null, projects = [], proj = '', skills = null, viewing = null, gg = null, ggTimer = null;
+      function googleCard() {
+        if (!gg) return '';
+        var h = '<div class="card"><h3>🔑 Google (Lịch + Gmail)</h3><p class="mute">Máy chủ Google riêng của AgentOS. <b>Chỉ đọc theo mặc định</b> (xem lịch, tìm/đọc thư). Chỉ khi anh bật "cho phép ghi" mới có thêm tạo/sửa/xóa sự kiện, soạn nháp và gửi thư — và bot vẫn hỏi anh trước từng lần.</p>';
+        if (!gg.clientSet) {
+          h += '<p>Bước 1: tạo khóa ứng dụng ở <a href="https://console.cloud.google.com/auth/clients/create" target="_blank" rel="noopener">Google Cloud</a> (loại <b>Ứng dụng máy tính để bàn</b>), tải tệp JSON, dán nội dung vào đây:</p><textarea id="gg-json" rows="5" placeholder="Dán nội dung tệp client_secret_….json" style="width:100%;font:12px ui-monospace,monospace;padding:8px;border:1px solid var(--line);border-radius:8px"></textarea><div class="row" style="margin-top:6px"><button class="b p" id="gg-save">Lưu khóa</button></div>';
+        } else if (!gg.connected) {
+          h += '<p class="ok">✔ Đã có khóa ứng dụng.</p><label><input type="checkbox" id="gg-write"> Cho phép GHI (tạo/sửa/xóa sự kiện, soạn nháp, gửi thư — luôn hỏi trước)</label><div class="row" style="margin-top:8px"><button class="b p" id="gg-login">Đăng nhập Google</button><button class="b d" id="gg-rm">Xóa khóa</button></div><small class="mute">Google sẽ hiện cảnh báo "ứng dụng chưa được xác minh" vì đây là ứng dụng của chính anh: bấm Nâng cao → Tiếp tục.</small>';
+        } else {
+          h += '<p class="ok">✔ Đã đăng nhập — quyền: <b>' + (gg.write ? 'ĐỌC + GHI (ghi luôn hỏi trước)' : 'chỉ ĐỌC') + '</b>' + (gg.connector ? (gg.connector.enabled ? ' · kết nối đang bật' : ' · kết nối đang tắt') : '') + '</p><label><input type="checkbox" id="gg-write"' + (gg.write ? ' checked' : '') + '> Cho phép GHI</label><div class="row" style="margin-top:8px"><button class="b" id="gg-login">Đăng nhập lại (đổi quyền)</button><button class="b d" id="gg-off">Ngắt kết nối</button></div>';
+        }
+        return h + '</div>';
+      }
+      function wireGoogle() {
+        on('gg-save', function () { api('POST', 'google/client', { json: el('gg-json').value }).then(function (r) { gg = r; toast('Đã lưu khóa'); render(); }).catch(fail); });
+        on('gg-rm', function () { if (ask('Xóa khóa ứng dụng Google đã lưu?')) api('POST', 'google/disconnect', { confirm: true, removeClient: true }).then(function (r) { gg = r; render(); }).catch(fail); });
+        on('gg-off', function () { if (ask('Ngắt kết nối Google? Token bị thu hồi và xóa khỏi máy.')) api('POST', 'google/disconnect', { confirm: true }).then(function (r) { gg = r; toast('Đã ngắt kết nối'); render(); }).catch(fail); });
+        on('gg-login', function () {
+          api('POST', 'google/start', { write: el('gg-write').checked }).then(function (r) {
+            window.open(r.url, '_blank'); toast('Đã mở trang Google trong tab mới…');
+            if (ggTimer) clearInterval(ggTimer); var n = 0, was = gg && gg.at;
+            ggTimer = setInterval(function () { n++; if (n > 60 || !alive()) { clearInterval(ggTimer); return; } api('GET', 'google').then(function (s) { if (s.connected && s.at !== was) { clearInterval(ggTimer); gg = s; toast('Đã kết nối Google'); render(); } }).catch(function () {}); }, 3000);
+          }).catch(fail);
+        });
+      }
       set('<h2>Kết nối và kỹ năng</h2><div id="cn-body"><p class="mute">Đang tải...</p></div>');
       function el(id) { return document.getElementById(id); }
       function alive() { return !!el('cn-body'); }
@@ -414,11 +438,12 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         var h = '<div class="card"><h3>🧩 Chợ kỹ năng (plugin)</h3><p class="mute">Mỗi plugin gồm các kỹ năng dạy AI (dùng cho mọi dự án) và kết nối dịch vụ đi kèm. Plugin nằm trong bản cài AgentOS nên <b>tự cập nhật</b> mỗi khi máy nhận bản cập nhật mới.</p><div class="grid">';
         data.plugins.forEach(function (p) {
           h += '<div class="app"><div><b>' + esc(p.icon) + ' ' + esc(p.name) + '</b> <small>v' + esc(p.version) + ' · ' + esc(p.category) + '</small></div><div class="mute" style="font-size:13px">' + esc(p.description) + '</div>' +
-            '<small>' + p.skills.length + ' kỹ năng' + (p.connectors.length ? ' · ' + p.connectors.length + ' kết nối' : '') + '</small>' +
+            '<small>' + p.skills.length + ' kỹ năng' + (p.commands.length ? ' · ' + p.commands.length + ' lệnh' : '') + (p.agents.length ? ' · ' + p.agents.length + ' tác nhân' : '') + (p.connectors.length ? ' · ' + p.connectors.length + ' kết nối' : '') + (p.source === 'user' ? ' · 🔗 từ liên kết' : '') + '</small>' +
             '<div>' + (p.installed ? (p.enabled ? '<span class="ok">✔ đã cài, đang bật</span>' : '<span class="mute">⏸ đã cài, đang tắt</span>') + (p.updated ? ' <span class="warn">⬆ mới cập nhật</span>' : '') : '<span class="mute">chưa cài</span>') + '</div>' +
-            '<div class="row">' + (p.installed ? '<button class="b" data-pe="' + esc(p.id) + '" data-on="' + (p.enabled ? 0 : 1) + '">' + (p.enabled ? 'Tắt' : 'Bật') + '</button><button class="b d" data-pu="' + esc(p.id) + '">Gỡ</button>' : '<button class="b p" data-pi="' + esc(p.id) + '">Cài</button>') + '<button class="b" data-pv="' + esc(p.id) + '">Xem kỹ năng</button></div><div id="pv-' + esc(p.id) + '"></div></div>';
+            '<div class="row">' + (p.installed ? '<button class="b" data-pe="' + esc(p.id) + '" data-on="' + (p.enabled ? 0 : 1) + '">' + (p.enabled ? 'Tắt' : 'Bật') + '</button><button class="b d" data-pu="' + esc(p.id) + '">Gỡ</button>' : '<button class="b p" data-pi="' + esc(p.id) + '">Cài</button>') + (p.source === 'user' ? '<button class="b d" data-pr="' + esc(p.id) + '">Xóa hẳn</button>' : '') + '<button class="b" data-pv="' + esc(p.id) + '">Xem kỹ năng</button></div><div id="pv-' + esc(p.id) + '"></div></div>';
         });
-        h += '</div></div>';
+        h += '</div><details style="margin-top:12px"><summary>🔗 Thêm plugin từ liên kết (.tar.gz, nguồn tin cậy)</summary><div class="row" style="margin-top:8px"><input id="pl-url" placeholder="https://github.com/…/archive/refs/heads/main.tar.gz" style="flex:1;min-width:240px"><button class="b" id="pl-prev">Xem trước</button></div><div id="pl-box"></div><small class="mute">Kỹ năng/lệnh/tác nhân là văn bản nhưng AI sẽ làm theo — chỉ thêm nguồn anh tin. Kết nối dịch vụ (chạy mã) của nguồn ngoài luôn bị bỏ.</small></details></div>';
+        h += googleCard();
         h += '<div class="card"><h3>🔌 Kết nối dịch vụ</h3><p class="mute">AI dùng khi chủ máy giao việc ở chế độ TOÀN QUYỀN (ID thường không thấy). Việc gửi/ghi/xóa qua kết nối luôn hỏi trước. Khóa chỉ lưu trên máy, không hiện lại.</p>';
         if (!data.connectors.length) h += '<p class="mute">Chưa có kết nối nào.</p>';
         data.connectors.forEach(function (c) {
@@ -433,7 +458,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           '<details style="margin-top:10px"><summary>Thêm kết nối tự chọn (máy chủ MCP bất kỳ)</summary><div class="row" style="margin-top:8px"><input id="cx-l" placeholder="Tên (vd Kho hàng)" style="max-width:160px"><input id="cx-c" placeholder="Lệnh: npx, uvx, node, python3, docker hoặc /đường/dẫn" style="flex:1;min-width:200px"><input id="cx-a" placeholder="Đối số (vd -y goi-mcp)" style="flex:1;min-width:160px"><button class="b" id="cx-go">Thêm</button></div></details></div>';
         h += '<div class="card"><h3>🧠 Kỹ năng của dự án</h3><p class="mute">Mỗi kỹ năng dạy AI cách làm một loại việc (báo giá, chốt ca…). AI tự đọc khi việc khớp mô tả. Kỹ năng của plugin đã cài hiện cho mọi dự án.</p><div class="row"><select id="sk-pj">' + projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === proj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div><div id="sk-list"></div></div>';
         el('cn-body').innerHTML = h;
-        wire();
+        wire(); wireGoogle();
         drawSkills();
       }
       function post(path, body, msg) { return api('POST', path, body).then(function (r) { if (r && r.connectors) data = r; if (msg) toast(msg); render(); return r; }).catch(fail); }
@@ -447,6 +472,15 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         q('[data-ct]', function (b) { b.onclick = function () { b.disabled = true; b.textContent = '⏳ Đang thử (lần đầu có thể mất 1–2 phút)...'; api('POST', 'conn/test', { id: b.getAttribute('data-ct') }).then(function (r) { data = r; render(); toast(r.result.ok ? 'Chạy tốt: ' + r.result.tools.length + ' công cụ' : 'Lỗi: ' + r.result.error, !r.result.ok); }).catch(function (e) { fail(e); render(); }); }; });
         q('[data-ce]', function (b) { b.onclick = function () { post('conn/enable', { id: b.getAttribute('data-ce'), on: b.getAttribute('data-on') === '1' }); }; });
         q('[data-cd]', function (b) { b.onclick = function () { if (ask('Xóa kết nối này? Khóa đã lưu cũng bị xóa.')) post('conn/remove', { id: b.getAttribute('data-cd'), confirm: true }, 'Đã xóa'); }; });
+        on('pl-prev', function () {
+          api('POST', 'plugins/add-url', { url: el('pl-url').value, confirm: false }).then(function (r) {
+            if (!r.needConfirm) return;
+            var v = r.preview;
+            el('pl-box').innerHTML = '<div class="card" style="margin-top:8px"><b>' + esc(v.icon) + ' ' + esc(v.name) + '</b> <small>v' + esc(v.version) + ' · ' + esc(v.author) + '</small><p>' + esc(v.description) + '</p><small>' + v.skills.length + ' kỹ năng · ' + v.commands.length + ' lệnh · ' + v.agents.length + ' tác nhân' + (v.droppedConnectors ? ' · ⚠️ khai báo kết nối dịch vụ — sẽ BỊ BỎ' : '') + '</small><div class="row" style="margin-top:8px"><button class="b p" id="pl-yes">✅ Tôi tin nguồn này, thêm</button></div></div>';
+            on('pl-yes', function () { api('POST', 'plugins/add-url', { url: el('pl-url').value, confirm: true }).then(function (x) { data = x; toast('Đã thêm plugin — bấm Cài để dùng'); render(); }).catch(fail); });
+          }).catch(fail);
+        });
+        q('[data-pr]', function (b) { b.onclick = function () { if (ask('Xóa hẳn plugin này khỏi máy?')) post('plugins/remove-user', { id: b.getAttribute('data-pr'), confirm: true }, 'Đã xóa'); }; });
         on('cn-add', function () { post('conn/add', { key: el('cn-cat').value }, 'Đã thêm'); });
         on('cx-go', function () { post('conn/add-custom', { label: el('cx-l').value, command: el('cx-c').value, args: el('cx-a').value }, 'Đã thêm'); });
         el('sk-pj').onchange = function () { proj = el('sk-pj').value; loadSkills(); };
@@ -472,7 +506,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         [].forEach.call(box.querySelectorAll('[data-se]'), function (b) { b.onclick = function () { var s = skills.filter(function (x) { return x.slug === b.getAttribute('data-se'); })[0]; api('GET', 'skills/text?project=' + encodeURIComponent(proj) + '&slug=' + encodeURIComponent(s.slug)).then(function (t) { el('sk-new').open = true; el('sk-n').value = s.name; el('sk-d').value = s.description; el('sk-b').value = String(t.text).replace(/^---[\s\S]*?---\s*/, '').trim(); el('sk-save').setAttribute('data-over', s.slug); el('sk-hint').textContent = 'Đang sửa "' + s.name + '" (lưu sẽ ghi đè).'; el('sk-new').scrollIntoView(); }).catch(fail); }; });
         on('sk-save', function () { var o = el('sk-save').getAttribute('data-over'); api('POST', 'skills/save', { project: proj, name: el('sk-n').value, description: el('sk-d').value, body: el('sk-b').value, slug: o || undefined, overwrite: !!o }).then(function () { toast('Đã lưu kỹ năng'); loadSkills(); }).catch(fail); });
       }
-      api('GET', 'conn').then(function (r) { data = r; return api('GET', 'projects'); }).then(function (r) {
+      api('GET', 'conn').then(function (r) { data = r; return api('GET', 'google').catch(function () { return null; }); }).then(function (g) { gg = g; return api('GET', 'projects'); }).then(function (r) {
         projects = (r.list || []).filter(function (p) { return !p.deleted && !p.mergedInto; }).map(function (p) { return { id: p.id, name: p.name }; });
         if (projects.length) proj = projects[0].id;
         render(); loadSkills();
@@ -480,8 +514,8 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     },
     // ----- Màn hình AI: xem AI đang làm gì từng bước, tệp đã đổi (khác biệt từng dòng) và tệp dự án — như màn hình Claude Code -----
     watch: function () {
-      var sel = null, from = 0, tab = 'steps', events = [], todos = null, doneFlag = false, detail = null, changes = null, projects = [], proj = '', tpath = '', timer = null, openDiff = {};
-      set('<h2>Màn hình AI</h2><div class="wg"><div class="card wl" id="w-list"><p class="mute">Đang tải...</p></div><div class="card wm" id="w-main"><p class="mute">Chọn một việc bên trái để xem AI đang làm gì, đã sửa tệp nào.</p></div></div>');
+      var sel = null, from = 0, tab = 'steps', events = [], todos = null, doneFlag = false, detail = null, changes = null, projects = [], proj = '', tpath = '', timer = null, openDiff = {}, liveText = '', es = null, newProj = '';
+      set('<h2>Màn hình AI</h2><div id="w-appr"></div><div class="wg"><div class="card wl" id="w-list"><p class="mute">Đang tải...</p></div><div class="card wm" id="w-main"><p class="mute">Chọn một việc bên trái để xem AI đang làm gì, đã sửa tệp nào.</p></div></div>');
       function el(id) { return document.getElementById(id); }
       function hm(ms) { var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
       function alive() { return !!el('w-main'); }
@@ -495,13 +529,43 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
             h += '<div class="wi' + (j.id === sel ? ' on' : '') + '" data-w="' + j.id + '"><b>#' + j.id + '</b> ' + (j.status === 'running' ? '<span class="wrun">● đang chạy</span>' : '<span class="mute">' + esc(j.statusText) + '</span>') +
               '<br><small>' + esc(j.at) + (j.projectName ? ' · ' + esc(j.projectName) : '') + '</small><div class="wp">' + esc(j.prompt) + '</div></div>';
           });
-          el('w-list').innerHTML = h;
+          h += '<h3 style="margin-top:14px">Giao việc mới</h3><textarea id="w-new" rows="3" placeholder="Gõ việc cần AI làm…" style="width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px"></textarea><div class="row" style="margin-top:6px"><select id="w-newp"><option value="">— không gắn dự án —</option>' + projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === newProj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select><button class="b p" id="w-send">Giao việc</button></div>';
+          var keep = el('w-new') ? el('w-new').value : '';
+          el('w-list').innerHTML = h; if (keep) el('w-new').value = keep;
           [].forEach.call(el('w-list').querySelectorAll('[data-w]'), function (d) { d.onclick = function () { choose(Number(d.getAttribute('data-w'))); }; });
+          el('w-newp').onchange = function () { newProj = el('w-newp').value; };
+          on('w-send', function () { var t = el('w-new').value.trim(); if (!t) { toast('Chưa gõ việc', true); return; } api('POST', 'control', { action: 'job.submit', text: t, project: el('w-newp').value || undefined }).then(function () { el('w-new').value = ''; toast('Đã giao việc — vài giây nữa hiện ở danh sách'); setTimeout(loadList, 2500); }).catch(fail); });
         }).catch(function () { /* thử lại ở lần sau */ });
       }
+      // Các yêu cầu xin quyền đang chờ: duyệt ngay trên máy như bấm nút trên Telegram
+      function loadApprovals() {
+        api('GET', 'watch/approvals').then(function (r) {
+          var box = el('w-appr'); if (!box) return;
+          var h = (r.list || []).map(function (a) { return '<div class="banner" style="background:#fff0f0;border-color:#e0a5a5;color:#5a1a1a"><b>🔐 Việc #' + a.jobId + ' xin quyền: ' + esc(a.label) + '</b><div style="white-space:pre-wrap;margin:4px 0">' + esc(a.summary) + '</div>' + (a.warn ? '<div>⚠️ ' + esc(a.warn) + '</div>' : '') + '<div class="row"><button class="b p" data-ap="' + esc(a.id) + '" data-d="y">✅ Cho phép</button>' + (a.canRemember ? '<button class="b" data-ap="' + esc(a.id) + '" data-d="r">✅ Cho phép cả việc này</button>' : '') + '<button class="b d" data-ap="' + esc(a.id) + '" data-d="n">❌ Từ chối</button></div></div>'; }).join('');
+          if (box.getAttribute('data-h') !== h) { box.innerHTML = h; box.setAttribute('data-h', h); }
+          [].forEach.call(box.querySelectorAll('[data-ap]'), function (b) { b.onclick = function () { api('POST', 'control', { action: 'approval.answer', approval: b.getAttribute('data-ap'), decision: b.getAttribute('data-d') }).then(function () { toast('Đã gửi quyết định'); box.setAttribute('data-h', ''); setTimeout(loadApprovals, 1500); }).catch(fail); }; });
+        }).catch(function () {});
+      }
+      // Nhận từng bước và từng chữ AI gõ qua luồng trực tiếp (SSE); trình duyệt không hỗ trợ/ngắt thì quay về hỏi định kỳ
+      function openStream(id) {
+        if (es) { es.close(); es = null; }
+        if (!window.EventSource) { pull(true); return; }
+        es = new EventSource('api/watch/stream?id=' + id + '&from=0');
+        es.onmessage = function (m) {
+          if (id !== sel || !alive()) { es.close(); return; }
+          var r; try { r = JSON.parse(m.data); } catch (e) { return; }
+          (r.events || []).forEach(function (e) { if (e.k === 'delta') { liveText += e.text; } else { if (e.k === 'text' || e.k === 'tool' || e.k === 'end') liveText = ''; events.push(e); } });
+          from = r.next; if (r.todos) todos = r.todos;
+          var was = doneFlag; doneFlag = !!r.done;
+          if (!r.exists && detail && ['done', 'error', 'cancelled'].indexOf(detail.status) >= 0) doneFlag = true;
+          if (tab === 'steps') drawSteps();
+          if (doneFlag) { if (es) { es.close(); es = null; } if (!was) { api('GET', 'audit/job?id=' + id).then(function (d) { if (sel === id) { detail = d; drawMain(); } }).catch(function () {}); loadList(); } }
+        };
+        es.onerror = function () { if (es) { es.close(); es = null; } if (!doneFlag && id === sel) pull(true); };
+      }
       function choose(id) {
-        sel = id; from = 0; events = []; todos = null; doneFlag = false; detail = null; changes = null; openDiff = {}; tab = 'steps';
-        loadList(); drawMain(); pull(true);
+        sel = id; from = 0; events = []; todos = null; doneFlag = false; detail = null; changes = null; openDiff = {}; tab = 'steps'; liveText = '';
+        loadList(); drawMain(); openStream(id);
         api('GET', 'audit/job?id=' + id).then(function (d) { if (sel === id) { detail = d; drawMain(); } }).catch(function () { /* bỏ */ });
       }
       function pull(first) {
@@ -519,13 +583,16 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       }
       function head() {
         var d = detail;
-        return '<h3 style="margin:0">Việc #' + sel + (d ? ' · ' + esc(d.statusText) : '') + '</h3>' + (d ? '<p class="mute" style="margin:2px 0 6px">' + esc(d.who) + ' · ' + esc(d.at) + (d.engine ? ' · ' + esc(d.engine) : '') + (d.projectName ? ' · dự án: ' + esc(d.projectName) : '') + '</p><div class="mute" style="white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(d.prompt) + '</div>' : '');
+        var ctl = d ? (d.status === 'running' || d.status === 'queued' ? '<button class="b d" id="w-stop" style="float:right">⏹ Dừng việc</button>' : '<button class="b" id="w-rerun" style="float:right">🔁 Chạy lại</button>') : '';
+        return ctl + '<h3 style="margin:0">Việc #' + sel + (d ? ' · ' + esc(d.statusText) : '') + '</h3>' + (d ? '<p class="mute" style="margin:2px 0 6px">' + esc(d.who) + ' · ' + esc(d.at) + (d.engine ? ' · ' + esc(d.engine) : '') + (d.projectName ? ' · dự án: ' + esc(d.projectName) : '') + '</p><div class="mute" style="white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(d.prompt) + '</div>' : '');
       }
       function drawMain() {
         if (!alive()) return;
         if (sel == null) return;
         el('w-main').innerHTML = head() + '<div class="wtabs"><button class="b ' + (tab === 'steps' ? 'on' : '') + '" data-tab="steps">Từng bước</button><button class="b ' + (tab === 'files' ? 'on' : '') + '" data-tab="files">Tệp đã đổi</button><button class="b ' + (tab === 'proj' ? 'on' : '') + '" data-tab="proj">Tệp dự án</button></div><div id="w-body"></div>';
         [].forEach.call(el('w-main').querySelectorAll('[data-tab]'), function (b) { b.onclick = function () { tab = b.getAttribute('data-tab'); drawMain(); }; });
+        on('w-stop', function () { if (ask('Dừng việc #' + sel + '?')) api('POST', 'control', { action: 'job.cancel', id: sel }).then(function () { toast('Đã gửi lệnh dừng'); setTimeout(loadList, 2000); }).catch(fail); });
+        on('w-rerun', function () { api('POST', 'control', { action: 'job.rerun', id: sel }).then(function () { toast('Đã tạo việc mới cùng nội dung'); setTimeout(loadList, 2500); }).catch(fail); });
         if (tab === 'steps') drawSteps(); else if (tab === 'files') drawFiles(); else drawProj();
       }
       function evHtml(e) {
@@ -544,7 +611,8 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           h += '<div class="wtodo"><b>📋 Việc cần làm ' + dn + '/' + todos.length + '</b>' + todos.map(function (t) { return '<div class="' + t.s + '">' + (t.s === 'completed' ? '☑' : t.s === 'in_progress' ? '▶️' : '☐') + ' ' + esc(t.s === 'in_progress' ? (t.a || t.c) : t.c) + '</div>'; }).join('') + '</div>';
         }
         h += events.length ? events.map(evHtml).join('') : '<p class="mute">Chưa có bước nào được ghi' + (doneFlag ? '' : ' (việc chưa bắt đầu, hoặc việc cũ trước khi có tính năng này)') + '.</p>';
-        if (!doneFlag && events.length) h += '<p class="mute">⏳ Đang làm…</p>';
+        if (!doneFlag && liveText) h += '<div class="ev txt"><time>' + hm(Date.now()) + '</time><div class="bd">💬 ' + esc(liveText) + '<span style="opacity:.6">▌</span></div></div>';
+        else if (!doneFlag && events.length) h += '<p class="mute">⏳ Đang làm…</p>';
         if (doneFlag && detail && detail.result) h += '<div class="card" style="margin-top:12px"><h3>Câu trả lời cuối</h3><div style="white-space:pre-wrap">' + esc(detail.result) + '</div></div>';
         if (doneFlag && detail && detail.error) h += '<p class="bad">Lỗi: ' + esc(detail.error) + '</p>';
         var atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
@@ -599,18 +667,29 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           api('GET', 'watch/file?project=' + encodeURIComponent(proj) + '&path=' + encodeURIComponent(rel)).then(function (f) {
             var h;
             if (f.kind === 'image') h = '<img src="' + f.dataUrl + '" alt="">';
-            else if (f.kind === 'html') h = '<iframe sandbox="" srcdoc="' + esc(f.text) + '"></iframe>' + (f.cut ? '<p class="mute">(đã cắt bớt)</p>' : '');
+            else if (f.kind === 'html') {
+              // Như Artifacts: có thể cho chạy JavaScript trong khung cách ly (không có mạng, không truy cập trang Cài đặt/tệp máy)
+              var csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: blob:; style-src \'unsafe-inline\'; script-src \'unsafe-inline\'; font-src data:">';
+              h = '<label class="mute"><input type="checkbox" id="w-js"> Cho chạy JavaScript (khung cách ly, không có mạng)</label><div id="w-fr"></div>' + (f.cut ? '<p class="mute">(đã cắt bớt)</p>' : '');
+              el('w-prev').innerHTML = '<div class="wprev"><b>' + esc(rel) + '</b>' + h + '</div>';
+              var paint = function () { var on2 = el('w-js').checked; el('w-fr').innerHTML = '<iframe sandbox="' + (on2 ? 'allow-scripts' : '') + '" srcdoc="' + esc((on2 ? csp : '') + f.text) + '"></iframe>'; };
+              el('w-js').onchange = paint; paint(); return;
+            }
             else if (f.kind === 'text') h = '<pre>' + esc(f.text) + '</pre>' + (f.cut ? '<p class="mute">… tệp dài, chỉ hiện phần đầu</p>' : '');
             else h = '<p class="mute">' + (f.kind === 'big' ? 'Ảnh quá lớn để xem trước.' : 'Tệp không phải chữ/ảnh nên không xem trước được.') + ' (' + Math.round(f.size / 1024) + ' KB)</p>';
             el('w-prev').innerHTML = '<div class="wprev"><b>' + esc(rel) + '</b>' + h + '</div>';
           }).catch(function (e) { el('w-prev').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
         }
+        if (!proj && detail && detail.project) proj = detail.project;
+        if (!proj && projects.length) proj = projects[0].id;
         if (projects.length) paint();
         else api('GET', 'projects').then(function (r) { projects = (r.list || []).filter(function (p) { return !p.deleted; }).map(function (p) { return { id: p.id, name: p.name }; }); if (!proj && detail && detail.project) proj = detail.project; if (!proj && projects.length) proj = projects[0].id; if (!projects.length) { body.innerHTML = '<p class="mute">Chưa có dự án nào.</p>'; return; } paint(); }).catch(fail);
       }
-      loadList();
-      var tick = setInterval(function () { if (!alive()) { clearInterval(tick); return; } if (!doneFlag) pull(false); }, 1500);
+      api('GET', 'projects').then(function (r) { projects = (r.list || []).filter(function (p) { return !p.deleted && !p.mergedInto; }).map(function (p) { return { id: p.id, name: p.name }; }); }).catch(function () {}).then(function () { loadList(); });
+      loadApprovals();
+      var tick = setInterval(function () { if (!alive()) { clearInterval(tick); if (es) { es.close(); es = null; } return; } if (!doneFlag && !es && sel != null) pull(false); }, 1500);       // chỉ khi không có luồng trực tiếp
       var tick2 = setInterval(function () { if (!alive()) { clearInterval(tick2); return; } loadList(); }, 6000);
+      var tick3 = setInterval(function () { if (!alive()) { clearInterval(tick3); return; } loadApprovals(); }, 2000);
     },
     usg: function () {
       var days = 30;

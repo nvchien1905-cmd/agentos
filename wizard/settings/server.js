@@ -39,6 +39,7 @@ const { createSessions } = require('../../orchestrator/src/sessions');
 const { createWatch } = require('../lib/watch');
 const { createConnectors } = require('../../orchestrator/src/connectors');
 const { createPlugins } = require('../../orchestrator/src/plugins');
+const { createGoogleAuth } = require('../../orchestrator/src/googleAuth');
 
 const PORT = 8089;
 const SERVICES = { orchestrator: 'agentos-orchestrator', deskd: 'agentos-deskd', onedrive: 'onedrive-agentos', tailscale: 'tailscaled', cups: 'cups', network: 'NetworkManager', capnhat: 'agentos-update.path', saoluu: 'agentos-sao-luu.timer' };
@@ -122,15 +123,22 @@ function createSettings(o) {
     try { return fn({ raw, kvGet: (k) => { const r = raw.prepare('SELECT v FROM kv WHERE k = ?').get(k); return r ? r.v : null; } }); } finally { raw.close(); }
   };
   let projectsInst = null;
-  const projectsLib = () => projectsInst || (projectsInst = o.projects || createProjects({ baseDir: o.onedriveDir, extraSkillDirs: () => plugLib().skillDirs() }));
+  const projectsLib = () => projectsInst || (projectsInst = o.projects || createProjects({ baseDir: o.onedriveDir, extraSkillDirs: () => plugLib().skillDirs(), extraAgentDirs: () => plugLib().agentDirs() }));
   // Kết nối dịch vụ + chợ kỹ năng (cùng tệp dữ liệu với bot; bot tự nạp lại khi tệp đổi). "Thử" chạy máy chủ MCP bằng tài khoản agentos, không bao giờ bằng root.
   const connFile = o.connectorsFile || '/var/lib/agentos/data/connectors.json', plugFile = o.pluginsFile || '/var/lib/agentos/data/plugins.json';
   const asAgentosSpawn = (cmd, args, opts) => { const env = Object.assign({}, (opts && opts.env) || {}, { HOME: '/var/lib/agentos' }); return cp.spawn('runuser', ['-u', 'agentos', '--', 'env'].concat(Object.keys(env).map((k) => k + '=' + env[k]), [cmd], args || []), { stdio: (opts && opts.stdio) || ['pipe', 'pipe', 'pipe'] }); };
   let connInst = null, plugInst = null;
   const connLib = () => connInst || (connInst = createConnectors({ file: connFile, extraCatalog: () => (plugInst ? plugInst.extraCatalog() : []), spawn: o.connSpawn || asAgentosSpawn }));
-  const plugLib = () => { if (!plugInst) { const c = connLib(); plugInst = createPlugins({ dir: o.pluginsDir || path.join(__dirname, '..', 'plugins'), stateFile: plugFile, connectors: c }); } return plugInst; };
+  const plugLib = () => { if (!plugInst) { const c = connLib(); plugInst = createPlugins({ dir: o.pluginsDir || path.join(__dirname, '..', 'plugins'), stateFile: plugFile, userDir: o.pluginsUserDir || '/var/lib/agentos/plugins-user', fetch: o.pluginsFetch, connectors: c }); } return plugInst; };
+  const fixUserPlugins = () => { try { chownTree(o.pluginsUserDir || '/var/lib/agentos/plugins-user'); } catch (e) { /* máy thử */ } };
   const fixConnOwner = () => { for (const f of [connFile, plugFile]) { try { chownAgentos(f); } catch (e) { /* máy thử */ } } };
   const connOut = () => ({ connectors: connLib().list(), catalog: connLib().catalog(), plugins: plugLib().list() });
+  // Đăng nhập Google (googleAuth.js + google-mcp.js): khóa client + token ở data/google (0600, chủ agentos); mặc định chỉ đọc
+  const googleDir = o.googleDir || '/var/lib/agentos/data/google';
+  const googleAuth = o.googleAuth || createGoogleAuth({ dir: googleDir, fetch: o.googleFetch, origins: o.googleOrigins });
+  const googleBase = () => o.googleRedirectBase || 'http://127.0.0.1:' + PORT;
+  const fixGoogleOwner = () => { try { chownTree(googleDir); } catch (e) { /* máy thử */ } };
+  const googleOut = () => Object.assign(googleAuth.status(), { connector: (() => { try { const c = connLib().get('google'); return c ? { enabled: c.enabled } : null; } catch (e) { return null; } })() });
   const SKILL_DIR = 'KY-NANG';
   const skillSlug = (name) => String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
   let watchInst = null;
@@ -676,9 +684,11 @@ function createSettings(o) {
       const action = String((b && b.action) || ''); if (!CONTROL_ACTIONS.includes(action)) throw new Error('Hành động không hợp lệ.');
       const req = { action };
       if (b.id != null) { req.id = Number(b.id); if (!Number.isInteger(req.id)) throw new Error('Mã việc không hợp lệ.'); }
+      if (b.approval != null) req.approval = String(b.approval).slice(0, 40);
+      if (b.decision != null) req.decision = String(b.decision).slice(0, 1);
       if (b.scope != null) req.scope = String(b.scope).slice(0, 80);
       if (b.project != null) req.project = String(b.project).slice(0, 80);
-      if (b.text != null) req.text = String(b.text).slice(0, 400);
+      if (b.text != null) req.text = String(b.text).slice(0, action === 'job.submit' ? 4000 : 400);
       const dir = o.controlDir || '/var/lib/agentos/data/control'; fs.mkdirSync(dir, { recursive: true });
       const f = path.join(dir, Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.json');
       fs.writeFileSync(f, JSON.stringify(req), { mode: 0o600 }); try { chownAgentos(f); } catch (e) { /* bỏ qua */ }
@@ -695,6 +705,9 @@ function createSettings(o) {
     async 'POST /api/conn/test'(b) { plugLib(); const r = await connLib().test(String(b.id || '')); fixConnOwner(); return Object.assign({ result: r }, connOut()); },
     async 'POST /api/plugins/install'(b) { const r = plugLib().install(String(b.id || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
     async 'POST /api/plugins/uninstall'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = plugLib().uninstall(String(b.id || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    // Thêm plugin từ liên kết .tar.gz (nguồn ngoài): lần 1 chỉ XEM TRƯỚC (confirm=false), lần 2 confirm=true mới lưu; kết nối dịch vụ của nguồn ngoài luôn bị bỏ
+    async 'POST /api/plugins/add-url'(b) { const r = await plugLib().addFromUrl(String(b.url || ''), { confirm: b.confirm === true, allowConnectors: false }); fixUserPlugins(); fixConnOwner(); if (r.needConfirm) return { needConfirm: true, preview: r.preview }; if (!r.ok) throw new Error(r.error); return Object.assign({ added: r }, connOut()); },
+    async 'POST /api/plugins/remove-user'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = plugLib().removeUser(String(b.id || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
     async 'POST /api/plugins/enable'(b) { const r = plugLib().setEnabled(String(b.id || ''), !!b.on); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
     async 'GET /api/plugins/skill'(b, ctx) { const t = plugLib().skillText(ctx.query.get('id'), ctx.query.get('slug')); if (t == null) throw new Error('Không có kỹ năng này.'); return { text: t }; },
     async 'GET /api/skills'(b, ctx) {
@@ -725,8 +738,15 @@ function createSettings(o) {
       if (!slug || !fs.existsSync(f)) throw new Error('Không có kỹ năng này trong KY-NANG (kỹ năng ở nơi khác chỉ xem được).');
       fs.rmSync(f, { force: true }); return { ok: true };
     },
+    // ---- Google (Lịch + Gmail) — máy chủ MCP riêng, chỉ đọc mặc định
+    async 'GET /api/google'() { return googleOut(); },
+    async 'POST /api/google/client'(b) { const r = googleAuth.saveClient(b.json !== undefined ? b.json : { client_id: b.client_id, client_secret: b.client_secret }); fixGoogleOwner(); if (!r.ok) throw new Error(r.error); return googleOut(); },
+    async 'POST /api/google/start'(b) { const r = googleAuth.start({ write: !!b.write, redirectUri: googleBase() + '/google/callback' }); if (!r.ok) throw new Error(r.error); return { url: r.url }; },
+    async 'POST /api/google/disconnect'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); await googleAuth.revoke(); if (b.removeClient === true) googleAuth.removeClient(); plugLib(); try { connLib().remove('google'); } catch (e) { /* chưa thêm */ } fixConnOwner(); return googleOut(); },
     // ---- Màn hình "Việc AI" (xem như màn hình Claude Code): từng bước đang chạy, tệp đã đổi + khác biệt từng dòng, duyệt tệp dự án (chỉ đọc) — wizard/lib/watch.js
     async 'GET /api/watch/trace'(b, ctx) { return watchLib().trace(ctx.query.get('id'), ctx.query.get('from')); },
+    // Các yêu cầu xin quyền đang chờ (bot ghi ảnh chụp ra tệp mỗi khi có thay đổi) — duyệt bằng POST /api/control {action:'approval.answer', approval, decision}
+    async 'GET /api/watch/approvals'() { try { const l = JSON.parse(fs.readFileSync(o.approvalsFile || '/var/lib/agentos/data/approvals-pending.json', 'utf8')); return { list: Array.isArray(l) ? l : [] }; } catch (e) { return { list: [] }; } },
     async 'GET /api/watch/changes'(b, ctx) { return watchLib().changes(ctx.query.get('id')); },
     async 'GET /api/watch/tree'(b, ctx) { return watchLib().tree(ctx.query.get('project'), ctx.query.get('path') || ''); },
     async 'GET /api/watch/file'(b, ctx) { return watchLib().file(ctx.query.get('project'), ctx.query.get('path') || ''); },
@@ -879,7 +899,35 @@ function createSettings(o) {
       const uid = getPeerUid(req.socket);
       if (uid === null || !allowedUids().has(uid)) return json(res, 403, { error: 'Chỉ chủ máy (tài khoản quản trị) được mở Cài đặt.' });
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) { const b = fs.readFileSync(pageFile); res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); return res.end(b); }
+      // Google chuyển trình duyệt về đây sau khi chủ máy bấm Cho phép (chỉ loopback + đúng uid chủ máy, mã "state" khớp phiên đã mở)
+      if (req.method === 'GET' && url.pathname === '/google/callback') {
+        const page = (ok, msg) => { res.writeHead(ok ? 200 : 400, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end('<!doctype html><meta charset=utf-8><title>Google</title><body style="font:16px system-ui;max-width:520px;margin:12vh auto;padding:0 16px"><h2>' + (ok ? '✅ Đã kết nối Google' : '⚠️ Chưa kết nối được') + '</h2><p>' + String(msg).replace(/[&<>]/g, '') + '</p><p>Đóng tab này và quay lại Cài đặt.</p>'); };
+        if (url.searchParams.get('error')) return page(false, 'Google báo: ' + url.searchParams.get('error'));
+        const r = await googleAuth.finish({ code: url.searchParams.get('code'), state: url.searchParams.get('state') });
+        if (!r.ok) return page(false, r.error);
+        fixGoogleOwner();
+        try { plugLib(); const C = connLib(); if (!C.get('google')) C.addFromCatalog('google'); C.setEnabled('google', true); fixConnOwner(); } catch (e) { /* kết nối thêm tay được */ }
+        return page(true, googleAuth.hasWrite() ? 'Đã cho phép ĐỌC và GHI (mọi việc ghi vẫn hỏi anh trước).' : 'Chỉ ĐỌC lịch và thư — an toàn.');
+      }
       if (req.method === 'POST' && req.headers['x-agentos-settings'] !== '1') return json(res, 403, { error: 'Thiếu tiêu đề bảo vệ' });
+      // LUỒNG TRỰC TIẾP (Server-Sent Events) cho màn hình Việc AI: đẩy từng chữ AI gõ + từng bước ngay khi có, không cần hỏi lại liên tục
+      if (req.method === 'GET' && url.pathname === '/api/watch/stream') {
+        const id = url.searchParams.get('id'); let from = Math.max(0, Number(url.searchParams.get('from')) || 0), lastSig = -2, closed = false, idle = 0;
+        res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
+        req.on('close', () => { closed = true; });
+        const w = watchLib();
+        for (let i = 0; i < (o.streamMaxTicks || 7200) && !closed; i++) {                       // tối đa ~30 phút một luồng
+          const sig = w.traceSig(id);
+          if (sig !== lastSig) {
+            lastSig = sig; idle = 0;
+            const r = await w.trace(id, from); from = r.next;
+            res.write('data: ' + JSON.stringify({ events: r.events, next: r.next, done: r.done, todos: r.todos, exists: r.exists }) + '\n\n');
+            if (r.done) break;
+          } else if (++idle % 40 === 0) res.write(': ping\n\n');
+          await new Promise((r2) => setTimeout(r2, o.streamTickMs || 250));
+        }
+        return res.end();
+      }
       const jm = url.pathname.match(/^\/api\/jobs\/(\d+)$/);
       if (req.method === 'GET' && jm) {
         const j = jobs.get(jm[1]); if (!j) return json(res, 404, { error: 'Không có công việc này' });

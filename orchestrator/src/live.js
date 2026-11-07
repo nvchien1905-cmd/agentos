@@ -1,5 +1,5 @@
 'use strict';
-const { describe, clean } = require('./progress');
+const { describe, clean, isTodoTool } = require('./progress');
 const { esc } = require('./tgFormat');
 
 // TIN TRẠNG THÁI TRỰC TIẾP (như thanh tiến trình của Claude Code): khi AI đang làm, bot hiện "đang gõ" và MỘT tin trạng thái được sửa liên tục
@@ -67,7 +67,7 @@ function createLive(o) {
     },
     step(job, ev) {
       const st = jobs.get(job.id); if (!st || st.ended) return;
-      if (ev && ev.kind === 'tool' && ev.name === 'TodoWrite' && ev.input && Array.isArray(ev.input.todos)) {
+      if (ev && ev.kind === 'tool' && isTodoTool(ev.name) && ev.input && Array.isArray(ev.input.todos)) {
         st.todos = ev.input.todos.slice(0, 25).map((t) => ({ c: clean(t && (t.content || t.activeForm), 90), a: clean(t && t.activeForm, 90), s: ['completed', 'in_progress', 'pending'].includes(t && t.status) ? t.status : 'pending' })).filter((t) => t.c);
         schedule(st); return;
       }

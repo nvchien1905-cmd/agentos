@@ -54,17 +54,15 @@ function createProjectFlow(o) {
       '\n\nBấm tên để xem nhanh · ▶️ Tiếp tục để làm việc trong cuộc đó · ⏹ Dừng để hủy việc đang chạy/chờ. Chế độ quyền của cuộc hiện tại: /cheodo' };
   }
   // /cheodo: thẻ chọn chế độ quyền của dự án đang ở (hỏi từng lần / tự sửa / chỉ lập kế hoạch / chạy thẳng)
-  const MODE_HELP = { hoi: 'mọi việc ghi/chạy lệnh đều hỏi anh qua Telegram', tusua: 'tự sửa tệp trong thư mục dự án; chạy lệnh vẫn hỏi', kehoach: 'chỉ được đọc/xem web, không sửa hay chạy gì — AI trình bày kế hoạch để anh duyệt', chay: 'MẶC ĐỊNH — AI làm một mạch, không hỏi xin phép (chỉ việc của chủ máy; ID thường luôn ở chế độ bảo vệ)' };
-  const shown0 = (cur, uid) => (cur === 'chay' && !isAdmin(uid) ? 'hoi' : cur);
+  const MODE_HELP = { hoi: 'mọi việc ghi/chạy lệnh đều hỏi anh qua Telegram', tusua: 'tự sửa tệp trong thư mục dự án; chạy lệnh vẫn hỏi', kehoach: 'chỉ được đọc/xem web, không sửa hay chạy gì — AI trình bày kế hoạch để anh duyệt', chay: 'MẶC ĐỊNH — AI làm một mạch, không hỏi xin phép (ID thường vẫn chạy trong hộp cô lập riêng)' };
   function modeCard(chatId, uid) {
     const p = projects.active(chatId);
     if (!p) return { text: 'Anh đang ở chế độ chung, chưa có dự án để đặt chế độ quyền. Gõ /duan để vào một dự án.' };
     const cur = p.mode || 'chay', R = p.rules || {}, nr = (R.allow || []).length + (R.ask || []).length + (R.deny || []).length;
     const names = (sess && sess.MODE_LABEL) || {};
-    const modes = (isAdmin(uid) ? ['chay'] : []).concat(['hoi', 'tusua', 'kehoach']);
-    const rows = []; for (let i = 0; i < modes.length; i += 2) rows.push(modes.slice(i, i + 2).map((m) => ({ text: (shown0(cur, uid) === m ? '✅ ' : '') + (names[m] || m), data: 'pj:mode:' + m })));
-    const shown = cur === 'chay' && !isAdmin(uid) ? 'hoi' : cur;      // ID thường không bao giờ được toàn quyền
-    return { text: '🛡 Chế độ quyền của ' + label(p) + ': ' + (names[shown] || shown) + (shown !== cur ? ' (bạn là ID thường nên luôn ở chế độ bảo vệ)' : '') + '\n' + modes.map((m) => '• ' + (names[m] || m) + ': ' + MODE_HELP[m]).join('\n') + '\n\nLuật riêng: ' + (nr ? nr + ' luật (xem /duan luat)' : 'chưa có (thêm bằng /duan luat cam|hoi|cho …)'), buttons: rows };
+    const modes = ['chay', 'hoi', 'tusua', 'kehoach'];
+    const rows = []; for (let i = 0; i < modes.length; i += 2) rows.push(modes.slice(i, i + 2).map((m) => ({ text: (cur === m ? '✅ ' : '') + (names[m] || m), data: 'pj:mode:' + m })));
+    return { text: '🛡 Chế độ quyền của ' + label(p) + ': ' + (names[cur] || cur) + '\n' + modes.map((m) => '• ' + (names[m] || m) + ': ' + MODE_HELP[m]).join('\n') + '\n\nLuật riêng: ' + (nr ? nr + ' luật (xem /duan luat)' : 'chưa có (thêm bằng /duan luat cam|hoi|cho …)'), buttons: rows };
   }
 
   function picker(chatId, uid, text) {
@@ -153,7 +151,6 @@ function createProjectFlow(o) {
     if ((m = d.match(/^pj:mode:(\w+)$/))) {
       const p = projects.active(chatId);
       if (!p || !projects.canUse(uid, p, isAdmin)) return 'Chưa ở trong dự án nào.';
-      if (m[1] === 'chay' && !isAdmin(uid)) return 'Chỉ chủ máy được bật "chạy thẳng".';
       try { projects.setMode(p.id, m[1]); } catch (e) { return e.message; }
       await reply(modeCard(chatId, uid));
       return 'Đã đổi chế độ';

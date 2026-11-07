@@ -66,19 +66,20 @@ test('chế độ tự sửa: ghi trong thư mục dự án tự cho phép; ghi 
   await E.run('Write', { file_path: path.join(os.tmpdir(), 'ngoai.txt'), content: 'x' }); assert.ok(E.asked.length >= 2 || true);
 });
 
-test('chế độ TOÀN QUYỀN (mặc định của mọi dự án): việc của chủ máy không hỏi; ID thường, webhook và sự kiện vẫn bị hỏi; vẫn không nới thứ chính sách cấm cứng', async () => {
+test('chế độ TOÀN QUYỀN (mặc định của mọi dự án): việc của chủ máy và ID thường không hỏi; webhook và sự kiện vẫn bị hỏi; vẫn không nới thứ chính sách cấm cứng', async () => {
   const E = gateEnv({ mode: 'chay' });
   assert.equal((await E.run('Bash', { command: 'ls' })).behavior, 'allow'); assert.equal(E.asked.length, 0, 'chủ máy: tự cho phép, không hỏi');
-  await E.run('Bash', { command: 'ls' }, A); assert.equal(E.asked.length, 1, 'việc của ID thường không bao giờ được toàn quyền');
-  await E.run('Bash', { command: 'ls' }, ADMIN, 'hook'); assert.equal(E.asked.length, 2, 'webhook vẫn phải hỏi');
-  await E.run('Bash', { command: 'ls' }, ADMIN, 'event'); assert.equal(E.asked.length, 3, 'sự kiện tự kích hoạt vẫn phải hỏi');
+  assert.equal((await E.run('Bash', { command: 'ls' }, A)).behavior, 'allow'); assert.equal(E.asked.length, 0, 'ID thường cũng được toàn quyền trong dự án của họ');
+  await E.run('Bash', { command: 'ls' }, ADMIN, 'hook'); assert.equal(E.asked.length, 1, 'webhook vẫn phải hỏi');
+  await E.run('Bash', { command: 'ls' }, ADMIN, 'event'); assert.equal(E.asked.length, 2, 'sự kiện tự kích hoạt vẫn phải hỏi');
+  const sa = await E.run('Bash', { command: 'sudo ls' }, A); assert.equal(sa.behavior, 'deny', 'ID thường cũng không nới được chính sách cấm cứng');
   const sudo = await E.run('Bash', { command: 'sudo rm -rf /' }); assert.equal(sudo.behavior, 'deny'); assert.match(sudo.message, /Bị chặn/);
 });
 
-test('mặc định: dự án chưa đặt chế độ = TOÀN QUYỀN cho chủ máy (và hạ về hỏi cho ID thường/webhook/sự kiện); mã nguồn index.js gắn jobFull với chế độ dự án', () => {
+test('mặc định: dự án chưa đặt chế độ = TOÀN QUYỀN cho chủ máy và ID thường (hạ về hỏi cho webhook/sự kiện); mã nguồn index.js gắn jobFull với chế độ dự án', () => {
   const perms = createProjectPerms({ projects: { get: () => null }, isAdmin });
   const p = { id: 'x', name: 'x' };
-  assert.equal(perms.effectiveMode({ chat_id: ADMIN }, p), 'chay'); assert.equal(perms.effectiveMode({ chat_id: A }, p), 'hoi');
+  assert.equal(perms.effectiveMode({ chat_id: ADMIN }, p), 'chay'); assert.equal(perms.effectiveMode({ chat_id: A }, p), 'chay');
   assert.equal(perms.effectiveMode({ chat_id: ADMIN, lane: 'hook' }, p), 'hoi'); assert.equal(perms.effectiveMode({ chat_id: ADMIN, lane: 'event' }, p), 'hoi');
   assert.equal(perms.effectiveMode({ chat_id: ADMIN }, { mode: 'kehoach' }), 'kehoach'); assert.equal(perms.effectiveMode({ chat_id: ADMIN }, { mode: 'linh-tinh' }), 'chay');
   const idx = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 'utf8');
@@ -189,10 +190,11 @@ test('/cheodo: thẻ chọn chế độ quyền theo dự án đang ở; bấm �
   const list = await E.say(ADMIN, '/duan luat'); assert.match(list, /🚫 CẤM Bash\(rm \*\)[\s\S]*❓ HỎI Write\(\*\.xlsx\)[\s\S]*✅ CHO Bash\(git status\*\)/);
   assert.deepEqual(E.P.get(p.id).rules.deny, ['Bash(rm *)']);
   assert.match(await E.say(ADMIN, '/duan luat bo Bash(rm *)'), /Đã bỏ 1 luật/); assert.deepEqual(E.P.get(p.id).rules.deny, []);
-  // ID thường (được gán dự án riêng): không thấy nút chạy thẳng, không sửa được luật
+  // ID thường (được gán dự án riêng): cũng toàn quyền mặc định, đổi được chế độ, nhưng không sửa được luật
   await E.say(A, '/moi Việc riêng'); await E.say(A, 'Việc riêng');
-  const cardA = await E.say(A, '/cheodo'); assert.ok(!cardA.buttons.flat().some((b) => b.data === 'pj:mode:chay')); assert.match(cardA.text, /hỏi từng lần \(bạn là ID thường/);
-  assert.match(await E.press(A, 'pj:mode:chay'), /Chỉ chủ máy/); assert.match(await E.say(A, '/duan luat cam Bash(ls)'), /chỉ dành cho chủ máy/);
+  const cardA = await E.say(A, '/cheodo'); assert.match(cardA.text, /toàn quyền/); assert.ok(cardA.buttons.flat().some((b) => b.data === 'pj:mode:chay'));
+  assert.equal(await E.press(A, 'pj:mode:hoi'), 'Đã đổi chế độ'); assert.equal(await E.press(A, 'pj:mode:chay'), 'Đã đổi chế độ');
+  assert.match(await E.say(A, '/duan luat cam Bash(ls)'), /chỉ dành cho chủ máy/);
   assert.match(await E.say(A, '/duan luat'), /chưa có luật nào/);
 });
 

@@ -3,7 +3,7 @@ const path = require('path');
 
 // CHẾ ĐỘ QUYỀN + LUẬT CHO/HỎI/CẤM THEO DỰ ÁN (giống permission modes của Claude Code). Chạy trong cổng duyệt (gate.js) SAU chính sách có sẵn (policy.js) và chỉ làm
 // quyết định chặt hơn hoặc nới trong phạm vi dự án — không bao giờ nới thứ chính sách đã CẤM cứng (đọc khóa/token, sudo…).
-//   chay     TOÀN QUYỀN (MẶC ĐỊNH của mọi dự án): việc của chủ máy chạy một mạch, không hỏi xin phép (xem jobFull trong index.js). Việc của ID thường và việc từ webhook/sự kiện KHÔNG bao giờ được toàn quyền (tự hạ về "hỏi")
+//   chay     TOÀN QUYỀN (MẶC ĐỊNH của mọi dự án): AI làm một mạch, không hỏi xin phép. Chủ máy: không hộp cô lập (xem jobFull trong index.js). ID thường: tự cho phép mọi việc đang phải hỏi NHƯNG vẫn trong hộp cô lập riêng và bộ công cụ của họ. Việc từ webhook/sự kiện KHÔNG bao giờ được toàn quyền (tự hạ về "hỏi")
 //   hoi      HỎI TỪNG LẦN: việc ghi/chạy lệnh hỏi chủ máy qua Telegram
 //   tusua    TỰ SỬA trong thư mục dự án: ghi/sửa tệp nằm trong thư mục dự án thì tự cho phép; chạy lệnh vẫn hỏi
 //   kehoach  CHỈ LẬP KẾ HOẠCH: chỉ được đọc/xem web; không ghi, không chạy lệnh, không thao tác trang web — AI trình bày kế hoạch để duyệt
@@ -50,7 +50,7 @@ function createProjectPerms(o) {
   // Chế độ thực sự áp dụng cho việc (sau khi kiểm điều kiện của "chạy thẳng")
   function effectiveMode(job, p) {
     const m = MODES.includes(p && p.mode) ? p.mode : DEFAULT_MODE;
-    if (m === 'chay' && (!isAdmin(String(job.chat_id)) || job.lane === 'hook' || job.lane === 'event')) return 'hoi';      // toàn quyền chỉ cho việc của chủ máy, không cho ID thường / webhook / sự kiện
+    if (m === 'chay' && (job.lane === 'hook' || job.lane === 'event')) return 'hoi';      // toàn quyền không áp cho webhook / sự kiện tự kích hoạt (nội dung từ bên ngoài). ID thường được toàn quyền NHƯNG vẫn nằm trong hộp cô lập + bộ công cụ của họ
     return m;
   }
   const inside = (file, dir) => { if (!file || !dir) return false; const r = path.relative(path.resolve(dir), path.resolve(String(file))); return !!r && !r.startsWith('..') && !path.isAbsolute(r); };

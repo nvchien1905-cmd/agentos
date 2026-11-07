@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.11",
-  "file": "agentos-update-2026.11.06.11.tar.gz",
-  "size": 407660,
-  "sha256": "81c44af7682c46c2125c4c2bbc55fabe03bf5a16582ee7382e65977bdfc776e6",
-  "date": "2026-11-06",
-  "notes": "Chế độ quyền theo dự án mặc định là TOÀN QUYỀN cho việc của chủ máy (ID thường, webhook, sự kiện vẫn bảo vệ)"
+  "version": "2026.11.06.12",
+  "file": "agentos-update-2026.11.06.12.tar.gz",
+  "size": 407592,
+  "sha256": "b5a90ab25a263f94ded5559afa5e52ad9aeb39b366a4000d406de81b70420651",
+  "date": "2026-11-07",
+  "notes": "ID thường cũng được toàn quyền trong dự án riêng của họ (vẫn trong hộp cô lập, không thấy dữ liệu ID khác)"
 }

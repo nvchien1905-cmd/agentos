@@ -343,7 +343,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'trangthai': {
           const cur = worker.currentJobId();
           const eng = worker.engineStatus().map((e) => e.label + ': ' + (e.until ? 'hết hạn mức, hồi khoảng ' + fmtTime(e.until) : 'sẵn sàng')).join('\n');
-          const box = sandboxLine && isAdmin(uid) ? '\n' + sandboxLine() : '';          // chỉ chủ máy thấy tình trạng cô lập
+          const full = !!(fullAccess && fullAccess.get());
+          const box = sandboxLine && isAdmin(uid) ? '\n' + sandboxLine() + (full ? '\n(Chỉ áp dụng cho ID thường. Chủ máy đang TOÀN QUYỀN nên AI của chủ máy chạy ngoài hộp cô lập, không bị giới hạn mạng.)' : '') : '';          // chỉ chủ máy thấy tình trạng cô lập
           const rest = 'Đang chạy: ' + (cur ? '#' + cur : 'không có') + '\nĐang chờ: ' + db.queuedCount() +
             ' việc' + (db.waitingCount() ? ' (trong đó ' + db.waitingCount() + ' chờ hạn mức hồi)' : '') + '\n' + eng + box;
           if (!fullAccess) return rest;

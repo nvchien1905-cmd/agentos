@@ -355,6 +355,9 @@ test('/trangthai: dòng "Hộp cô lập / Giới hạn mạng" chỉ hiện cho
   assert.doesNotMatch(bot.handle(m('/trangthai', 2)), /Hộp cô lập/);
   const none = createBot({ db, worker, allowed: new Set(['1']), isAdmin: () => true });
   assert.doesNotMatch(none.handle(m('/trangthai', 1)), /Hộp cô lập/, 'không có thông tin thì không in dòng thừa');
+  assert.doesNotMatch(bot.handle(m('/trangthai', 1)), /Chỉ áp dụng cho ID thường/, 'chế độ bảo vệ: không cần chú thích');
+  const fa = createBot({ db, worker, allowed: new Set(['1']), isAdmin: () => true, fullAccess: { get: () => true }, sandboxLine: () => 'Hộp cô lập: BẬT · Giới hạn mạng: BẬT' });
+  assert.match(fa.handle(m('/trangthai', 1)), /Hộp cô lập: BẬT[\s\S]*Chỉ áp dụng cho ID thường[\s\S]*TOÀN QUYỀN/, 'toàn quyền: ghi rõ chủ máy không bị cô lập');
 });
 
 test('toàn quyền: /toanquyen và /baove chỉ quản trị viên, đổi chế độ, /trangthai hiện chế độ', () => {

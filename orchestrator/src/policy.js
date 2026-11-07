@@ -168,7 +168,9 @@ const GUARD_SEND_CMD = [
   [/\b(scp|rsync|sftp|rclone|nc|ncat|netcat|socat)\b/, 'chuyển dữ liệu qua mạng'],
   [/\bgit\s+push\b|\bnpm\s+publish\b|\bgh\s+(pr|release|repo|gist)\b|\btwine\s+upload\b|\bdocker\s+push\b/, 'đẩy mã/đăng tải ra ngoài'],
 ];
-const MONEY_RE = /(vietcombank|vcbdigibank|techcombank|bidv|vietinbank|mbbank|tpbank|vpbank|sacombank|agribank|hdbank|ocb\.com|momo\.vn|zalopay|vnpay|paypal|stripe\.com|payoneer|binance|coinbase|e-?banking|internet banking|chuyển khoản|chuyen khoan|chuyển tiền|chuyen tien|thanh toán|thanh toan|wire transfer)/i;
+// Từ trong tên công cụ của kết nối dịch vụ cho thấy việc ghi/gửi/xóa (so khớp theo TỪ sau khi tách snake_case/camelCase/kebab, nên "get_dataset" không bị tính là "set")
+const CONNECTOR_SIDE_EFFECT = new Set(['send', 'post', 'reply', 'forward', 'publish', 'create', 'update', 'delete', 'remove', 'trash', 'move', 'upload', 'share', 'write', 'append', 'insert', 'modify', 'patch', 'invite', 'cancel', 'import', 'label', 'archive', 'add', 'set', 'edit', 'rename', 'duplicate', 'copy', 'draft', 'comment', 'notify', 'run', 'execute', 'trigger', 'schedule', 'book', 'pay', 'transfer', 'put', 'clear', 'empty', 'unsubscribe', 'mark']);
+const MONEY_RE =/(vietcombank|vcbdigibank|techcombank|bidv|vietinbank|mbbank|tpbank|vpbank|sacombank|agribank|hdbank|ocb\.com|momo\.vn|zalopay|vnpay|paypal|stripe\.com|payoneer|binance|coinbase|e-?banking|internet banking|chuyển khoản|chuyen khoan|chuyển tiền|chuyen tien|thanh toán|thanh toan|wire transfer)/i;
 
 function decideGuard(ctx) {
   const tool = ctx.tool, input = ctx.input || {};
@@ -183,6 +185,13 @@ function decideGuard(ctx) {
     for (const [re, why] of GUARD_DENY_CMD) if (re.test(cmd)) return deny('không được ' + why);
     for (const [re, why] of GUARD_SEND_CMD) if (re.test(cmd)) return ask('Việc nhạy cảm: ' + why + '. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
     if (MONEY_RE.test(cmd)) return ask('Việc dính tới tiền (ngân hàng/thanh toán/chuyển khoản). Chỉ cho phép nếu chính anh yêu cầu.');
+  }
+  // Kết nối dịch vụ (connectors.js, máy chủ MCP "c_<mã>"): công cụ có tác dụng GHI/GỬI/XÓA ra dịch vụ bên ngoài luôn hỏi chủ máy; công cụ chỉ đọc/tìm thì để qua
+  const conn = /^mcp__c_([a-z0-9]+)__(.+)$/.exec(tool);
+  if (conn) {
+    const words = conn[2].replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const hit = words.find((w) => CONNECTOR_SIDE_EFFECT.has(w));
+    if (hit) return ask('Kết nối "' + conn[1] + '" muốn làm việc có tác dụng ra ngoài: ' + conn[2] + '. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
   }
   if (input.url !== undefined && (cls === 'browse' || cls === 'interact' || cls === 'other') && MONEY_RE.test(String(input.url))) return ask('Trang ngân hàng/thanh toán: thao tác ở đây có thể liên quan tới tiền. Chỉ cho phép nếu chính anh yêu cầu.');
   return out;

@@ -72,6 +72,8 @@ Chi tiết, bảng tình huống và danh sách chưa kiểm: [docs/do-ben.md](.
 ## Lệnh Telegram
 `/claude` `/codex` `/web` `/lam` (tùy tools.json) `/viec` `/nhatky` `/trangthai` `/huy` `/moi` `/id` `/help`
 
+Từ 2026.11.07.1: `/hoantac` (quay về mốc khôi phục của dự án), `/dichvu` (kết nối dịch vụ: Notion, Lịch, Gmail, máy chủ MCP tự chọn — chủ máy), `/kynang` (kỹ năng của dự án), `/ai` (kèm bảng năng lực từng AI). Chi tiết ở `docs/an-toan.md`.
+
 ## Cấu trúc
 ```
 src/index.js          nối các phần, vòng nhận tin Telegram (long polling, tự thử lại)

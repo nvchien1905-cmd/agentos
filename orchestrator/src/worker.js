@@ -23,7 +23,7 @@ function fmtTime(ms) {
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
 // `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget, perChat, exclusiveProfiles }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, outboxPrepare, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget, perChat, exclusiveProfiles }) {
   lanes = lanes && lanes.length ? lanes : ['main'];
   const isMain = lanes.length === 1 && lanes[0] === 'main';
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
@@ -48,7 +48,7 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   async function sendOutputs(job) {
     if (!outbox || !sendFile) return;
     let files = [];
-    try { files = outbox(job.started_at || 0, job); } catch (e) { log('quét hộp thư ra lỗi: ' + e.message); return; }
+    try { files = outbox(job.started_at || 0, job); if (outboxPrepare && files.length) files = await outboxPrepare(files, job); } catch (e) { log('quét hộp thư ra lỗi: ' + e.message); return; }   // outboxPrepare: thêm ảnh xem trước cho báo cáo .html (render.js)
     for (const f of files) {
       try { await sendFile(job.chat_id, f); } catch (e) { log('gửi file ' + f.name + ' lỗi: ' + e.message); }
     }

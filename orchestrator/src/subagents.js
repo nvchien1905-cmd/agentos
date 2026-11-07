@@ -6,6 +6,7 @@
 //  - Chỉ việc của AI chính đang chạy (đã đăng ký) mới giao được; trợ lý phụ KHÔNG giao tiếp được nữa (một cấp, không đệ quy).
 //  - Trợ lý phụ là việc "ảo" của CÙNG cuộc trò chuyện (chat + dự án + bộ công cụ) nên chịu đúng quyền, hộp cô lập, luật CẤM và cổng duyệt như AI chính.
 //  - Giới hạn số trợ lý chạy cùng lúc cho mỗi việc và toàn máy; AI chính xong/bị hủy thì trợ lý phụ bị dừng theo.
+const { describe } = require('./progress');
 const BASE_ID = 2000000000;          // mã việc ảo của trợ lý phụ (lớn hơn mọi mã việc thật)
 const RESULT_MAX = 20000;
 
@@ -54,10 +55,10 @@ function createSubagents(o) {
       if (!eng) return { ok: false, error: 'Không có AI nào sẵn sàng (hết hạn mức hoặc không được phép).' };
       const id = ++seq;
       const sub = { id: BASE_ID + id, chat_id: job.chat_id, project: job.project || null, profile: job.profile || null, lane: 'sub', prompt: task, started_at: now(), parent: job.id };
-      const s = { id, parent: job.id, task, engine: eng, status: 'running', text: '', error: '', startedAt: now(), endedAt: 0, kill() {}, done: null };
+      const s = { id, parent: job.id, task, engine: eng, status: 'running', text: '', error: '', startedAt: now(), endedAt: 0, last: '', kill() {}, done: null };
       subs.set(id, s);
       let h;
-      try { h = engines[eng].start({ job: sub, prompt: SUB_PROMPT(task), resumeId: null, onProgress() {} }); }
+      try { h = engines[eng].start({ job: sub, prompt: SUB_PROMPT(task), resumeId: null, onProgress(ev) { const l = describe(ev); if (l) s.last = l; } }); }   // bước gần nhất hiện trong tin trạng thái của AI chính
       catch (e) { s.status = 'error'; s.error = e.message; s.endedAt = now(); return { ok: false, error: 'Không chạy được trợ lý phụ: ' + e.message }; }
       s.kill = h.kill;
       const timer = setTimeout(() => { if (s.status === 'running') { s.status = 'error'; s.error = 'quá thời gian'; s.endedAt = now(); try { h.kill(); } catch (e) { /* đã dừng */ } } }, cfg.timeoutMs);
@@ -83,6 +84,10 @@ function createSubagents(o) {
       return { ok: true, subs: mine.map(pub), pending: mine.filter((s) => s.status === 'running').length };
     },
     list(parentId) { return { ok: true, subs: [...subs.values()].filter((s) => s.parent === Number(parentId)).map(pub) }; },
+    // Tiến độ các trợ lý của một việc (cho tin trạng thái trực tiếp): đang chạy + vừa xong; kèm bước gần nhất
+    progress(parentId) {
+      return [...subs.values()].filter((s) => s.parent === Number(parentId)).map((s) => ({ id: s.id, engine: s.engine, status: s.status, task: s.task.slice(0, 80), last: s.last, secs: Math.round(((s.endedAt || now()) - s.startedAt) / 1000) }));
+    },
     cancel(parentId, id) {
       const s = subs.get(Number(id));
       if (!s || s.parent !== Number(parentId)) return { ok: false, error: 'Không có trợ lý này.' };

@@ -65,6 +65,56 @@ function createProjectFlow(o) {
     return { text: '🛡 Chế độ quyền của ' + label(p) + ': ' + (names[cur] || cur) + '\n' + modes.map((m) => '• ' + (names[m] || m) + ': ' + MODE_HELP[m]).join('\n') + '\n\nLuật riêng: ' + (nr ? nr + ' luật (xem /duan luat)' : 'chưa có (thêm bằng /duan luat cam|hoi|cho …)'), buttons: rows };
   }
 
+  // /hoantac: MỐC KHÔI PHỤC của dự án đang ở (checkpoints.js): bot tự chụp thư mục dự án trước mỗi việc; AI sửa hỏng thì xem thay đổi rồi quay về mốc
+  const ck = o.checkpoints || null;
+  const clock = (t) => { const d = new Date(t), p = (n) => String(n).padStart(2, '0'); return (new Date(now()).toDateString() === d.toDateString() ? '' : p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ') + p(d.getHours()) + ':' + p(d.getMinutes()); };
+  const names = (arr, mark) => arr.slice(0, 8).map((f) => mark + ' ' + cut(f, 60)).join('\n') + (arr.length > 8 ? '\n…và ' + (arr.length - 8) + ' tệp nữa' : '');
+  async function checkCard(chatId, uid) {
+    if (!ck) return 'Máy này chưa hỗ trợ mốc khôi phục.';
+    const p = projects.active(chatId);
+    if (!p) return 'Anh đang ở chế độ chung, chưa có thư mục dự án để quay về. Gõ /duan để vào một dự án.';
+    if (!projects.canUse(uid, p, isAdmin)) return 'Dự án này không dùng được nữa.';
+    const list = (await ck.list(p.id)).slice(0, 6);
+    if (!list.length) return 'Dự án "' + label(p) + '" chưa có mốc nào. Bot tự lưu mốc trước mỗi việc AI làm trong dự án — làm một việc rồi gõ lại /hoantac.';
+    return {
+      text: '⏪ Mốc khôi phục của ' + label(p) + ' (bot tự lưu trước mỗi việc, giữ ' + ck.limits.keep + ' mốc gần nhất):\n\n' + list.map((s, i) => (i + 1) + ') ' + clock(s.at) + ' · ' + cut(s.label || 'mốc', 50) + ' · ' + s.files + ' tệp' + (s.partial ? ' (chụp một phần: thư mục quá lớn)' : '')).join('\n') +
+        '\n\nBấm một mốc để xem AI đã đổi gì so với lúc đó, rồi quyết định quay về. Quay về cũng hoàn tác được (bot lưu lại trạng thái hiện tại thành một mốc mới).',
+      buttons: list.map((s, i) => [{ text: (i + 1) + ') ' + clock(s.at) + ' · ' + cut(s.label || 'mốc', 20), data: 'pj:ck:show:' + s.id }]),
+    };
+  }
+  async function checkCallback(d, chatId, uid, reply) {
+    if (!ck) return 'Máy này chưa hỗ trợ mốc khôi phục.';
+    const p = projects.active(chatId);
+    if (!p || !projects.canUse(uid, p, isAdmin)) return 'Chưa ở trong dự án nào.';
+    if (d === 'pj:ck:no') return 'Thôi, giữ nguyên.';
+    const m = d.match(/^pj:ck:(show|do):([\w.-]+)$/);
+    if (!m) return null;
+    const meta = (await ck.list(p.id)).find((s) => s.id === m[2]);
+    if (!meta) return 'Mốc này không còn (đã quá ' + ck.limits.keep + ' mốc gần nhất).';
+    if (m[1] === 'show') {
+      const df = await ck.diff(p.id, meta.id, p.dir);
+      if (!df.ok) return df.error;
+      const n = df.changed.length + df.added.length + df.removed.length;
+      if (!n) { await reply('🕑 Mốc ' + clock(meta.at) + ' (' + cut(meta.label || 'mốc', 60) + '): không có gì khác so với bây giờ, không cần quay về.'); return ''; }
+      const parts = [];
+      if (df.changed.length) parts.push('✏️ ' + df.changed.length + ' tệp đã bị sửa (sẽ trả về như lúc đó):\n' + names(df.changed, '•'));
+      if (df.added.length) parts.push('➕ ' + df.added.length + ' tệp mới tạo sau mốc (sẽ bị xóa):\n' + names(df.added, '•'));
+      if (df.removed.length) parts.push('➖ ' + df.removed.length + ' tệp đã bị xóa (sẽ được khôi phục):\n' + names(df.removed, '•'));
+      await reply({
+        text: '🕑 Mốc ' + clock(meta.at) + ' (' + cut(meta.label || 'mốc', 60) + '). So với bây giờ:\n\n' + parts.join('\n\n') +
+          '\n\nQuay về mốc này? (Bot lưu lại trạng thái hiện tại trước, nên hoàn tác được.)',
+        buttons: [[{ text: '⏪ Quay về mốc này', data: 'pj:ck:do:' + meta.id }, { text: 'Thôi', data: 'pj:ck:no' }]],
+      });
+      return '';
+    }
+    if (o.running && o.running(chatId)) return 'Đang có việc chạy trong cuộc này — chờ xong hoặc gõ /huy rồi hãy quay về.';
+    const r = await ck.restore(p.id, meta.id, p.dir);
+    if (!r.ok) { await reply('⚠️ Chưa quay về được: ' + r.error); return 'Không quay về được'; }
+    if (r.nothing) { await reply('Không có gì khác so với mốc này nên giữ nguyên.'); return 'Không cần'; }
+    await reply('✅ Đã quay về mốc ' + clock(meta.at) + ': khôi phục ' + r.restored + ' tệp' + (r.deleted ? ', xóa ' + r.deleted + ' tệp mới tạo' : '') + '. Muốn hủy việc quay về: /hoantac rồi chọn mốc "Trước khi khôi phục".');
+    return 'Đã quay về';
+  }
+
   function picker(chatId, uid, text) {
     db.kvSet(kHold(chatId), JSON.stringify({ text: String(text).slice(0, 6000), at: now() }));
     const { list, cur } = listButtons(chatId, uid, 6);
@@ -117,6 +167,7 @@ function createProjectFlow(o) {
     const chatId = String(cq.message && cq.message.chat ? cq.message.chat.id : cq.from.id), uid = String(cq.from.id), d = String(cq.data);
     const reply = (t) => (o.send ? o.send(chatId, t) : null);
     let m;
+    if (/^pj:ck:/.test(d)) return checkCallback(d, chatId, uid, reply);
     if ((m = d.match(/^pj:(go|info|pick):(.+)$/))) {
       const p = projects.get(m[2]);
       if (!p || !projects.canUse(uid, p, isAdmin)) return 'Dự án này không dùng được nữa.';
@@ -174,7 +225,7 @@ function createProjectFlow(o) {
     return null;
   }
 
-  return { board, modeCard, touch, gate, listButtons, askNew, createNamed, callback, isCallback, usable, idleMs, label, ago, lastRecap };
+  return { board, modeCard, checkCard, touch, gate, listButtons, askNew, createNamed, callback, isCallback, usable, idleMs, label, ago, lastRecap };
 }
 
 module.exports = { createProjectFlow, DEFAULT_IDLE_H };

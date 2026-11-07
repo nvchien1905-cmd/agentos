@@ -116,6 +116,29 @@ test('live: việc nhanh không hiện tin trạng thái; việc lâu hiện, s�
   assert.ok(meta.secs >= 5);
 });
 
+test('live: tin trạng thái có dòng tiến độ từng trợ lý phụ (đang làm bước gì, xong, lỗi); lỗi đọc tiến độ không làm hỏng tin', async () => {
+  const ft = fakeTimers(); const log = [];
+  const tg = { sendChatAction: async () => {}, sendHtml: async (c, h) => { log.push('send:' + h); return 5; }, editHtml: async (c, id, h) => { log.push('edit:' + h); }, deleteMessage: async () => {} };
+  let subs = [{ id: 1, engine: 'claude', status: 'running', task: 'Tra giá nồi', last: '🌐 Tìm web: nồi chiên', secs: 7 }, { id: 2, engine: 'codex', status: 'running', task: 'Kiểm tồn <5> mã', last: '', secs: 3 }];
+  const live = createLive({ tg, now: ft.now, setTimeout: ft.setTimeout, clearTimeout: ft.clearTimeout, setInterval: ft.setInterval, clearInterval: ft.clearInterval, subProgress: (id) => { if (id === 99) throw new Error('hỏng'); return id === 7 ? subs : []; } });
+  const job = { id: 7, chat_id: '9' };
+  live.begin(job); ft.advance(2000); ft.advance(700); await tick();
+  const first = log.find((l) => l.startsWith('send:'));
+  assert.match(first, /Trợ lý phụ:/); assert.match(first, /🤝 Trợ lý #1 \(claude\) · 7 giây: 🌐 Tìm web: nồi chiên/);
+  assert.match(first, /Trợ lý #2 \(codex\) · 3 giây: Kiểm tồn &lt;5&gt; mã/, 'chưa có bước nào thì hiện việc được giao, chữ được thoát HTML');
+  subs = [Object.assign({}, subs[0], { status: 'done', secs: 9 }), Object.assign({}, subs[1], { status: 'error', secs: 4 })];
+  live.step(job, { kind: 'tool', name: 'Read', input: { file_path: '/a.txt' } });   // (ngoài đời đồng hồ 4 giây tự vẽ lại; test dùng đồng hồ giả nên kích bằng một bước)
+  ft.advance(3000); await tick();
+  const last = log.filter((l) => l.startsWith('edit:')).pop();
+  assert.match(last, /✅ Trợ lý #1 \(claude\) · 9 giây: xong/); assert.match(last, /⚠️ Trợ lý #2 \(codex\) · 4 giây: lỗi/);
+  await live.end(job);
+  const other = { id: 99, chat_id: '9' }; live.begin(other); ft.advance(2000); ft.advance(700); await tick();
+  assert.ok(log.some((l) => l.startsWith('send:') && /Đang làm/.test(l) && !/Trợ lý phụ/.test(l)), 'subProgress ném lỗi vẫn hiện tin bình thường');
+  await live.end(other);
+  const none = createLive({ tg, now: ft.now, setTimeout: ft.setTimeout, clearTimeout: ft.clearTimeout, setInterval: ft.setInterval, clearInterval: ft.clearInterval });   // không có trợ lý phụ: không đổi gì
+  const j3 = { id: 3, chat_id: '9' }; log.length = 0; none.begin(j3); ft.advance(2000); ft.advance(700); await tick(); assert.doesNotMatch(log.join(''), /Trợ lý phụ/); await none.end(j3);
+});
+
 test('worker: bước tiến trình đi tới ui, câu trả lời đi qua answer (không còn tiêu đề "Việc #N xong")', async () => {
   const db = openDb(':memory:'); const sent = []; const events = []; const answers = [];
   const engines = { claude: { start: ({ prompt, onProgress }) => { if (onProgress) onProgress({ kind: 'tool', name: 'Bash', input: { command: 'pwd' } }); return startClaude({ bin: process.execPath, binArgs: [FAKE_CLAUDE], cwd: __dirname, prompt, timeoutMs: 8000 }); } } };

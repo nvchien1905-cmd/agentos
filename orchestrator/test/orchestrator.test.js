@@ -346,6 +346,17 @@ test('toàn quyền: config đọc FULL_ACCESS; Claude chạy với --dangerousl
   assert.doesNotMatch(prot.text, /--dangerously-skip-permissions/);     // chế độ bảo vệ không bao giờ có cờ này
 });
 
+test('/trangthai: dòng "Hộp cô lập / Giới hạn mạng" chỉ hiện cho chủ máy, ID thường không thấy', () => {
+  const db = openDb(':memory:');
+  const worker = createWorker({ db, engines: { claude: { start: () => { throw new Error('không chạy'); } } }, order: ['claude'], notify: async () => {} });
+  const m = (text, uid) => ({ from: { id: uid }, chat: { id: uid, type: 'private' }, text });
+  const bot = createBot({ db, worker, allowed: new Set(['1', '2']), isAdmin: (u) => String(u) === '1', sandboxLine: () => 'Hộp cô lập: BẬT · Giới hạn mạng: BẬT' });
+  assert.match(bot.handle(m('/trangthai', 1)), /Hộp cô lập: BẬT · Giới hạn mạng: BẬT/);
+  assert.doesNotMatch(bot.handle(m('/trangthai', 2)), /Hộp cô lập/);
+  const none = createBot({ db, worker, allowed: new Set(['1']), isAdmin: () => true });
+  assert.doesNotMatch(none.handle(m('/trangthai', 1)), /Hộp cô lập/, 'không có thông tin thì không in dòng thừa');
+});
+
 test('toàn quyền: /toanquyen và /baove chỉ quản trị viên, đổi chế độ, /trangthai hiện chế độ', () => {
   const db = openDb(':memory:');
   const worker = createWorker({ db, engines: { claude: { start: () => { throw new Error('không chạy'); } } }, order: ['claude'], notify: async () => {} });

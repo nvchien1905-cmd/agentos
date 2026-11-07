@@ -37,9 +37,13 @@ function scan(dir, since, opts) {
     .reverse(); // gửi theo thứ tự thời gian
 }
 
-// `dirFor(chatId)` (tùy chọn): mỗi ID Telegram có thư mục ra riêng; có thì chỉ quét thư mục của chat của việc (không quét tệp dùng chung ở gốc).
+// `dirFor(chatId, job)` (tùy chọn): mỗi ID Telegram (và mỗi CUỘC TRÒ CHUYỆN/dự án của ID đó) có thư mục ra riêng; có thì chỉ quét thư mục của việc (không quét tệp dùng chung ở gốc).
 function createOutbox(dir, opts, dirFor) {
-  return (since, job) => scan(dirFor && job ? dirFor(job.chat_id) : dir, since, opts);
+  return (since, job) => scan(dirFor && job ? dirFor(job.chat_id, job) : dir, since, opts);
 }
 
-module.exports = { scan, createOutbox, LIMITS };
+// Thư mục ra của MỘT CUỘC TRÒ CHUYỆN = out/<ID>/<dự án>; hai cuộc chạy song song trong cùng một ID không nhận nhầm/gửi trùng tệp của nhau. Không dự án → "_chung".
+const safeName = (s) => String(s).replace(/[^\w.-]/g, '_');
+const convDir = (outRoot, job) => path.join(outRoot, safeName(job.chat_id), safeName(job.project || '_chung'));
+
+module.exports = { scan, createOutbox, convDir, LIMITS };

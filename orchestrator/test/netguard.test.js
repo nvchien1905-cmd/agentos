@@ -31,6 +31,22 @@ test('giới hạn mạng: chỉ bọc python3 landlock-net.py khi có isolate.n
   assert.match(old.info.net, /KHÔNG bật/);
 });
 
+test('statusText: dòng "Hộp cô lập / Giới hạn mạng" cho /trangthai đúng ở từng trường hợp', () => {
+  const ok = (status) => (b, a) => ({ status: a && /landlock-net/.test(a[0] || '') ? status : 0 });
+  const mk = (o) => createSandbox(Object.assign({ mode: 'auto', paths: PATHS, platform: 'linux', statSync: stat, run: ok(0), log() {} }, o));
+  assert.equal(mk({}).statusText(), 'Hộp cô lập: BẬT · Giới hạn mạng: BẬT');
+  assert.match(mk({ run: ok(1) }).statusText(), /Hộp cô lập: BẬT · Giới hạn mạng: TẮT \(nhân chưa hỗ trợ/);
+  assert.match(mk({ netGuard: false }).statusText(), /Hộp cô lập: BẬT · Giới hạn mạng: TẮT \(NET_GUARD=0\)/);
+  assert.match(mk({ mode: 'off' }).statusText(), /Hộp cô lập: TẮT \(SANDBOX=off\) · Giới hạn mạng: TẮT \(cần bật hộp cô lập trước\)/);
+  assert.match(mk({ platform: 'win32' }).statusText(), /Hộp cô lập: TẮT \(chỉ hỗ trợ Linux\)/);
+});
+
+test('portOf: lấy cổng từ địa chỉ trình duyệt (lỗi thiếu dấu \\ ở bản .14 làm Chrome RIÊNG của ID thường bị chặn nhầm)', () => {
+  const { portOf } = require('../src/sandbox');
+  assert.equal(portOf('http://127.0.0.1:40123'), 40123); assert.equal(portOf('http://127.0.0.1:9222/'), 9222); assert.equal(portOf('127.0.0.1:35000'), 35000);
+  for (const bad of ['', null, undefined, 'http://127.0.0.1', 'http://127.0.0.1:0', 'http://127.0.0.1:70000', 'http://127.0.0.1:abc', 'http://127.0.0.1:123456']) assert.equal(portOf(bad), 0, String(bad));
+});
+
 // Thử THẬT (chỉ khi máy có bwrap + python3 + nhân Landlock ABI 4+): trong hộp cô lập, cổng không liệt kê bị chặn, cổng liệt kê vẫn nối được
 const hasLandlock = process.platform === 'linux' && spawnSync('python3', [path.join(__dirname, '..', 'src', 'landlock-net.py'), '--check']).status === 0 && spawnSync('bwrap', ['--ro-bind', '/', '/', '--', '/bin/true']).status === 0;
 test('giới hạn mạng THẬT: AI của ID thường không nối được tới cổng nội bộ lạ (VD Chrome của chủ máy) nhưng nối được cổng được phép', { skip: !hasLandlock && 'máy này không có bwrap/Landlock' }, async () => {

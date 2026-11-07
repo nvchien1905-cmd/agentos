@@ -73,10 +73,21 @@ function createSandbox({ mode, paths, bwrapBin, platform, run, statSync, log, ne
   }
   if (!info.enabled && mode !== 'off') log('SANDBOX ' + mode + ': ' + info.reason);
 
+  // Dòng cho /trangthai: hộp cô lập bật/tắt, giới hạn mạng bật/tắt (kèm lý do ngắn khi tắt)
+  function statusText() {
+    const box = info.enabled ? 'BẬT' : 'TẮT (' + (mode === 'off' ? 'SANDBOX=off' : info.reason) + ')';
+    let net;
+    if (netGuard === false) net = 'TẮT (NET_GUARD=0)';
+    else if (!info.enabled) net = 'TẮT (cần bật hộp cô lập trước)';
+    else net = netGuardOk() ? 'BẬT' : 'TẮT (nhân chưa hỗ trợ, cần Linux 6.7+)';
+    return 'Hộp cô lập: ' + box + ' · Giới hạn mạng: ' + net;
+  }
+
   return {
     info,
     enabled: info.enabled,
     netGuardOk,
+    statusText,
     // Bọc lệnh { bin, args, cwd } thành lệnh chạy trong sandbox. Chế độ bắt buộc mà không dùng được -> ném lỗi (việc báo lỗi).
     wrap(spec) {
       if (info.enabled) {
@@ -90,4 +101,7 @@ function createSandbox({ mode, paths, bwrapBin, platform, run, statSync, log, ne
   };
 }
 
-module.exports = { createSandbox, buildArgs };
+// Cổng TCP trong địa chỉ trình duyệt (vd "http://127.0.0.1:40123" → 40123); không có/không hợp lệ → 0
+const portOf = (ep) => { const m = /:(\d{1,5})(?:\/|$)/.exec(String(ep || '')); const n = m ? Number(m[1]) : 0; return n > 0 && n < 65536 ? n : 0; };
+
+module.exports = { createSandbox, buildArgs, portOf };

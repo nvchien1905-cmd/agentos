@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.06.14",
-  "file": "agentos-update-2026.11.06.14.tar.gz",
-  "size": 415540,
-  "sha256": "58b01e1064ccb0bfe8ff5f0e1a1c5b9754ada9aeca837922c19a3b621284e57e",
+  "version": "2026.11.07.1",
+  "file": "agentos-update-2026.11.07.1.tar.gz",
+  "size": 437409,
+  "sha256": "f460e83c886419ec7cca46a3017ce1d5291714f26e90083f44ac9f0dc49df8aa",
   "date": "2026-11-07",
-  "notes": "Giai đoạn 3: AI của ID thường không còn với tới Chrome đã đăng nhập của chủ máy (giới hạn mạng bằng Landlock)"
+  "notes": "Trạng thái cô lập trong /trangthai; trợ lý phụ hiện tiến độ; /hoantac (mốc khôi phục); /dichvu (kết nối dịch vụ); /kynang; tệp gửi theo cuộc trò chuyện; báo cáo HTML thành ảnh; bảng năng lực /ai; sửa lỗi cổng Chrome riêng của ID thường"
 }

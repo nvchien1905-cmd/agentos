@@ -17,7 +17,7 @@ const PARENT = { id: 7, chat_id: '111', project: 'du-an', profile: 'p1', lane: '
 function fakeEngines(names) {
   const calls = [], eng = {};
   for (const n of names) eng[n] = { start: (a) => {
-    let res; const done = new Promise((r) => { res = r; }); const c = { engine: n, job: a.job, prompt: a.prompt, killed: false, finish: (x) => res(x), kill() { c.killed = true; res({ ok: false, cancelled: true, error: 'đã hủy' }); } };
+    let res; const done = new Promise((r) => { res = r; }); const c = { engine: n, job: a.job, prompt: a.prompt, onProgress: a.onProgress, killed: false, finish: (x) => res(x), kill() { c.killed = true; res({ ok: false, cancelled: true, error: 'đã hủy' }); } };
     calls.push(c); return { kill: () => c.kill(), done };
   } };
   return { eng, calls };
@@ -36,6 +36,19 @@ test('trợ lý phụ: giao song song, chạy như việc ảo CÙNG chat/dự �
   calls[0].finish({ ok: true, text: 'Nồi A 1tr, nồi B 1,2tr' }); calls[1].finish({ ok: false, error: 'hết hạn mức' });
   const w2 = await S.wait(7, [], 5); assert.equal(w2.pending, 0);
   assert.equal(w2.subs[0].status, 'done'); assert.match(w2.subs[0].text, /Nồi A/); assert.equal(w2.subs[1].status, 'error'); assert.match(w2.subs[1].error, /hạn mức/);
+});
+
+test('trợ lý phụ: progress() cho tin trạng thái — nhận bước gần nhất từ engine, theo từng việc chính, trạng thái đổi khi xong', async () => {
+  const { eng, calls } = fakeEngines(['claude']);
+  const S = createSubagents({ engines: eng, log() {}, candidates: () => ['claude'] });
+  S.register(PARENT); S.register({ id: 8, chat_id: '222', lane: 'main' });
+  S.spawn(7, 'Tra giá nồi chiên ở 3 cửa hàng'); S.spawn(8, 'Việc của việc khác');
+  assert.equal(S.progress(7).length, 1); assert.equal(S.progress(7)[0].status, 'running'); assert.equal(S.progress(7)[0].last, '');
+  calls[0].onProgress({ kind: 'tool', name: 'WebSearch', input: { query: 'nồi chiên không dầu' } });
+  assert.equal(S.progress(7)[0].last, '🌐 Tìm web: nồi chiên không dầu'); assert.equal(S.progress(8)[0].last, '');
+  calls[0].onProgress({ kind: 'tool', name: 'TodoWrite' }); assert.equal(S.progress(7)[0].last, '🌐 Tìm web: nồi chiên không dầu', 'bước không có nhãn không xóa bước cũ');
+  calls[0].finish({ ok: true, text: 'xong' }); await S.wait(7, [], 2);
+  assert.equal(S.progress(7)[0].status, 'done'); assert.equal(S.progress(99).length, 0);
 });
 
 test('trợ lý phụ: giới hạn, không đệ quy, chỉ AI chính đang chạy; AI chính xong thì trợ lý bị dừng theo', async () => {

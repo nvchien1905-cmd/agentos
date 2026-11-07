@@ -10,14 +10,25 @@ function createLive(o) {
   const now = o.now || Date.now;
   const setT = o.setTimeout || setTimeout, clearT = o.clearTimeout || clearTimeout, setI = o.setInterval || setInterval, clearI = o.clearInterval || clearInterval;
   const throttleMs = o.throttleMs === undefined ? 2500 : o.throttleMs, showAfterMs = o.showAfterMs === undefined ? 1800 : o.showAfterMs, typingMs = o.typingMs || 4500, maxSteps = o.maxSteps || 4, tickMs = o.tickMs || 4000;
+  const subProgress = o.subProgress || (() => []);       // (mã việc) -> [{id, engine, status, task, last, secs}] các trợ lý phụ đang làm cho việc này
+  const SUB_ICON = { running: '🤝', done: '✅', error: '⚠️', cancelled: '⏹️' };
   const jobs = new Map();
 
+  function subLines(st) {
+    let list; try { list = subProgress(st.jobId) || []; } catch (e) { list = []; }
+    if (!list.length) return '';
+    const rows = list.slice(-4).map((s) => {
+      const what = s.status === 'running' ? (s.last || s.task) : ({ done: 'xong', error: 'lỗi', cancelled: 'đã dừng' }[s.status] || s.status);
+      return (SUB_ICON[s.status] || '🤝') + ' Trợ lý #' + s.id + ' (' + s.engine + ') · ' + s.secs + ' giây: ' + esc(what);
+    });
+    return '\n<i>Trợ lý phụ:</i>\n' + rows.join('\n');
+  }
   function render(st) {
     const secs = Math.max(0, Math.round((now() - st.start) / 1000));
     const hidden = st.steps.length - maxSteps;
     const shown = st.steps.slice(-maxSteps).map((x) => esc(x));
     return '⏳ <b>Đang làm…</b> <i>' + secs + ' giây' + (st.steps.length ? ' · ' + st.steps.length + ' bước' : '') + '</i>' +
-      (hidden > 0 ? '\n<i>… ' + hidden + ' bước trước</i>' : '') + (shown.length ? '\n' + shown.join('\n') : '');
+      (hidden > 0 ? '\n<i>… ' + hidden + ' bước trước</i>' : '') + (shown.length ? '\n' + shown.join('\n') : '') + subLines(st);
   }
   async function paint(st) {
     st.timer = null; st.last = now();
@@ -36,7 +47,7 @@ function createLive(o) {
 
   return {
     begin(job) {
-      const st = { chat: job.chat_id, start: now(), steps: [], msgId: null, timer: null, last: 0, ended: false, visible: false, typing: null, show: null };
+      const st = { chat: job.chat_id, jobId: job.id, start: now(), steps: [], msgId: null, timer: null, last: 0, ended: false, visible: false, typing: null, show: null };
       jobs.set(job.id, st);
       Promise.resolve(tg.sendChatAction(st.chat, 'typing')).catch(() => {});
       st.typing = setI(() => { Promise.resolve(tg.sendChatAction(st.chat, 'typing')).catch(() => {}); }, typingMs);

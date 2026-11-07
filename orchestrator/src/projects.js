@@ -183,9 +183,35 @@ function createProjects(o) {
 
   // ---------- chỉ dẫn ----------
   function instructions(id) {
-    let t = ''; try { t = fs.readFileSync(fileOf(id), 'utf8'); } catch (e) { return ''; }
+    let t = ''; try { t = fs.readFileSync(fileOf(id), 'utf8'); } catch (e) { t = ''; }
     t = t.replace(/<!--[\s\S]*?-->/g, '').replace(/^#\s+Chỉ dẫn dự án:.*$/m, '').trim();
-    return t.length > INSTR_MAX ? t.slice(0, INSTR_MAX) + '\n…(chỉ dẫn quá dài, đã cắt bớt)' : t;
+    if (t.length > INSTR_MAX) t = t.slice(0, INSTR_MAX) + '\n…(chỉ dẫn quá dài, đã cắt bớt)';
+    const x = extras(id);
+    return x ? (t ? t + '\n\n' : '') + x : t;
+  }
+  // Chỉ dẫn/kỹ năng AI tự để trong thư mục dự án (giống CLAUDE.md và skills của Claude Code): AGENTS.md hoặc CLAUDE.md hoặc GEMINI.md (lấy tệp đầu tiên có),
+  // và kỹ năng trong KY-NANG/*.md, .agentos/skills/*.md, .claude/skills/<tên>/SKILL.md (có thể có phần đầu --- name: … description: … ---). Chỉ liệt kê tên + mô tả; AI đọc tệp khi việc khớp mô tả.
+  const readHead = (file, max) => { try { return fs.readFileSync(file, 'utf8').slice(0, max); } catch (e) { return null; } };
+  function skillsOf(id) {
+    const base = dirOf(id), out = [], seen = new Set();
+    const add = (file, fallbackName) => {
+      const raw = readHead(file, 2000); if (raw === null) return;
+      const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/), pick = (k) => { const m = fm && fm[1].match(new RegExp('^' + k + '\\s*:\\s*(.+)$', 'mi')); return m ? m[1].trim().replace(/^["']|["']$/g, '') : ''; };
+      const body = raw.replace(/^---[\s\S]*?---\s*/, '').split(/\r?\n/).map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) || '';
+      const name = pick('name') || fallbackName; if (seen.has(name.toLowerCase())) return; seen.add(name.toLowerCase());
+      out.push({ name, description: (pick('description') || body).slice(0, 160), file });
+    };
+    const mdIn = (dir) => { let l = []; try { l = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; } for (const d of l) if (d.isFile() && /\.md$/i.test(d.name)) add(path.join(dir, d.name), d.name.replace(/\.md$/i, '')); };
+    mdIn(path.join(base, 'KY-NANG')); mdIn(path.join(base, '.agentos', 'skills'));
+    try { for (const d of fs.readdirSync(path.join(base, '.claude', 'skills'), { withFileTypes: true })) if (d.isDirectory()) add(path.join(base, '.claude', 'skills', d.name, 'SKILL.md'), d.name); } catch (e) { /* không có */ }
+    return out.slice(0, 20);
+  }
+  function extras(id) {
+    const base = dirOf(id), parts = [];
+    for (const n of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']) { const t = readHead(path.join(base, n), INSTR_MAX + 1); if (t && t.trim()) { parts.push('(Từ tệp ' + n + ' trong thư mục dự án)\n' + (t.length > INSTR_MAX ? t.slice(0, INSTR_MAX) + '\n…(đã cắt bớt)' : t).trim()); break; } }
+    const sk = skillsOf(id);
+    if (sk.length) parts.push('KỸ NĂNG CỦA DỰ ÁN (mỗi kỹ năng là một tệp hướng dẫn cách làm một loại việc; khi việc đang làm khớp mô tả thì ĐỌC tệp đó rồi làm theo):\n' + sk.map((k) => '- ' + k.name + ': ' + k.description + ' → ' + k.file).join('\n'));
+    return parts.join('\n\n');
   }
   function rawInstructions(id) { try { return fs.readFileSync(fileOf(id), 'utf8'); } catch (e) { return ''; } }
   function setInstructions(id, text) {
@@ -256,7 +282,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { setMode, setRules, markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { setMode, setRules, markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, skillsOf, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

@@ -6,7 +6,7 @@ const { decide, decideGuard, originOf } = require('./policy');
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
 //   POST /gate  header x-gate-token  body {jobId, tool, input}  ->  {behavior:'allow',updatedInput} | {behavior:'deny',message}
-function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms }) {
+function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub }) {
   log = log || (() => {});
   const token = crypto.randomBytes(24).toString('hex');
   const jobs = new Map();     // jobId -> { job, policy, state:{tainted, allowed:Set} }
@@ -60,9 +60,22 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     try { return { ok: true, data: await kv.api.rawGet(String(body.path || ''), body.shop ? String(body.shop) : undefined) }; } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  // Trợ lý phụ (subagents.js): chỉ AI chính của một việc đang chạy mới gọi được
+  async function subCall(body) {
+    if (!sub || !sub.enabled()) return { ok: false, error: 'Tính năng trợ lý phụ đang tắt.' };
+    const pid = Number(body.jobId);
+    try {
+      if (body.op === 'spawn') return sub.spawn(pid, body.task, body.engine ? String(body.engine) : '');
+      if (body.op === 'wait') return await sub.wait(pid, Array.isArray(body.ids) ? body.ids.map(Number) : [], body.sec);
+      if (body.op === 'list') return sub.list(pid);
+      if (body.op === 'cancel') return sub.cancel(pid, body.id);
+      return { ok: false, error: 'Lệnh không hợp lệ.' };
+    } catch (e) { log('trợ lý phụ lỗi: ' + e.message); return { ok: false, error: 'Lỗi nội bộ: ' + e.message }; }
+  }
+
   function handler(req, res) {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
-    if (req.method !== 'POST' || (req.url !== '/gate' && req.url !== '/kiotviet')) return send(404, { error: 'not found' });
+    if (req.method !== 'POST' || (req.url !== '/gate' && req.url !== '/kiotviet' && req.url !== '/sub')) return send(404, { error: 'not found' });
     const given = Buffer.from(String(req.headers['x-gate-token'] || ''));
     const want = Buffer.from(token);
     if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return send(401, { error: 'unauthorized' });
@@ -72,6 +85,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
       let body;
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { return send(400, { error: 'bad json' }); }
       if (req.url === '/kiotviet') return send(200, await kiotvietCall(body));
+      if (req.url === '/sub') return send(200, await subCall(body));
       try { send(200, await evaluate(body)); } catch (e) { log('cổng lỗi: ' + e.message); send(200, { behavior: 'deny', message: 'Lỗi nội bộ của cổng duyệt, từ chối.' }); }
     });
   }

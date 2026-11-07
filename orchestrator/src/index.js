@@ -18,6 +18,7 @@ const { loadTools } = require('./tools');
 const { createOutbox } = require('./outbox');
 const { createApprovals } = require('./approvals');
 const { createGate } = require('./gate');
+const { createSubagents } = require('./subagents');
 const { createHealth } = require('./health');
 const { createSandbox } = require('./sandbox');
 const maint = require('./maintenance');
@@ -212,7 +213,9 @@ async function main() {
   const fbAllow = { fn: null };                       // facebook.allowInteract (trợ lý trực Messenger: bấm/gõ trong trình duyệt được tự cho phép, có hạn mức), gắn sau khi facebook được tạo
   const chungtuAllow = autoAllowFor(projects);        // dự án bật chế độ chứng từ: ghi sổ không hỏi từng lần (chungtu.js)
   const kvForAi = { api: null, allowed: (job) => cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event' };   // api gắn sau khi createKiotViet
-  const gate = createGate({ db, approvals, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
+  const subRef = { v: null };           // trợ lý phụ (tạo sau khi có engines); cổng nội bộ gọi qua đây
+  const subGate = { enabled: () => !!(subRef.v && subRef.v.enabled()), spawn: (...a) => subRef.v.spawn(...a), wait: (...a) => subRef.v.wait(...a), list: (...a) => subRef.v.list(...a), cancel: (...a) => subRef.v.cancel(...a) };
+  const gate = createGate({ db, approvals, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 
@@ -260,7 +263,8 @@ async function main() {
   // Khóa API (nếu chủ máy nhập): chỉ khóa của đúng AI được đổi sang biến môi trường mà CLI của hãng đọc (apikeys.js)
   // Gemini CLI đính kèm tệp bằng @đường-dẫn: đổi các đường dẫn ảnh trong câu lệnh thành @đường-dẫn
   const atImages = (text) => imagePaths(text).reduce((t, p) => t.split(p).join('@' + p), String(text));
-  const keyEnv = (name) => apikeys.childEnv(name, cfg.apiKeys, { deepseekModel: cfg.deepseekModel });
+  let subEnvNow = {};                     // biến môi trường để AI chính gọi được `subcli.js` (đặt quanh lúc dựng tiến trình, xem callFactory)
+  const keyEnv = (name) => Object.assign(apikeys.childEnv(name, cfg.apiKeys, { deepseekModel: cfg.deepseekModel }), subEnvNow);
   // Claude Code chạy cho cả 'claude' và 'deepseekapi' (DeepSeek qua điểm cuối tương thích Anthropic): chỉ khác biến môi trường
   // Việc nền (/nen) được chạy lâu hơn việc trò chuyện thường: mặc định 4 giờ (JOB_TIMEOUT_BG_SEC), để việc dài nhiều giờ không bị dừng giữa chừng.
   const timeoutFor = (job) => (job && job.lane === 'bg' ? cfg.jobTimeoutBgMs : cfg.jobTimeoutMs);
@@ -344,17 +348,40 @@ async function main() {
   // MỌI AI nhận số liệu KiotViet lấy sẵn bằng API (kvcontext.js) khi chủ máy hỏi doanh thu/tồn kho…: không phụ thuộc AI có chạy được lệnh hay có mạng trong sandbox.
   const kvProxy = { configured: () => !!(kvForAi.api && kvForAi.api.configured()), shops: () => kvForAi.api.shops(), pick: (x) => kvForAi.api.pick(x), revenue: (...x) => kvForAi.api.revenue(...x), stock: (...x) => kvForAi.api.stock(...x) };   // api gắn sau (kvForAi.api)
   const kvctx = createKvContext({ kiotviet: kvProxy });
+  // TRỢ LÝ PHỤ: việc của chủ máy (hoặc trong dự án toàn quyền), không phải webhook/sự kiện/trợ lý phụ, được giao việc song song cho AI phụ bằng subcli.js
+  const SUB_CLI = 'node ' + path.join(__dirname, 'subcli.js');
+  const SUB_HINT = '[TRỢ LÝ PHỤ: việc LỚN gồm nhiều phần ĐỘC LẬP (tra cứu nhiều nguồn, kiểm nhiều thứ, soạn nhiều phần) thì giao cho trợ lý phụ chạy SONG SONG để nhanh hơn: ' +
+    '`' + SUB_CLI + ' spawn "việc cụ thể, đủ ngữ cảnh"` (in mã ngay, chạy nền; thêm --ai codex|gemini|claude nếu muốn chọn AI), giao hết các phần rồi `' + SUB_CLI + ' wait` (gọi lại nếu còn "CHƯA XONG") để lấy kết quả; `list`, `cancel <mã>`. ' +
+    'Trợ lý KHÔNG thấy cuộc trò chuyện này nên phải ghi rõ mục tiêu, đường dẫn tệp, ràng buộc; làm việc nhỏ hoặc phụ thuộc nhau thì tự làm, đừng giao. Bạn chịu trách nhiệm kiểm tra và tổng hợp kết quả của trợ lý rồi mới trả lời người dùng.]\n\n';
+  const subOk = (job) => !!(subRef.v && subRef.v.enabled()) && (job.lane === 'main' || job.lane === 'bg' || !job.lane) && !String(job.chat_id).startsWith('sys:') && (jobFull(job) || (job.project && projectFull(job)));
+  const callFactory = (e, a) => {
+    if (!subOk(a.job)) return factories[e](a);
+    subEnvNow = { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(a.job.id) };
+    try { return factories[e](Object.assign({}, a, { prompt: SUB_HINT + a.prompt })); } finally { subEnvNow = {}; }
+  };
   for (const e of cfg.engineOrder) engines[e] = { start: (a) => {
     if (fbRelease.fn) fbRelease.fn();
-    if (!KV_ON || !kvForAi.allowed(a.job) || !kvctx.wants(a.job.prompt)) return factories[e](a);
-    let h = null, killed = false;
-    const done = kvctx.prefix(a.job, a.job.prompt).then((pre) => {
-      if (killed) return { ok: false, cancelled: true, error: 'đã hủy' };
-      h = factories[e](Object.assign({}, a, { prompt: pre + a.prompt }));
-      return h.done;
-    });
-    return { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, done };
+    const reg = subOk(a.job); if (reg) subRef.v.register(a.job);
+    const unreg = (r) => { if (reg) subRef.v.unregister(a.job.id); return r; };
+    let out;
+    try {
+      if (!KV_ON || !kvForAi.allowed(a.job) || !kvctx.wants(a.job.prompt)) out = callFactory(e, a);
+      else {
+        let h = null, killed = false;
+        const done = kvctx.prefix(a.job, a.job.prompt).then((pre) => {
+          if (killed) return { ok: false, cancelled: true, error: 'đã hủy' };
+          h = callFactory(e, Object.assign({}, a, { prompt: pre + a.prompt }));
+          return h.done;
+        });
+        out = { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, done };
+      }
+    } catch (err) { unreg(); throw err; }
+    return { kill: out.kill, done: Promise.resolve(out.done).then(unreg, (err) => { unreg(); throw err; }) };
   } };
+  subRef.v = createSubagents({ engines, log, cfg: cfg.subagents,
+    candidates: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
+    available: (en) => (Number(db.kvGet('cool:' + en)) || 0) <= Date.now(),
+    budgetOk: (en) => !usage.overBudget(en) });
 
   // Việc "hệ thống" chạy ngầm (chat_id bắt đầu bằng "sys:", ví dụ soạn trả lời khách fanpage): không nhắn Telegram, không hiện tin trạng thái; kết quả đọc thẳng từ cơ sở dữ liệu.
   // Việc "yên lặng" (câu lệnh bắt đầu bằng [YÊN LẶNG], ví dụ kiểm tin nhắn Facebook định kỳ): không hiện "Đang làm…", và nếu AI trả "KHÔNG CÓ TIN MỚI" thì không nhắn gì.

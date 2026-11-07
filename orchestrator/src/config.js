@@ -53,6 +53,9 @@ function load(env) {
     // Độ bền (GĐ 5)
     // Chế độ TOÀN QUYỀN (máy cá nhân của chủ): AI chạy không hỏi xin phép, không sandbox, có sudo. Chủ đổi lúc đang chạy bằng /toanquyen và /baove (lưu trong cơ sở dữ liệu, ưu tiên hơn giá trị này).
     fullAccess: ['1', 'true', 'yes', 'on'].includes(String(env.FULL_ACCESS || '').toLowerCase()),
+    // Giới hạn mạng của AI ID thường trong hộp cô lập (landlock-net.py): chỉ kết nối ra cổng web + cổng nội bộ cần thiết. NET_GUARD=0 để tắt; NET_EXTRA_PORTS=22,8080 thêm cổng được phép
+    netGuard: env.NET_GUARD !== '0',
+    netExtraPorts: String(env.NET_EXTRA_PORTS || '').split(',').map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0 && n < 65536),
     sandboxMode: (env.SANDBOX || 'off').toLowerCase(),                 // off | auto | bwrap (xem sandbox.js)
     sandboxHide: list(env.SANDBOX_HIDE === undefined ? '/etc/agentos' : env.SANDBOX_HIDE),
     minFreeMb: env.MIN_FREE_MB === undefined ? 300 : Number(env.MIN_FREE_MB),

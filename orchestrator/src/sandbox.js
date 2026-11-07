@@ -42,13 +42,28 @@ function buildArgs(paths, statSync, isolate) {
   return a;
 }
 
-function createSandbox({ mode, paths, bwrapBin, platform, run, statSync, log }) {
+// Giới hạn kết nối TCP của AI ID thường bằng Landlock (landlock-net.py): isolate.netPorts = các cổng được phép kết nối tới
+const NET_SCRIPT = require('path').join(__dirname, 'landlock-net.py');
+
+function createSandbox({ mode, paths, bwrapBin, platform, run, statSync, log, netGuard, netScript }) {
   mode = mode || 'off';
   bwrapBin = bwrapBin || 'bwrap';
   platform = platform || process.platform;
   run = run || spawnSync;
   log = log || (() => {});
-  const info = { mode, enabled: false, reason: '' };
+  const info = { mode, enabled: false, reason: '', net: 'chưa kiểm' };
+  netScript = netScript || NET_SCRIPT;
+  let netOk = null;                       // kiểm lười một lần: nhân có hỗ trợ Landlock mạng không (python3 landlock-net.py --check)
+  function netGuardOk() {
+    if (netGuard === false) { info.net = 'tắt (NET_GUARD=0)'; return false; }
+    if (netOk === null) {
+      let t; try { t = run('python3', [netScript, '--check'], { timeout: 10000, encoding: 'utf8' }); } catch (e) { t = null; }
+      netOk = !!(t && t.status === 0);
+      info.net = netOk ? 'bật (chỉ cho kết nối ra cổng web + cổng nội bộ được liệt kê)' : 'KHÔNG bật (nhân/python không hỗ trợ Landlock mạng, cần Linux 6.7+)';
+      log('Giới hạn mạng cho AI của ID thường: ' + info.net);
+    }
+    return netOk;
+  }
   if (mode === 'off') { info.reason = 'tắt'; }
   else if (platform !== 'linux') { info.reason = 'chỉ hỗ trợ Linux'; }
   else {
@@ -61,10 +76,13 @@ function createSandbox({ mode, paths, bwrapBin, platform, run, statSync, log }) 
   return {
     info,
     enabled: info.enabled,
+    netGuardOk,
     // Bọc lệnh { bin, args, cwd } thành lệnh chạy trong sandbox. Chế độ bắt buộc mà không dùng được -> ném lỗi (việc báo lỗi).
     wrap(spec) {
       if (info.enabled) {
-        return { bin: bwrapBin, args: [...buildArgs(paths, statSync, spec.isolate), '--chdir', spec.cwd, '--', spec.bin, ...spec.args], cwd: spec.cwd };
+        const ports = spec.isolate && spec.isolate.netPorts, guarded = !!(ports && ports.length && netGuardOk());
+        const inner = guarded ? ['python3', netScript, '--ports', ports.join(','), '--', spec.bin, ...spec.args] : [spec.bin, ...spec.args];
+        return { bin: bwrapBin, args: [...buildArgs(paths, statSync, spec.isolate), '--chdir', spec.cwd, '--', ...inner], cwd: spec.cwd };
       }
       if (mode === 'bwrap') throw new Error('SANDBOX=bwrap nhưng không dùng được (' + info.reason + ')');
       return spec;

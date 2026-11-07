@@ -164,7 +164,7 @@ async function main() {
   // TRÌNH DUYỆT DÙNG CHUNG: bộ điều phối giữ MỘT Chrome (của chủ máy; mỗi ID thường một Chrome riêng) — mọi AI nối vào đó qua browser-mcp.js và chỉ điều khiển TAB của chính nó
   // (nhiều cuộc trò chuyện chạy song song không đè lên nhau). Địa chỉ Chrome của việc được chuẩn bị ở preflight (browserFor) rồi thế vào chỗ __CDP__ của cấu hình công cụ.
   const cdpOfJob = new Map();
-  const perChatServers = (servers, job) => swapOut(swapOut(servers || {}, path.join(outDir, 'browser'), path.join(chatOutDir(job.chat_id), 'browser')), '__CDP__', cdpOfJob.get(job.id) || '');
+  const perChatServers = (servers, job) => swapOut(swapOut(servers || {}, path.join(outDir, 'browser'), path.join(chatOutDir(job.chat_id), 'browser')), '__CDP__', cdpOfJob.get(job.id) || cdpOfJob.get(job.parent) || '');
   const jobDir = path.join(dataDir, 'jobs');
   fs.rmSync(jobDir, { recursive: true, force: true });       // file cấu hình tạm của lần chạy trước (có token cổng)
   fs.mkdirSync(jobDir, { recursive: true, mode: 0o700 });
@@ -175,7 +175,7 @@ async function main() {
   const browserProfilesDir = path.join(dataDir, 'browser-profiles');
   const browserHost = createBrowserHost({ chromeBin: cfg.chromePath || '/usr/bin/google-chrome-stable', display: cfg.display, stateFile: path.join(dataDir, 'browser-hosts.json'), log });
   const sandbox = createSandbox({
-    mode: cfg.sandboxMode, log,
+    mode: cfg.sandboxMode, log, netGuard: cfg.netGuard,
     paths: { home: process.env.HOME || require('os').homedir(), workdir: cfg.workdir, dataDir, jobDir, rw: [cfg.oneDriveDir], hide: [...cfg.sandboxHide, path.join(__dirname, '..', '.env')] },
   });
   log('Cô lập tiến trình AI: ' + cfg.sandboxMode + ' · ' + (sandbox.enabled ? 'ĐANG BẬT' : 'KHÔNG bật (' + sandbox.info.reason + ')'));
@@ -204,7 +204,10 @@ async function main() {
     const mine = [chatOutDir(uid), path.join(inboxRoot, safeChat(uid))];
     for (const d of mine) { try { fs.mkdirSync(d, { recursive: true }); } catch (e) { /* bỏ qua */ } }
     for (const p of projects.list({ all: true })) if (projects.canUse(uid, p, isAdmin)) mine.push(p.dir);
-    return { hide: [path.join(cfg.oneDriveDir, 'AgentOS'), outDir, inboxRoot, path.join(dataDir, '..', 'vault.key')], bind: mine };
+    // Chỉ cho AI của ID thường kết nối ra web (80/443/53), cổng duyệt nội bộ và Chrome RIÊNG của đúng ID đó: không với tới Chrome đã đăng nhập của chủ máy hay dịch vụ nội bộ khác (xem landlock-net.py)
+    const ep = cdpOfJob.get(job.id) || cdpOfJob.get(job.parent) || '', m = String(ep).match(/:(d+)/);
+    const netPorts = [53, 80, 443, gatePort].concat(m ? [Number(m[1])] : [], cfg.netExtraPorts);
+    return { hide: [path.join(cfg.oneDriveDir, 'AgentOS'), outDir, inboxRoot, path.join(dataDir, '..', 'vault.key')], bind: mine, netPorts };
   };
   const wrapFor = (job) => (spec) => sandbox.wrap(Object.assign({}, spec, { isolate: isolationFor(job) }));
   const usage = createUsage({ db, projects });

@@ -66,7 +66,11 @@ const { createTailscale } = require('./tailscale');
 const { createPrinting } = require('./printing');
 const { createLive } = require('./live');
 const { createCheckpoints } = require('./checkpoints');
+const { createJournal } = require('./journal');
+const { createTrace } = require('./trace');
 const { createConnectors, mcpNamesFor } = require('./connectors');
+const { createPlugins } = require('./plugins');
+const { createPluginsUi } = require('./pluginsUi');
 const { createConnectorsUi } = require('./connectorsUi');
 const { createSkillsUi } = require('./skillsUi');
 const { createRemote } = require('./remote');
@@ -200,7 +204,8 @@ async function main() {
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
   });
   // DỰ ÁN: mỗi dự án có thư mục, chỉ dẫn, sổ tay, phiên riêng (projects.js). Dữ liệu do AgentOS giữ nên mọi AI dùng chung được.
-  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log });
+  const pluginRef = { v: null };             // chợ kỹ năng/plugin (plugins.js), tạo sau khi có kết nối dịch vụ
+  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log, extraSkillDirs: () => (pluginRef.v ? pluginRef.v.skillDirs() : []) });
   // CÁCH LY DỮ LIỆU THEO ID: AI của ID thường (không phải chủ máy) chạy trong hộp cô lập mà thư mục AgentOS của OneDrive (dự án, sổ tay chung, danh sách dự án), thư mục tệp gửi/nhận của mọi chat
   // đều bị che; chỉ mở lại đúng dự án của mình + thư mục tệp riêng của chat đó. Chủ máy không bị che. Cần SANDBOX=auto|bwrap (xem sandbox.js); tắt thì chỉ còn cách ly theo thư mục.
   const safeChat = (c) => String(c).replace(/[^\w.-]/g, '_');
@@ -225,7 +230,10 @@ async function main() {
   const kvForAi = { api: null, allowed: (job) => cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event' };   // api gắn sau khi createKiotViet
   const subRef = { v: null };           // trợ lý phụ (tạo sau khi có engines); cổng nội bộ gọi qua đây
   const subGate = { enabled: () => !!(subRef.v && subRef.v.enabled()), spawn: (...a) => subRef.v.spawn(...a), wait: (...a) => subRef.v.wait(...a), list: (...a) => subRef.v.list(...a), cancel: (...a) => subRef.v.cancel(...a) };
-  const gate = createGate({ db, approvals, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
+  // Nhật ký "trước khi sửa" toàn máy (journal.js): cổng duyệt lưu bản gốc của tệp sắp bị sửa/xóa (ở bất kỳ đâu, tệp lớn cũng được) trước khi công cụ chạy. Tắt cùng CHECKPOINTS=0.
+  const journal = cfg.checkpoints.enabled ? createJournal({ dir: path.join(dataDir, 'journal'), log, cwdOf, exclude: [dataDir] }) : null;
+  if (journal) { journal.gc().catch(() => {}); setInterval(() => { journal.gc().catch(() => {}); }, 6 * 3600 * 1000).unref(); }
+  const gate = createGate({ db, approvals, journal, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 
@@ -287,13 +295,15 @@ async function main() {
       if (jobFull(job)) {
         const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
         fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: perChatServers(tools.mcpServersFor(allMcp()), job) }), { mode: 0o600 });
-        let gf = null;
+        let gf = null, jf = null;
         if (guardOn()) { try { gate.begin(job, { policy: {} }, { guard: true }); gf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được hàng rào cho việc #' + job.id + ': ' + e.message); } }
+        else if (journal) { try { gate.begin(job, { policy: {} }, { guard: true, journalOnly: true }); jf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được nhật ký trước-khi-sửa cho việc #' + job.id + ': ' + e.message); } }      // hàng rào tắt: chỉ ghi nhật ký, không hỏi/chặn
+        const hf = gf || jf;
         const h = startClaude({
           bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cwdOf(job), prompt, resumeId,
-          skipPermissions: true, mcpConfig, settings: gf ? gf.settings : undefined, appendSystemPrompt: fullHint(!!gf), timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: Object.assign({}, kenv, gf ? gf.env : {}), onProgress,   // không wrap: không sandbox
+          skipPermissions: true, mcpConfig, settings: hf ? hf.settings : undefined, appendSystemPrompt: fullHint(!!gf), timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: Object.assign({}, kenv, hf ? hf.env : {}), onProgress,   // không wrap: không sandbox
         });
-        const cleanup = () => { fs.rmSync(mcpConfig, { force: true }); if (gf) { gate.end(job.id); fs.rmSync(gf.settings, { force: true }); } };
+        const cleanup = () => { fs.rmSync(mcpConfig, { force: true }); if (hf) { gate.end(job.id); fs.rmSync(hf.settings, { force: true }); } };
         return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
       }
       const p = tools.profile(job.profile);
@@ -380,7 +390,7 @@ async function main() {
     subEnvNow = { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(a.job.id) };
     try { return factories[e](Object.assign({}, a, { prompt: oh + SUB_HINT + a.prompt })); } finally { subEnvNow = {}; }
   };
-  // MỐC KHÔI PHỤC: trước khi AI bắt đầu một việc trong dự án, chụp thư mục dự án (một lần cho mỗi việc, kể cả khi đổi AI giữa chừng); quá 20 giây thì bỏ qua, không để việc bị kẹt
+  // MỐC KHÔI PHỤC: trước khi AI bắt đầu một việc trong dự án, chụp thư mục dự án (một lần cho mỗi việc, kể cả khi đổi AI giữa chừng); quá 3 phút thì bỏ qua, không để việc bị kẹt
   const checkpoints = createCheckpoints({ dir: path.join(dataDir, 'checkpoints'), log, limits: { keep: cfg.checkpoints.keep } });
   const ckDone = new Map();
   const ckApplies = (job) => cfg.checkpoints.enabled && !!job.project && job.lane !== 'sub' && !String(job.chat_id).startsWith('sys:') && !isQuietJob(job) && cwdOf(job) !== cfg.workdir;
@@ -388,7 +398,7 @@ async function main() {
     let p = ckDone.get(job.id);
     if (!p) {
       const label = String(job.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 70);
-      p = Promise.race([checkpoints.snapshot(job.project, cwdOf(job), { label: 'trước việc #' + job.id + (label ? ': ' + label : ''), jobId: job.id }), new Promise((r) => { const t = setTimeout(() => r({ ok: false, error: 'quá 20 giây' }), 20000); if (t.unref) t.unref(); })]).catch(() => ({ ok: false }));
+      p = Promise.race([checkpoints.snapshot(job.project, cwdOf(job), { label: 'trước việc #' + job.id + (label ? ': ' + label : ''), jobId: job.id }), new Promise((r) => { const t = setTimeout(() => r({ ok: false, error: 'quá 3 phút' }), 180000); if (t.unref) t.unref(); })]).catch(() => ({ ok: false }));
       ckDone.set(job.id, p);
       if (ckDone.size > 200) ckDone.delete(ckDone.keys().next().value);
     }
@@ -430,7 +440,15 @@ async function main() {
   const fbHook = { onResult: null };                    // facebook.js đăng ký sau khi được tạo
   // Tin trạng thái trực tiếp + câu trả lời định dạng đẹp (Markdown -> Telegram) kèm chân trang "— N giây · N bước · AI"
   const live0 = createLive({ tg, log, subProgress: (id) => (subRef.v ? subRef.v.progress(id) : []) });
-  const live = { begin: (job) => (isQuietJob(job) ? undefined : live0.begin(job)), step: (job, ev) => (isQuietJob(job) ? undefined : live0.step(job, ev)), end: async (job) => (isQuietJob(job) ? { secs: 0, steps: 0 } : live0.end(job)) };
+  // Dấu vết từng bước cho màn hình "Việc AI" trong Cài đặt (trace.js); việc yên lặng/hệ thống không ghi
+  const trace = createTrace({ dir: path.join(dataDir, 'trace'), log });
+  trace.gc().catch(() => {}); setInterval(() => { trace.gc().catch(() => {}); }, 6 * 3600 * 1000).unref();
+  const traced = (job) => !isQuietJob(job) && !String(job.chat_id).startsWith('sys:');
+  const live = {
+    begin: (job) => { if (traced(job)) trace.begin(job); return isQuietJob(job) ? undefined : live0.begin(job); },
+    step: (job, ev) => { if (traced(job)) trace.step(job, ev); return isQuietJob(job) ? undefined : live0.step(job, ev); },
+    end: async (job) => { if (isQuietJob(job)) return { secs: 0, steps: 0 }; const r = await live0.end(job); if (traced(job)) trace.end(job, { ok: true, secs: r.secs, steps: r.steps }); return r; },
+  };
   // Ghi rõ cuộc trò chuyện (dự án) nào đang trả lời khi có nhiều cuộc chạy song song hoặc anh đã chuyển sang cuộc khác
   const projTag = (job) => { try { const p = job.project ? projects.get(job.project) : null; if (!p || p.home) return ''; const act = projects.active(job.chat_id); return (!act || act.id !== p.id || db.runningInChat(job.chat_id) > 0) ? '📁 ' + p.name + '\n' : ''; } catch (e) { return ''; } };
   const answer = async (job, text, meta) => {
@@ -451,7 +469,14 @@ async function main() {
     } catch (e) { return reject(e); }
     h.done.then((r) => (r && r.ok && r.text ? resolve(r.text) : reject(new Error((r && r.error) || 'Codex không trả kết quả'))), reject);
   });
-  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: codexSummarize, log });
+  // Nén ngữ cảnh bằng Claude (mô hình nhẹ "haiku", tài khoản Claude đã đăng nhập): lần chạy mới, KHÔNG phiên cũ, KHÔNG công cụ/MCP, chạy trong hộp cô lập, 2 phút.
+  const claudeSummarize = (system, user) => new Promise((resolve, reject) => {
+    let h; try {
+      h = startClaude({ bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, cwd: cfg.workdir, prompt: system + '\n\n' + user, model: cfg.summaryModel || 'haiku', noTools: true, timeoutMs: 120000, wrap: sandbox.wrap, env: keyEnv('claude') });
+    } catch (e) { return reject(e); }
+    h.done.then((r) => (r && r.ok && r.text ? resolve(r.text) : reject(new Error((r && r.error) || 'Claude không trả kết quả'))), reject);
+  });
+  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: codexSummarize, claude: claudeSummarize, log });
   const memory = createMemory({ db, projects, isAdmin, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
   log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek, Codex tắt)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
   setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
@@ -655,14 +680,21 @@ async function main() {
     else if (reply) await tg.sendMessage(chat, reply);
   };
   // KẾT NỐI DỊCH VỤ (/dichvu): máy chủ MCP thêm từ Telegram; chỉ gắn vào việc chủ máy ở chế độ toàn quyền (allMcp đọc tools.servers mỗi lần chạy)
-  const connectors = createConnectors({ file: path.join(dataDir, 'connectors.json'), log });
-  const connNames = connectors.apply(tools);
+  const connectors = createConnectors({ file: path.join(dataDir, 'connectors.json'), log, extraCatalog: () => (pluginRef.v ? pluginRef.v.extraCatalog() : []) });
+  // CHỢ KỸ NĂNG / PLUGIN: danh mục nằm trong bản cài (tự cập nhật theo bản cập nhật có chữ ký); sync() cài plugin mặc định mới + nâng phiên bản plugin đã cài
+  const plugins = createPlugins({ dir: process.env.PLUGINS_DIR || path.join(__dirname, '..', '..', 'wizard', 'plugins'), stateFile: path.join(dataDir, 'plugins.json'), connectors, log });
+  pluginRef.v = plugins;
+  const syncPlugins = () => { const r = plugins.sync(); const n = connectors.apply(tools); if (r.installed.length || r.updated.length) { const lines = r.installed.map((x) => '➕ ' + x.name + ' v' + x.version + ' (tự cài)').concat(r.updated.map((x) => '⬆️ ' + x.name + ' ' + x.from + ' → ' + x.to)); for (const a of cfg.adminUserIds) tg.sendMessage(a, '🧩 Chợ kỹ năng vừa cập nhật theo bản AgentOS mới:\n' + lines.join('\n') + '\nXem: /cho').catch(() => {}); } return n; };
+  const connNames = syncPlugins();
   if (connNames.length) log('Kết nối dịch vụ đang bật: ' + connNames.join(', '));
+  // Trang Cài đặt (tiến trình khác) sửa kết nối/plugin → nạp lại ngay
+  for (const f of ['connectors.json', 'plugins.json']) fs.watchFile(path.join(dataDir, f), { interval: 3000, persistent: false }, () => { try { connectors.reload(); plugins.reload(); const n = connectors.apply(tools); log('Kết nối dịch vụ đang bật (cập nhật từ Cài đặt): ' + (n.join(', ') || '(không)')); } catch (e) { log('nạp lại kết nối/plugin lỗi: ' + e.message); } });
   const connectorsUi = createConnectorsUi({ connectors, isAdmin, send: botSend, deleteMessage: (c, m) => tg.deleteMessage(c, m), onChange: () => { const n = connectors.apply(tools); log('Kết nối dịch vụ đang bật: ' + (n.join(', ') || '(không)')); } });
+  const pluginsUi = createPluginsUi({ plugins, connectors, isAdmin, send: botSend, onChange: () => { const n = connectors.apply(tools); log('Kết nối dịch vụ đang bật: ' + (n.join(', ') || '(không)')); } });
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
     fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage: (c, m) => tg.deleteMessage(c, m),
-    sandboxLine: () => sandbox.statusText(), checkpoints: cfg.checkpoints.enabled ? checkpoints : null,
+    sandboxLine: () => sandbox.statusText(), checkpoints: cfg.checkpoints.enabled ? checkpoints : null, journal,
     diagnose: async () => {
       const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');
       const report = selftest.format(res, '🩺 Tự chẩn đoán đầy đủ'), nbad = res.filter((r) => r.status === 'fail').length;
@@ -672,7 +704,7 @@ async function main() {
     },
     pairing: createPairing({ db, roles, adminIds: [...cfg.adminUserIds], log, send: (chat, r) => (r && typeof r === 'object' && r.buttons ? tg.sendButtons(chat, r.text, r.buttons) : tg.sendMessage(chat, r && typeof r === 'object' ? r.text : r)) }),
     voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
-    send: botSend, connectorsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend }),
+    send: botSend, connectorsUi, pluginsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend }),
     quick: createQuick({ vault, access, isAdmin, browserHost, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: {

@@ -14,7 +14,7 @@ const { classifyFailure } = require('../src/limits');
 test('apikeys: đọc AGENTOS_KEY_* từ cấu hình, bỏ giá trị trống', () => {
   const k = apikeys.keysFrom({ AGENTOS_KEY_CLAUDE: ' sk-ant-xxx ', AGENTOS_KEY_CODEX: '', AGENTOS_KEY_DEEPSEEK: 'sk-ds', OTHER: '1' });
   assert.deepEqual(k, { claude: 'sk-ant-xxx', deepseekapi: 'sk-ds' });
-  const cfg = config.load({ TELEGRAM_TOKEN: '1:x', ALLOWED_USER_IDS: '5', ENGINE_ORDER: 'claude,deepseekapi', AGENTOS_KEY_DEEPSEEK: 'sk-ds' });
+  const cfg = config.load({ TELEGRAM_TOKEN: '1:x', ALLOWED_USER_IDS: '5', ENGINE_ORDER: 'claude,deepseekapi', CLAUDE_ONLY: '0', AGENTOS_KEY_DEEPSEEK: 'sk-ds' });
   assert.deepEqual(cfg.apiKeys, { deepseekapi: 'sk-ds' }); assert.equal(cfg.deepseekModel, 'deepseek-flash');
   assert.deepEqual(config.validate(cfg), []);
 });

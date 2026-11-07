@@ -36,6 +36,9 @@ const { createUpdater } = require('../../update/updater');
 const { createSummarizer } = require('../../orchestrator/src/summarizer');
 const { createBook } = require('../../orchestrator/src/book');
 const { createSessions } = require('../../orchestrator/src/sessions');
+const { createWatch } = require('../lib/watch');
+const { createConnectors } = require('../../orchestrator/src/connectors');
+const { createPlugins } = require('../../orchestrator/src/plugins');
 
 const PORT = 8089;
 const SERVICES = { orchestrator: 'agentos-orchestrator', deskd: 'agentos-deskd', onedrive: 'onedrive-agentos', tailscale: 'tailscaled', cups: 'cups', network: 'NetworkManager', capnhat: 'agentos-update.path', saoluu: 'agentos-sao-luu.timer' };
@@ -119,7 +122,19 @@ function createSettings(o) {
     try { return fn({ raw, kvGet: (k) => { const r = raw.prepare('SELECT v FROM kv WHERE k = ?').get(k); return r ? r.v : null; } }); } finally { raw.close(); }
   };
   let projectsInst = null;
-  const projectsLib = () => projectsInst || (projectsInst = o.projects || createProjects({ baseDir: o.onedriveDir }));
+  const projectsLib = () => projectsInst || (projectsInst = o.projects || createProjects({ baseDir: o.onedriveDir, extraSkillDirs: () => plugLib().skillDirs() }));
+  // Kết nối dịch vụ + chợ kỹ năng (cùng tệp dữ liệu với bot; bot tự nạp lại khi tệp đổi). "Thử" chạy máy chủ MCP bằng tài khoản agentos, không bao giờ bằng root.
+  const connFile = o.connectorsFile || '/var/lib/agentos/data/connectors.json', plugFile = o.pluginsFile || '/var/lib/agentos/data/plugins.json';
+  const asAgentosSpawn = (cmd, args, opts) => { const env = Object.assign({}, (opts && opts.env) || {}, { HOME: '/var/lib/agentos' }); return cp.spawn('runuser', ['-u', 'agentos', '--', 'env'].concat(Object.keys(env).map((k) => k + '=' + env[k]), [cmd], args || []), { stdio: (opts && opts.stdio) || ['pipe', 'pipe', 'pipe'] }); };
+  let connInst = null, plugInst = null;
+  const connLib = () => connInst || (connInst = createConnectors({ file: connFile, extraCatalog: () => (plugInst ? plugInst.extraCatalog() : []), spawn: o.connSpawn || asAgentosSpawn }));
+  const plugLib = () => { if (!plugInst) { const c = connLib(); plugInst = createPlugins({ dir: o.pluginsDir || path.join(__dirname, '..', 'plugins'), stateFile: plugFile, connectors: c }); } return plugInst; };
+  const fixConnOwner = () => { for (const f of [connFile, plugFile]) { try { chownAgentos(f); } catch (e) { /* máy thử */ } } };
+  const connOut = () => ({ connectors: connLib().list(), catalog: connLib().catalog(), plugins: plugLib().list() });
+  const SKILL_DIR = 'KY-NANG';
+  const skillSlug = (name) => String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  let watchInst = null;
+  const watchLib = () => watchInst || (watchInst = createWatch({ traceDir: o.traceDir || '/var/lib/agentos/data/trace', journalDir: o.journalDir || '/var/lib/agentos/data/journal', projects: projectsLib() }));
   // Trang Cài đặt chạy bằng root: dự án vừa tạo/sửa phải thuộc người dùng agentos để bộ điều phối ghi được
   const fixProjectOwner = (p) => { try { chownTree(projectsLib().root()); } catch (e) { /* bỏ qua */ } };
   const spawn = o.spawn || cp.spawn;
@@ -339,12 +354,14 @@ function createSettings(o) {
       const keys = apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, envVal(text, v)])));
       const order = envVal(text, 'ENGINE_ORDER').split(',').map((s) => s.trim()).filter(Boolean);
       const out = [];
-      for (const e of apikeys.ENGINES) {
+      // Mặc định máy CHỈ DÙNG CLAUDE (orchestrator/src/config.js CLAUDE_ONLY): ẩn Codex/Gemini/DeepSeek cho đỡ rối
+      const claudeOnly = !/^(0|false|no|off|tat)$/i.test(String(envVal(text, 'CLAUDE_ONLY') || 'true').trim());
+      for (const e of (claudeOnly ? apikeys.ENGINES.filter((x) => x === 'claude') : apikeys.ENGINES)) {
         const ver = await engines.installed(run, e).catch(() => null);
         const lg = engineLogin(e, text);
         out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, installed: ver, enabled: order.includes(e), login: lg, using: keys[e] ? 'key' : (lg.loggedIn ? 'account' : 'none') });
       }
-      return { engines: out, order, configured: readEnv() != null };
+      return { engines: out, order: claudeOnly ? ['claude'] : order, claudeOnly, configured: readEnv() != null };
     },
     async 'POST /api/ai/key'(b) {
       const eng = String(b.engine), key = String(b.key || '').trim();
@@ -668,6 +685,51 @@ function createSettings(o) {
       return { ok: true };
     },
     async 'GET /api/audit/job'(b, ctx) { return withRoDb((db) => { const d = createAuditLog({ db, projects: projectsLib() }).detail(ctx.query.get('id')); if (!d) throw new Error('Không có việc này.'); return d; }); },
+    // ---- Kết nối dịch vụ (MCP), chợ kỹ năng/plugin, kỹ năng dự án — cùng tính năng với /dichvu, /cho, /kynang trên Telegram
+    async 'GET /api/conn'() { plugLib(); return connOut(); },
+    async 'POST /api/conn/add'(b) { plugLib(); const r = connLib().addFromCatalog(String(b.key || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/conn/add-custom'(b) { plugLib(); const args = Array.isArray(b.args) ? b.args : String(b.args || '').split(/\s+/).filter(Boolean); const r = connLib().addCustom({ label: b.label, command: String(b.command || '').trim(), args }); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/conn/secret'(b) { plugLib(); const r = connLib().setSecret(String(b.id || ''), String(b.name || ''), b.value); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/conn/enable'(b) { plugLib(); const r = connLib().setEnabled(String(b.id || ''), !!b.on); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/conn/remove'(b) { plugLib(); if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = connLib().remove(String(b.id || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/conn/test'(b) { plugLib(); const r = await connLib().test(String(b.id || '')); fixConnOwner(); return Object.assign({ result: r }, connOut()); },
+    async 'POST /api/plugins/install'(b) { const r = plugLib().install(String(b.id || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/plugins/uninstall'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = plugLib().uninstall(String(b.id || '')); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'POST /api/plugins/enable'(b) { const r = plugLib().setEnabled(String(b.id || ''), !!b.on); fixConnOwner(); if (!r.ok) throw new Error(r.error); return connOut(); },
+    async 'GET /api/plugins/skill'(b, ctx) { const t = plugLib().skillText(ctx.query.get('id'), ctx.query.get('slug')); if (t == null) throw new Error('Không có kỹ năng này.'); return { text: t }; },
+    async 'GET /api/skills'(b, ctx) {
+      const P = projectsLib(), id = String(ctx.query.get('project') || ''), p = P.get(id); if (!p) throw new Error('Không có dự án này.');
+      plugLib();
+      const mine = path.join(p.dir, SKILL_DIR) + path.sep;
+      return { project: { id: p.id, name: p.name }, skills: P.skillsOf(id).map((s) => ({ name: s.name, description: s.description, slug: path.basename(s.file).replace(/\.md$/i, ''), kind: s.file.startsWith(mine) ? 'mine' : 'other' })) };
+    },
+    async 'GET /api/skills/text'(b, ctx) {
+      const P = projectsLib(), id = String(ctx.query.get('project') || ''), p = P.get(id); if (!p) throw new Error('Không có dự án này.');
+      plugLib(); const s = P.skillsOf(id).find((x) => path.basename(x.file).replace(/\.md$/i, '') === String(ctx.query.get('slug') || '')); if (!s) throw new Error('Không có kỹ năng này.');
+      return { text: fs.readFileSync(s.file, 'utf8').slice(0, 30000) };
+    },
+    async 'POST /api/skills/save'(b) {
+      const P = projectsLib(), p = P.get(String(b.project || '')); if (!p) throw new Error('Không có dự án này.');
+      const name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 60), description = String(b.description || '').replace(/\s+/g, ' ').trim().slice(0, 160), body = String(b.body || '').trim();
+      const slug = skillSlug(b.slug || name); if (!name || !slug) throw new Error('Tên kỹ năng cần có chữ hoặc số.'); if (!description) throw new Error('Cần mô tả ngắn: khi nào AI nên dùng kỹ năng này.'); if (!body) throw new Error('Cần nội dung (các bước làm).'); if (body.length > 20000) throw new Error('Nội dung quá dài (tối đa 20.000 ký tự).');
+      const dir = path.join(p.dir, SKILL_DIR), f = path.join(dir, slug + '.md');
+      if (!b.overwrite && fs.existsSync(f)) throw new Error('Đã có kỹ năng "' + slug + '". Sửa kỹ năng đó hoặc đặt tên khác.');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(f, '---\nname: ' + name + '\ndescription: ' + description + '\n---\n' + body + '\n');
+      fixProjectOwner(p); return { ok: true, slug };
+    },
+    async 'POST /api/skills/delete'(b) {
+      if (b.confirm !== true) throw new Error('Cần xác nhận');
+      const P = projectsLib(), p = P.get(String(b.project || '')); if (!p) throw new Error('Không có dự án này.');
+      const slug = skillSlug(b.slug), f = path.join(p.dir, SKILL_DIR, slug + '.md');
+      if (!slug || !fs.existsSync(f)) throw new Error('Không có kỹ năng này trong KY-NANG (kỹ năng ở nơi khác chỉ xem được).');
+      fs.rmSync(f, { force: true }); return { ok: true };
+    },
+    // ---- Màn hình "Việc AI" (xem như màn hình Claude Code): từng bước đang chạy, tệp đã đổi + khác biệt từng dòng, duyệt tệp dự án (chỉ đọc) — wizard/lib/watch.js
+    async 'GET /api/watch/trace'(b, ctx) { return watchLib().trace(ctx.query.get('id'), ctx.query.get('from')); },
+    async 'GET /api/watch/changes'(b, ctx) { return watchLib().changes(ctx.query.get('id')); },
+    async 'GET /api/watch/tree'(b, ctx) { return watchLib().tree(ctx.query.get('project'), ctx.query.get('path') || ''); },
+    async 'GET /api/watch/file'(b, ctx) { return watchLib().file(ctx.query.get('project'), ctx.query.get('path') || ''); },
     async 'GET /api/audit/csv'(b, ctx) { return withRoDb((db) => ({ csv: createAuditLog({ db, projects: projectsLib() }).csv(Number(ctx.query.get('days')) || 30) })); },
     // ---- Thống kê sử dụng AI (đọc cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC; đặt trần tháng bằng /chiphi trên Telegram)
     async 'GET /api/usage'(b, ctx) {

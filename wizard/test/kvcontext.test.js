@@ -50,7 +50,8 @@ test('prefix: nhớ theo việc (đổi AI không gọi lại KiotViet)', async 
 test('index.js: mọi AI đều đi qua lớp lấy sẵn dữ liệu KiotViet, chỉ cho chủ máy', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'orchestrator', 'src', 'index.js'), 'utf8');
   assert.match(src, /kvctx\.prefix\(a\.job, a\.job\.prompt\)/); assert.match(src, /kvForAi\.allowed\(a\.job\)/);
-  assert.match(src, /for \(const e of cfg\.engineOrder\) engines\[e\] = \{ start: \(a\) => \{\s*if \(fbRelease\.fn\) fbRelease\.fn\(\);\s*if \(!KV_ON/);
+  assert.match(src, /for \(const e of cfg\.engineOrder\) engines\[e\] = \{ start: \(a\) => \{/);              // mọi AI đều qua một cửa (mốc khôi phục rồi startRaw)
+  assert.match(src, /const startRaw = \(e, a\) => \{\s*if \(fbRelease\.fn\) fbRelease\.fn\(\);[\s\S]*?if \(!KV_ON/);
 });
 
 test('câu hỏi phức tạp (danh sách sản phẩm, N ngày) không lấy sẵn doanh thu hôm nay/qua — để AI tự tra', async () => {

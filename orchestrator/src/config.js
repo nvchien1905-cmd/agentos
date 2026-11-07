@@ -21,13 +21,16 @@ const list = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boole
 
 function load(env) {
   env = env || process.env;
+  const claudeOnly = !/^(0|false|no|off|tat)$/i.test(String(env.CLAUDE_ONLY === undefined ? 'true' : env.CLAUDE_ONLY).trim());
   return {
     token: env.TELEGRAM_TOKEN || '',
     allowedUserIds: new Set(list(env.ALLOWED_USER_IDS)),
     // Quản trị viên: dùng được bộ công cụ adminOnly và duyệt lệnh/ghi file. Không đặt -> mọi người được phép đều là admin.
     adminUserIds: new Set(list(env.ADMIN_USER_IDS === undefined ? env.ALLOWED_USER_IDS : env.ADMIN_USER_IDS)),
     approvalTimeoutMs: (Number(env.APPROVAL_TIMEOUT_SEC) || 300) * 1000,
-    engineOrder: list(env.ENGINE_ORDER === undefined ? 'claude' : env.ENGINE_ORDER).map((s) => s.toLowerCase()),
+    // CHỈ DÙNG CLAUDE (mặc định, từ 2026.11.08): Codex/Gemini/DeepSeek không qua cổng duyệt và yếu hơn Claude ở việc dài → không dùng nữa. CLAUDE_ONLY=0 để dùng lại ENGINE_ORDER.
+    claudeOnly: claudeOnly,
+    engineOrder: claudeOnly ? ['claude'] : list(env.ENGINE_ORDER === undefined ? 'claude' : env.ENGINE_ORDER).map((s) => s.toLowerCase()),
     claudeBin: env.CLAUDE_BIN || 'claude',
     codexBin: env.CODEX_BIN || 'codex',
     geminiBin: env.GEMINI_BIN || 'gemini',
@@ -81,10 +84,10 @@ function load(env) {
       recentTurns: Number(env.MEMORY_RECENT_TURNS) || 4, rotateAfter: Number(env.MEMORY_ROTATE_AFTER) || 15,
       summarizeAfter: Number(env.MEMORY_SUMMARIZE_AFTER) || 15, factsMax: Number(env.MEMORY_FACTS_MAX) || 4500,
     },
-    summaryProvider: (env.SUMMARY_PROVIDER || 'auto').toLowerCase(),         // auto (Gemini → DeepSeek → Codex) | gemini | deepseek | codex | none
+    summaryProvider: (claudeOnly ? 'claude' : (env.SUMMARY_PROVIDER || 'auto')).toLowerCase(),         // auto (Gemini → DeepSeek → Codex) | gemini | deepseek | codex | none
     summaryModel: env.SUMMARY_MODEL || '',                                  // trống = tự chọn mô hình Gemini flash còn dùng được
     routeByDifficulty: String(env.ROUTE_BY_DIFFICULTY === undefined ? 'true' : env.ROUTE_BY_DIFFICULTY).toLowerCase() !== 'false',
-    lightEngines: list(env.LIGHT_ENGINES === undefined ? 'deepseekapi,gemini' : env.LIGHT_ENGINES).map((s) => s.toLowerCase()),
+    lightEngines: list(claudeOnly ? '' : (env.LIGHT_ENGINES === undefined ? 'deepseekapi,gemini' : env.LIGHT_ENGINES)).map((s) => s.toLowerCase()),
     toolsFile: env.TOOLS_FILE ? path.resolve(env.TOOLS_FILE) : '',
     chromePath: env.CHROME_PATH || '',
     display: env.DISPLAY || ':99',

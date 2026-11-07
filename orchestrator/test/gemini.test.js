@@ -61,7 +61,7 @@ test('limits: nhận ra câu chữ hết hạn mức của Gemini và giờ hồ
 });
 
 test('config + công cụ: ENGINE_ORDER nhận gemini; bộ công cụ không có MCP dùng được cả ba AI, bộ có trình duyệt chỉ Claude', () => {
-  const ok = { TELEGRAM_TOKEN: 't', ALLOWED_USER_IDS: '1', ENGINE_ORDER: 'claude, codex, gemini' };
+  const ok = { TELEGRAM_TOKEN: 't', ALLOWED_USER_IDS: '1', ENGINE_ORDER: 'claude, codex, gemini', CLAUDE_ONLY: '0' };
   assert.deepEqual(config.load(ok).engineOrder, ['claude', 'codex', 'gemini']);
   assert.equal(config.validate(config.load(ok)).length, 0);
   assert.equal(config.load(ok).geminiBin, 'gemini');

@@ -68,6 +68,8 @@ function createConnectors(o) {
   const file = o.file, log = o.log || (() => {}), now = o.now || Date.now, spawn = o.spawn;
   const testMs = o.testTimeoutMs || 90000;            // lần đầu npx tải gói nên cho khá lâu
   let items = load();
+  let sig = fileSig();                                  // dấu vết tệp lúc đọc/ghi gần nhất: tệp bị tiến trình khác (trang Cài đặt) sửa thì đọc lại
+  const extra = o.extraCatalog || (() => []);          // kết nối do plugin cung cấp (plugins.js)
   const pending = new Map();                          // chatId -> { id, name, until }: tin nhắn kế tiếp của chủ máy là giá trị khóa
 
   function load() {
@@ -76,17 +78,21 @@ function createConnectors(o) {
       return (Array.isArray(j.items) ? j.items : []).filter((x) => x && /^[a-z][a-z0-9]{0,15}$/.test(x.id) && CMD_RE.test(String(x.command || ''))).map((x) => Object.assign({ args: [], secrets: [], env: {}, enabled: false, last: null }, x));
     } catch (e) { return []; }
   }
+  function fileSig() { try { const st = fs.statSync(file); return st.mtimeMs + ':' + st.size; } catch (e) { return ''; } }
+  function refresh() { const n = fileSig(); if (n !== sig) { items = load(); sig = n; return true; } return false; }
   function save() {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = file + '.tmp' + process.pid;
     fs.writeFileSync(tmp, JSON.stringify({ items }, null, 1), { mode: 0o600 });
     fs.renameSync(tmp, file);
     try { fs.chmodSync(file, 0o600); } catch (e) { /* hệ tệp không hỗ trợ */ }
+    sig = fileSig();
   }
+  const allCatalog = () => CATALOG.concat((extra() || []).filter((c) => c && /^[a-z][a-z0-9]{0,15}$/.test(String(c.key)) && !CATALOG.some((b) => b.key === c.key)));
   const find = (id) => items.find((x) => x.id === id);
   const missing = (x) => x.secrets.filter((s) => !x.env[s.name]).map((s) => s.name);
   const view = (x) => ({
-    id: x.id, label: x.label, about: x.about || '', command: x.command, args: x.args, enabled: x.enabled, server: 'c_' + x.id, manual: x.manual || '',
+    id: x.id, label: x.label, about: x.about || '', plugin: x.plugin || '', command: x.command, args: x.args, enabled: x.enabled, server: 'c_' + x.id, manual: x.manual || '',
     ready: !missing(x).length, missing: missing(x), last: x.last,
     secrets: x.secrets.map((s) => ({ name: s.name, ask: s.ask || '', plain: !!s.plain, set: !!x.env[s.name], value: s.plain && x.env[s.name] ? x.env[s.name] : undefined })),
   });
@@ -98,17 +104,21 @@ function createConnectors(o) {
   };
 
   return {
-    catalog: () => CATALOG.map((c) => ({ key: c.key, label: c.label, about: c.about, manual: c.manual || '', installed: !!find(c.key), needs: c.secrets.map((s) => s.name) })),
-    list: () => items.map(view),
-    get: (id) => (find(id) ? view(find(id)) : null),
+    // Đọc lại tệp nếu tiến trình khác (trang Cài đặt) vừa sửa; trả true nếu có đổi
+    reload: () => refresh(),
+    catalog: () => { refresh(); return allCatalog().map((c) => ({ key: c.key, label: c.label, about: c.about, manual: c.manual || '', installed: !!find(c.key), needs: c.secrets.map((s) => s.name), plugin: c.plugin || '' })); },
+    list: () => { refresh(); return items.map(view); },
+    get: (id) => { refresh(); return find(id) ? view(find(id)) : null; },
     addFromCatalog(key) {
-      const c = CATALOG.find((x) => x.key === key);
+      refresh();
+      const c = allCatalog().find((x) => x.key === key);
       if (!c) return { ok: false, error: 'Không có mục "' + key + '" trong danh mục.' };
       if (find(c.key)) return { ok: false, error: c.label + ' đã được thêm rồi.' };
-      items.push({ id: c.key, label: c.label, about: c.about, command: c.command, args: c.args.slice(), secrets: c.secrets.map((s) => Object.assign({}, s)), env: {}, manual: c.manual || '', enabled: false, last: null, addedAt: now() });
+      items.push({ id: c.key, label: c.label, about: c.about, command: c.command, args: c.args.slice(), secrets: c.secrets.map((s) => Object.assign({}, s)), env: {}, manual: c.manual || '', enabled: false, last: null, addedAt: now(), plugin: c.plugin || undefined });
       save(); return { ok: true, id: c.key };
     },
     addCustom({ label, command, args }) {
+      refresh();
       label = String(label || '').trim().slice(0, 40); command = String(command || '').trim();
       if (!label) return { ok: false, error: 'Thiếu tên kết nối.' };
       if (!LAUNCHERS.has(command) && !/^\/[A-Za-z0-9_./-]{1,100}$/.test(command)) return { ok: false, error: 'Lệnh chạy máy chủ không hợp lệ: chỉ nhận ' + [...LAUNCHERS].join(', ') + ' hoặc đường dẫn tuyệt đối (/...). Vd: npx -y ten-goi-mcp.' };
@@ -120,6 +130,7 @@ function createConnectors(o) {
     },
     // Đặt giá trị khóa (không bao giờ trả ra ngoài). Kết nối từ danh mục chỉ nhận khóa đã khai; kết nối tự thêm nhận tên biến bất kỳ.
     setSecret(id, name, value) {
+      refresh();
       const x = find(id); if (!x) return { ok: false, error: 'Không có kết nối này.' };
       name = String(name || '').trim();
       if (!ENV_NAME.test(name)) return { ok: false, error: 'Tên biến phải viết HOA, chữ/số/_ (vd NOTION_TOKEN).' };
@@ -129,13 +140,15 @@ function createConnectors(o) {
       x.env[name] = value; x.last = null; save(); return { ok: true, missing: missing(x) };
     },
     setEnabled(id, on) {
+      refresh();
       const x = find(id); if (!x) return { ok: false, error: 'Không có kết nối này.' };
       if (on && missing(x).length) return { ok: false, error: 'Còn thiếu: ' + missing(x).join(', ') };
       x.enabled = !!on; save(); return { ok: true };
     },
-    remove(id) { const n = items.length; items = items.filter((x) => x.id !== id); if (items.length === n) return { ok: false, error: 'Không có kết nối này.' }; save(); return { ok: true }; },
+    remove(id) { refresh(); const n = items.length; items = items.filter((x) => x.id !== id); if (items.length === n) return { ok: false, error: 'Không có kết nối này.' }; save(); return { ok: true }; },
     // Chạy thật máy chủ và bắt tay MCP; lưu kết quả để hiện ở danh sách
     async test(id) {
+      refresh();
       const x = find(id); if (!x) return { ok: false, error: 'Không có kết nối này.' };
       if (missing(x).length) return { ok: false, error: 'Còn thiếu: ' + missing(x).join(', ') };
       const r = await handshake({ command: x.command, args: x.args, env: x.env, timeoutMs: testMs, spawn, secrets: Object.values(x.env) });
@@ -145,6 +158,7 @@ function createConnectors(o) {
     },
     // Đưa các kết nối ĐANG BẬT và đủ khóa vào tools.servers (tên "c_<id>"); gỡ những cái đã tắt/xóa. Gọi lúc khởi động và sau mỗi thay đổi.
     apply(tools) {
+      refresh();
       const srv = tools.servers || (tools.servers = {});
       for (const k of Object.keys(srv)) if (k.startsWith('c_')) delete srv[k];
       const on = [];
@@ -156,12 +170,30 @@ function createConnectors(o) {
       }
       return on;
     },
+    // Plugin ra phiên bản mới: cập nhật lệnh/mô tả/tên biến của kết nối đã thêm từ plugin đó (giữ khóa đã nhập và trạng thái bật). Trả danh sách id đã đổi.
+    upgradeFromPlugin(pluginId) {
+      refresh(); const changed = [];
+      for (const c of allCatalog().filter((x) => x.plugin === pluginId)) {
+        const x = find(c.key); if (!x || x.plugin !== pluginId) continue;
+        const next = { label: c.label, about: c.about, command: c.command, args: c.args.slice(), manual: c.manual || '' };
+        const secrets = c.secrets.map((q) => Object.assign({}, q));
+        if (JSON.stringify([x.label, x.about, x.command, x.args, x.manual || '', x.secrets]) !== JSON.stringify([next.label, next.about, next.command, next.args, next.manual, secrets])) { Object.assign(x, next, { secrets }); changed.push(x.id); }
+      }
+      if (changed.length) save();
+      return changed;
+    },
+    // Gỡ plugin: bỏ các kết nối do plugin đó thêm
+    removeFromPlugin(pluginId) { refresh(); const ids = items.filter((x) => x.plugin === pluginId).map((x) => x.id); if (ids.length) { items = items.filter((x) => x.plugin !== pluginId); save(); } return ids; },
     // Tin nhắn kế tiếp của chủ máy là giá trị khóa (hết hạn sau 10 phút)
     setPending(chatId, id, name) { pending.set(String(chatId), { id, name, until: now() + 10 * 60000 }); },
     pendingOf(chatId) { const p = pending.get(String(chatId)); if (!p) return null; if (p.until < now()) { pending.delete(String(chatId)); return null; } return p; },
     clearPending(chatId) { pending.delete(String(chatId)); },
     CATALOG,
+    allCatalog,
   };
 }
 
-module.exports = { createConnectors, handshake, CATALOG, isConnector, mcpNamesFor };
+// Lệnh khởi chạy máy chủ MCP có hợp lệ không (dùng cho cả kết nối do plugin cung cấp)
+const validCommand = (c) => LAUNCHERS.has(String(c)) || /^\/[A-Za-z0-9_./-]{1,100}$/.test(String(c));
+
+module.exports = { createConnectors, handshake, CATALOG, isConnector, mcpNamesFor, validCommand, ENV_NAME };

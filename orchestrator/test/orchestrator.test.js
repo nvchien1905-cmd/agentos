@@ -44,9 +44,11 @@ test('config: bắt buộc token/ID, kiểm tra ENGINE_ORDER', () => {
   const ok = { TELEGRAM_TOKEN: 't', ALLOWED_USER_IDS: '1, 2' };
   assert.equal(config.validate(config.load(ok)).length, 0);
   assert.deepEqual(config.load(ok).engineOrder, ['claude']);
-  assert.deepEqual(config.load(Object.assign({ ENGINE_ORDER: 'Claude, codex' }, ok)).engineOrder, ['claude', 'codex']);
-  assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'claude,gpt5' }, ok))).length, 1);
-  assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'codex,codex' }, ok))).length, 1);
+  const co = config.load(Object.assign({ ENGINE_ORDER: 'codex,gemini' }, ok));
+  assert.deepEqual(co.engineOrder, ['claude'], 'mặc định CHỈ Claude dù .env còn ghi AI khác'); assert.equal(co.summaryProvider, 'claude'); assert.deepEqual(co.lightEngines, []);
+  assert.deepEqual(config.load(Object.assign({ ENGINE_ORDER: 'Claude, codex', CLAUDE_ONLY: '0' }, ok)).engineOrder, ['claude', 'codex']);
+  assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'claude,gpt5', CLAUDE_ONLY: '0' }, ok))).length, 1);
+  assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'codex,codex', CLAUDE_ONLY: '0' }, ok))).length, 1);
   assert.equal(config.validate(config.load(Object.assign({ ALLOWED_USER_IDS: 'abc' }, { TELEGRAM_TOKEN: 't' }))).length, 1);
 });
 

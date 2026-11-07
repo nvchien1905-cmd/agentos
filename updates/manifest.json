@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.07.2",
-  "file": "agentos-update-2026.11.07.2.tar.gz",
-  "size": 437496,
-  "sha256": "35c33ab5795416341e50240c75e246349f4f0fb359e01fcba531e4b7df794f04",
+  "version": "2026.11.08.1",
+  "file": "agentos-update-2026.11.08.1.tar.gz",
+  "size": 475217,
+  "sha256": "6f5509211e6a6b4957b56bb96d21539d7b2c66b47847ed22898685307f1ce903",
   "date": "2026-11-07",
-  "notes": "C:/Program Files/Git/trangthai ghi rõ hộp cô lập chỉ áp dụng cho ID thường khi chủ máy đang toàn quyền"
+  "notes": "Chỉ dùng Claude; màn hình Việc AI trên máy; mốc khôi phục toàn máy tệp đến 8GB; danh sách việc cần làm trên Telegram; chợ kỹ năng/plugin tự cập nhật; kết nối+kỹ năng trên trang Cài đặt"
 }

@@ -1,0 +1,9 @@
+{
+  "id": "ke-toan-co-ban",
+  "name": "Kế toán cơ bản",
+  "version": "1.0.0",
+  "icon": "🧾",
+  "category": "Kế toán",
+  "author": "AgentOS",
+  "description": "Kỹ năng hỗ trợ kế toán cửa hàng: đối chiếu công nợ, kiểm tra chứng từ/hóa đơn, tổng hợp thu chi cuối tháng. Chỉ là trợ lý — số liệu cuối cùng do kế toán xác nhận."
+}

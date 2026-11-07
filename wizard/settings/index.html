@@ -25,6 +25,19 @@ input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-r
 #log pre{background:#0d1620;color:#cfe3f3;border-radius:8px;padding:10px;overflow:auto;flex:1;min-height:260px;max-height:60vh;margin:10px 0;font:12.5px/1.45 ui-monospace,monospace;white-space:pre-wrap}
 #toast{position:fixed;right:18px;bottom:18px;background:#17202b;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:10;max-width:60vw}
 table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px solid var(--line)}
+.wg{display:grid;grid-template-columns:290px 1fr;gap:14px;align-items:start}.wl{max-height:82vh;overflow:auto}.wm{min-width:0}
+.wi{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer}.wi:hover{background:#f4f8fb}.wi.on{border-color:var(--pri);background:#eef6fc}
+.wp{font-size:12.5px;color:var(--mute);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wrun{color:#1fa34a;font-weight:600}
+.wtabs{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}.wtabs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.wtodo{background:#f3f7fb;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:10px}.wtodo div{padding:2px 0}.wtodo .completed{color:var(--mute);text-decoration:line-through}.wtodo .in_progress{font-weight:600}
+.ev{display:flex;gap:8px;padding:5px 0;border-bottom:1px dashed var(--line);align-items:flex-start}.ev time{color:var(--mute);font:12px ui-monospace,monospace;flex:none;padding-top:2px}.ev .bd{min-width:0;flex:1}
+.ev.txt .bd{background:#f3f7fb;border-radius:8px;padding:8px 10px;white-space:pre-wrap}.ev details summary{cursor:pointer}.ev pre{margin:4px 0 0;background:#0d1620;color:#cfe3f3;border-radius:6px;padding:6px 8px;font:12px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-all}
+.wd{font:12.5px/1.45 ui-monospace,monospace;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:440px;margin:6px 0 10px}.wd div{white-space:pre-wrap;padding:0 8px;min-height:1.45em}
+.wd .add{background:#e3f6e8}.wd .del{background:#fde8e6}.wd .skip{color:var(--mute);background:#f4f6f8;text-align:center}
+.wf{padding:7px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.wf:hover{background:#f4f8fb}.wf code{word-break:break-all}
+.wst-created{color:#157a3c}.wst-deleted{color:#b3261e}.wst-modified{color:#9a6700}
+.wtree div{padding:4px 6px;border-bottom:1px solid var(--line);cursor:pointer}.wtree div:hover{background:#f4f8fb}.wprev{border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px;max-height:480px;overflow:auto}.wprev pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12.5px/1.45 ui-monospace,monospace}.wprev img{max-width:100%}.wprev iframe{width:100%;height:440px;border:0;background:#fff}
+@media(max-width:900px){.wg{grid-template-columns:1fr}}
 @media(max-width:760px){nav{width:62px}nav span.t{display:none}main{padding:14px}}
 </style></head><body>
 <nav id="nav"><h1>⚙ AgentOS</h1></nav>
@@ -33,7 +46,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -145,7 +158,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     },
     ai: function () {
       api('GET', 'ai').then(function (r) {
-        var h = '<h2>AI và khóa API</h2><div id="lgbox" class="card" style="display:none"></div>' + (r.configured ? '' : '<div class="banner">Máy chưa cấu hình xong, chưa lưu được khóa. Hoàn tất trình hướng dẫn lần đầu.</div>') + '<p class="mute">Mỗi AI dùng <b>tài khoản đăng nhập</b> hoặc <b>khóa API</b> của bạn. Có khóa thì dùng khóa (tính tiền theo lượng dùng của hãng). Bot tự chuyển sang AI kế tiếp khi hết hạn mức.</p>';
+        var h = '<h2>AI và khóa API</h2>' + (r.claudeOnly ? '<div class="banner">Máy này <b>chỉ dùng Claude</b> (Claude qua cổng duyệt, hỏi trước khi gửi ra ngoài/dính tiền; các AI khác không qua cổng nên đã bỏ). Muốn dùng lại AI khác: đặt <code>CLAUDE_ONLY=0</code> trong orchestrator.env.</div>' : '') + '<div id="lgbox" class="card" style="display:none"></div>' +(r.configured ? '' : '<div class="banner">Máy chưa cấu hình xong, chưa lưu được khóa. Hoàn tất trình hướng dẫn lần đầu.</div>') + '<p class="mute">Mỗi AI dùng <b>tài khoản đăng nhập</b> hoặc <b>khóa API</b> của bạn. Có khóa thì dùng khóa (tính tiền theo lượng dùng của hãng). Bot tự chuyển sang AI kế tiếp khi hết hạn mức.</p>';
         r.engines.forEach(function (e) {
           var login = e.id !== 'deepseekapi';
           h += '<div class="card"><div class="row"><h3 class="grow" style="margin:0">' + esc(e.name) + '</h3><label><input type="checkbox" data-en="' + e.id + '" ' + (e.enabled ? 'checked' : '') + '> Dùng trong bot</label></div>' +
@@ -388,6 +401,216 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         var a = document.activeElement; if (a && (a.tagName === 'SELECT' || a.tagName === 'INPUT')) return;
         load(true);
       }, 5000);
+    },
+    // ----- Kết nối dịch vụ (MCP), chợ kỹ năng/plugin, kỹ năng của dự án — cùng tính năng với /dichvu, /cho, /kynang trên Telegram -----
+    conn: function () {
+      var data = null, projects = [], proj = '', skills = null, viewing = null;
+      set('<h2>Kết nối và kỹ năng</h2><div id="cn-body"><p class="mute">Đang tải...</p></div>');
+      function el(id) { return document.getElementById(id); }
+      function alive() { return !!el('cn-body'); }
+      function status(c) { return c.enabled ? '<span class="ok">● đang bật</span>' : c.last && !c.last.ok ? '<span class="bad">● lỗi khi thử</span>' : '<span class="mute">○ chưa bật</span>'; }
+      function render() {
+        if (!alive() || !data) return;
+        var h = '<div class="card"><h3>🧩 Chợ kỹ năng (plugin)</h3><p class="mute">Mỗi plugin gồm các kỹ năng dạy AI (dùng cho mọi dự án) và kết nối dịch vụ đi kèm. Plugin nằm trong bản cài AgentOS nên <b>tự cập nhật</b> mỗi khi máy nhận bản cập nhật mới.</p><div class="grid">';
+        data.plugins.forEach(function (p) {
+          h += '<div class="app"><div><b>' + esc(p.icon) + ' ' + esc(p.name) + '</b> <small>v' + esc(p.version) + ' · ' + esc(p.category) + '</small></div><div class="mute" style="font-size:13px">' + esc(p.description) + '</div>' +
+            '<small>' + p.skills.length + ' kỹ năng' + (p.connectors.length ? ' · ' + p.connectors.length + ' kết nối' : '') + '</small>' +
+            '<div>' + (p.installed ? (p.enabled ? '<span class="ok">✔ đã cài, đang bật</span>' : '<span class="mute">⏸ đã cài, đang tắt</span>') + (p.updated ? ' <span class="warn">⬆ mới cập nhật</span>' : '') : '<span class="mute">chưa cài</span>') + '</div>' +
+            '<div class="row">' + (p.installed ? '<button class="b" data-pe="' + esc(p.id) + '" data-on="' + (p.enabled ? 0 : 1) + '">' + (p.enabled ? 'Tắt' : 'Bật') + '</button><button class="b d" data-pu="' + esc(p.id) + '">Gỡ</button>' : '<button class="b p" data-pi="' + esc(p.id) + '">Cài</button>') + '<button class="b" data-pv="' + esc(p.id) + '">Xem kỹ năng</button></div><div id="pv-' + esc(p.id) + '"></div></div>';
+        });
+        h += '</div></div>';
+        h += '<div class="card"><h3>🔌 Kết nối dịch vụ</h3><p class="mute">AI dùng khi chủ máy giao việc ở chế độ TOÀN QUYỀN (ID thường không thấy). Việc gửi/ghi/xóa qua kết nối luôn hỏi trước. Khóa chỉ lưu trên máy, không hiện lại.</p>';
+        if (!data.connectors.length) h += '<p class="mute">Chưa có kết nối nào.</p>';
+        data.connectors.forEach(function (c) {
+          h += '<div class="app" style="margin-bottom:10px"><div class="row"><b>' + esc(c.label) + '</b> <small>(' + esc(c.id) + ')' + (c.plugin ? ' · từ plugin ' + esc(c.plugin) : '') + '</small><span class="grow"></span>' + status(c) + '</div><div class="mute" style="font-size:13px">' + esc(c.about) + '</div>';
+          if (c.last) h += '<small class="' + (c.last.ok ? 'ok' : 'bad') + '">' + (c.last.ok ? 'Thử OK: ' + c.last.tools.length + ' công cụ' + (c.last.server ? ' (' + esc(c.last.server) + ')' : '') : 'Thử lỗi: ' + esc(c.last.error)) + '</small>';
+          if (c.manual) h += '<details><summary class="mute">Việc cần làm một lần trên máy</summary><div class="mute" style="font-size:13px;white-space:pre-wrap">' + esc(c.manual) + '</div></details>';
+          c.secrets.forEach(function (s) { h += '<div class="row"><small style="min-width:170px"><code>' + esc(s.name) + '</code> ' + (s.set ? '<span class="ok">đã đặt</span>' : '<span class="bad">thiếu</span>') + '</small><input type="' + (s.plain ? 'text' : 'password') + '" autocomplete="off" placeholder="' + esc(s.ask || 'Giá trị') + '" data-sv="' + esc(c.id) + '|' + esc(s.name) + '" style="flex:1;min-width:160px"' + (s.plain && s.value ? ' value="' + esc(s.value) + '"' : '') + '><button class="b" data-ss="' + esc(c.id) + '|' + esc(s.name) + '">Lưu</button></div>'; });
+          h += '<div class="row"><button class="b p" data-ct="' + esc(c.id) + '">🧪 Thử</button><button class="b" data-ce="' + esc(c.id) + '" data-on="' + (c.enabled ? 0 : 1) + '"' + (!c.enabled && c.missing.length ? ' disabled title="Còn thiếu khóa"' : '') + '>' + (c.enabled ? 'Tắt' : 'Bật') + '</button><button class="b d" data-cd="' + esc(c.id) + '">Xóa</button></div></div>';
+        });
+        var free = data.catalog.filter(function (c) { return !c.installed; });
+        h += '<div class="row">' + (free.length ? '<select id="cn-cat">' + free.map(function (c) { return '<option value="' + esc(c.key) + '">' + esc(c.label) + '</option>'; }).join('') + '</select><button class="b p" id="cn-add">➕ Thêm từ danh mục</button>' : '<span class="mute">Đã thêm hết kết nối trong danh mục.</span>') + '</div>' +
+          '<details style="margin-top:10px"><summary>Thêm kết nối tự chọn (máy chủ MCP bất kỳ)</summary><div class="row" style="margin-top:8px"><input id="cx-l" placeholder="Tên (vd Kho hàng)" style="max-width:160px"><input id="cx-c" placeholder="Lệnh: npx, uvx, node, python3, docker hoặc /đường/dẫn" style="flex:1;min-width:200px"><input id="cx-a" placeholder="Đối số (vd -y goi-mcp)" style="flex:1;min-width:160px"><button class="b" id="cx-go">Thêm</button></div></details></div>';
+        h += '<div class="card"><h3>🧠 Kỹ năng của dự án</h3><p class="mute">Mỗi kỹ năng dạy AI cách làm một loại việc (báo giá, chốt ca…). AI tự đọc khi việc khớp mô tả. Kỹ năng của plugin đã cài hiện cho mọi dự án.</p><div class="row"><select id="sk-pj">' + projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === proj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div><div id="sk-list"></div></div>';
+        el('cn-body').innerHTML = h;
+        wire();
+        drawSkills();
+      }
+      function post(path, body, msg) { return api('POST', path, body).then(function (r) { if (r && r.connectors) data = r; if (msg) toast(msg); render(); return r; }).catch(fail); }
+      function wire() {
+        var q = function (sel, fn) { [].forEach.call(el('cn-body').querySelectorAll(sel), fn); };
+        q('[data-pi]', function (b) { b.onclick = function () { post('plugins/install', { id: b.getAttribute('data-pi') }, 'Đã cài plugin'); }; });
+        q('[data-pu]', function (b) { b.onclick = function () { if (ask('Gỡ plugin này? Kỹ năng của nó không còn dùng được và các kết nối kèm theo sẽ bị xóa.')) post('plugins/uninstall', { id: b.getAttribute('data-pu'), confirm: true }, 'Đã gỡ'); }; });
+        q('[data-pe]', function (b) { b.onclick = function () { post('plugins/enable', { id: b.getAttribute('data-pe'), on: b.getAttribute('data-on') === '1' }); }; });
+        q('[data-pv]', function (b) { b.onclick = function () { var id = b.getAttribute('data-pv'), box = el('pv-' + id), p = data.plugins.filter(function (x) { return x.id === id; })[0]; box.innerHTML = box.innerHTML ? '' : '<ul style="margin:6px 0 0 16px;padding:0">' + p.skills.map(function (s) { return '<li><b>' + esc(s.name) + '</b><br><small>' + esc(s.description) + '</small></li>'; }).join('') + '</ul>' + (p.connectors.length ? '<small>Kết nối: ' + p.connectors.map(function (c) { return esc(c.label); }).join(', ') + '</small>' : ''); }; });
+        q('[data-ss]', function (b) { b.onclick = function () { var k = b.getAttribute('data-ss').split('|'), inp = el('cn-body').querySelector('[data-sv="' + b.getAttribute('data-ss') + '"]'); if (!inp.value.trim()) { toast('Chưa nhập giá trị', true); return; } post('conn/secret', { id: k[0], name: k[1], value: inp.value }, 'Đã lưu ' + k[1]); }; });
+        q('[data-ct]', function (b) { b.onclick = function () { b.disabled = true; b.textContent = '⏳ Đang thử (lần đầu có thể mất 1–2 phút)...'; api('POST', 'conn/test', { id: b.getAttribute('data-ct') }).then(function (r) { data = r; render(); toast(r.result.ok ? 'Chạy tốt: ' + r.result.tools.length + ' công cụ' : 'Lỗi: ' + r.result.error, !r.result.ok); }).catch(function (e) { fail(e); render(); }); }; });
+        q('[data-ce]', function (b) { b.onclick = function () { post('conn/enable', { id: b.getAttribute('data-ce'), on: b.getAttribute('data-on') === '1' }); }; });
+        q('[data-cd]', function (b) { b.onclick = function () { if (ask('Xóa kết nối này? Khóa đã lưu cũng bị xóa.')) post('conn/remove', { id: b.getAttribute('data-cd'), confirm: true }, 'Đã xóa'); }; });
+        on('cn-add', function () { post('conn/add', { key: el('cn-cat').value }, 'Đã thêm'); });
+        on('cx-go', function () { post('conn/add-custom', { label: el('cx-l').value, command: el('cx-c').value, args: el('cx-a').value }, 'Đã thêm'); });
+        el('sk-pj').onchange = function () { proj = el('sk-pj').value; loadSkills(); };
+      }
+      function loadSkills() {
+        if (!proj) return;
+        api('GET', 'skills?project=' + encodeURIComponent(proj)).then(function (r) { skills = r.skills; drawSkills(); }).catch(fail);
+      }
+      function drawSkills() {
+        var box = el('sk-list'); if (!box) return;
+        if (!skills) { box.innerHTML = '<p class="mute">Đang tải...</p>'; return; }
+        var h = skills.length ? skills.map(function (s) {
+          return '<div class="wf" style="cursor:default"><b>' + esc(s.name) + '</b><small class="grow">' + esc(s.description) + '</small>' + (s.kind === 'mine' ? '' : '<small>[của plugin/tệp ngoài, chỉ xem]</small>') +
+            '<button class="b" data-sx="' + esc(s.slug) + '">Xem</button>' + (s.kind === 'mine' ? '<button class="b" data-se="' + esc(s.slug) + '">Sửa</button><button class="b d" data-sd="' + esc(s.slug) + '">Xóa</button>' : '') + '</div>';
+        }).join('') : '<p class="mute">Dự án này chưa có kỹ năng nào.</p>';
+        h += '<div id="sk-view"></div><details id="sk-new" style="margin-top:10px"><summary>➕ Thêm kỹ năng mới</summary><div style="margin-top:8px"><div class="row"><input id="sk-n" placeholder="Tên kỹ năng (vd Báo giá khách sỉ)" style="flex:1;min-width:200px"></div>' +
+          '<div class="row" style="margin-top:6px"><input id="sk-d" placeholder="Mô tả ngắn: khi nào AI nên dùng kỹ năng này" style="flex:1"></div>' +
+          '<textarea id="sk-b" rows="9" placeholder="Các bước làm, quy tắc, số liệu cần nhớ…" style="width:100%;margin-top:6px;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px"></textarea>' +
+          '<div class="row" style="margin-top:6px"><button class="b p" id="sk-save">Lưu kỹ năng</button><small id="sk-hint" class="mute"></small></div></div></details>';
+        box.innerHTML = h;
+        [].forEach.call(box.querySelectorAll('[data-sx]'), function (b) { b.onclick = function () { api('GET', 'skills/text?project=' + encodeURIComponent(proj) + '&slug=' + encodeURIComponent(b.getAttribute('data-sx'))).then(function (t) { el('sk-view').innerHTML = '<pre style="white-space:pre-wrap;background:#f3f7fb;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:380px;overflow:auto">' + esc(t.text) + '</pre>'; }).catch(fail); }; });
+        [].forEach.call(box.querySelectorAll('[data-sd]'), function (b) { b.onclick = function () { if (ask('Xóa kỹ năng này?')) api('POST', 'skills/delete', { project: proj, slug: b.getAttribute('data-sd'), confirm: true }).then(function () { toast('Đã xóa'); loadSkills(); }).catch(fail); }; });
+        [].forEach.call(box.querySelectorAll('[data-se]'), function (b) { b.onclick = function () { var s = skills.filter(function (x) { return x.slug === b.getAttribute('data-se'); })[0]; api('GET', 'skills/text?project=' + encodeURIComponent(proj) + '&slug=' + encodeURIComponent(s.slug)).then(function (t) { el('sk-new').open = true; el('sk-n').value = s.name; el('sk-d').value = s.description; el('sk-b').value = String(t.text).replace(/^---[\s\S]*?---\s*/, '').trim(); el('sk-save').setAttribute('data-over', s.slug); el('sk-hint').textContent = 'Đang sửa "' + s.name + '" (lưu sẽ ghi đè).'; el('sk-new').scrollIntoView(); }).catch(fail); }; });
+        on('sk-save', function () { var o = el('sk-save').getAttribute('data-over'); api('POST', 'skills/save', { project: proj, name: el('sk-n').value, description: el('sk-d').value, body: el('sk-b').value, slug: o || undefined, overwrite: !!o }).then(function () { toast('Đã lưu kỹ năng'); loadSkills(); }).catch(fail); });
+      }
+      api('GET', 'conn').then(function (r) { data = r; return api('GET', 'projects'); }).then(function (r) {
+        projects = (r.list || []).filter(function (p) { return !p.deleted && !p.mergedInto; }).map(function (p) { return { id: p.id, name: p.name }; });
+        if (projects.length) proj = projects[0].id;
+        render(); loadSkills();
+      }).catch(function (e) { if (alive()) el('cn-body').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+    },
+    // ----- Màn hình AI: xem AI đang làm gì từng bước, tệp đã đổi (khác biệt từng dòng) và tệp dự án — như màn hình Claude Code -----
+    watch: function () {
+      var sel = null, from = 0, tab = 'steps', events = [], todos = null, doneFlag = false, detail = null, changes = null, projects = [], proj = '', tpath = '', timer = null, openDiff = {};
+      set('<h2>Màn hình AI</h2><div class="wg"><div class="card wl" id="w-list"><p class="mute">Đang tải...</p></div><div class="card wm" id="w-main"><p class="mute">Chọn một việc bên trái để xem AI đang làm gì, đã sửa tệp nào.</p></div></div>');
+      function el(id) { return document.getElementById(id); }
+      function hm(ms) { var d = new Date(ms), p = function (n) { return ('0' + n).slice(-2); }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+      function alive() { return !!el('w-main'); }
+      function loadList() {
+        api('GET', 'audit?days=1&limit=30').then(function (r) {
+          if (!alive()) return;
+          var seen = {}, arr = [];
+          (r.active || []).concat(r.list || []).forEach(function (j) { if (!seen[j.id]) { seen[j.id] = 1; arr.push(j); } });
+          var h = '<h3>Việc gần đây</h3>' + (arr.length ? '' : '<p class="mute">Hôm nay chưa có việc nào.</p>');
+          arr.forEach(function (j) {
+            h += '<div class="wi' + (j.id === sel ? ' on' : '') + '" data-w="' + j.id + '"><b>#' + j.id + '</b> ' + (j.status === 'running' ? '<span class="wrun">● đang chạy</span>' : '<span class="mute">' + esc(j.statusText) + '</span>') +
+              '<br><small>' + esc(j.at) + (j.projectName ? ' · ' + esc(j.projectName) : '') + '</small><div class="wp">' + esc(j.prompt) + '</div></div>';
+          });
+          el('w-list').innerHTML = h;
+          [].forEach.call(el('w-list').querySelectorAll('[data-w]'), function (d) { d.onclick = function () { choose(Number(d.getAttribute('data-w'))); }; });
+        }).catch(function () { /* thử lại ở lần sau */ });
+      }
+      function choose(id) {
+        sel = id; from = 0; events = []; todos = null; doneFlag = false; detail = null; changes = null; openDiff = {}; tab = 'steps';
+        loadList(); drawMain(); pull(true);
+        api('GET', 'audit/job?id=' + id).then(function (d) { if (sel === id) { detail = d; drawMain(); } }).catch(function () { /* bỏ */ });
+      }
+      function pull(first) {
+        if (!alive() || sel == null) return;
+        var id = sel;
+        api('GET', 'watch/trace?id=' + id + '&from=' + from).then(function (r) {
+          if (id !== sel || !alive()) return;
+          if (r.events && r.events.length) { events = events.concat(r.events); from = r.next; if (r.todos) todos = r.todos; }
+          if (r.todos) todos = r.todos;
+          var was = doneFlag; doneFlag = !!r.done;
+          if (!r.exists && detail && ['done', 'error', 'cancelled'].indexOf(detail.status) >= 0) doneFlag = true;      // việc cũ, từ trước khi có dấu vết
+          if (r.events && r.events.length || first || was !== doneFlag) { if (tab === 'steps') drawSteps(); }
+          if (doneFlag && !was) { api('GET', 'audit/job?id=' + id).then(function (d) { if (sel === id) { detail = d; drawMain(); } }).catch(function () {}); loadList(); }
+        }).catch(function () { /* bỏ */ });
+      }
+      function head() {
+        var d = detail;
+        return '<h3 style="margin:0">Việc #' + sel + (d ? ' · ' + esc(d.statusText) : '') + '</h3>' + (d ? '<p class="mute" style="margin:2px 0 6px">' + esc(d.who) + ' · ' + esc(d.at) + (d.engine ? ' · ' + esc(d.engine) : '') + (d.projectName ? ' · dự án: ' + esc(d.projectName) : '') + '</p><div class="mute" style="white-space:pre-wrap;max-height:90px;overflow:auto">' + esc(d.prompt) + '</div>' : '');
+      }
+      function drawMain() {
+        if (!alive()) return;
+        if (sel == null) return;
+        el('w-main').innerHTML = head() + '<div class="wtabs"><button class="b ' + (tab === 'steps' ? 'on' : '') + '" data-tab="steps">Từng bước</button><button class="b ' + (tab === 'files' ? 'on' : '') + '" data-tab="files">Tệp đã đổi</button><button class="b ' + (tab === 'proj' ? 'on' : '') + '" data-tab="proj">Tệp dự án</button></div><div id="w-body"></div>';
+        [].forEach.call(el('w-main').querySelectorAll('[data-tab]'), function (b) { b.onclick = function () { tab = b.getAttribute('data-tab'); drawMain(); }; });
+        if (tab === 'steps') drawSteps(); else if (tab === 'files') drawFiles(); else drawProj();
+      }
+      function evHtml(e) {
+        if (e.k === 'start') return '<div class="ev"><time>' + hm(e.t) + '</time><div class="bd"><b>Bắt đầu</b></div></div>';
+        if (e.k === 'end') return '<div class="ev"><time>' + hm(e.t) + '</time><div class="bd"><b>✔ Xong</b>' + (e.secs != null ? ' <span class="mute">· ' + e.secs + ' giây' + (e.steps ? ' · ' + e.steps + ' bước' : '') + '</span>' : '') + '</div></div>';
+        if (e.k === 'text') return '<div class="ev txt"><time>' + hm(e.t) + '</time><div class="bd">💬 ' + esc(e.text) + '</div></div>';
+        if (e.k === 'todo') return '<div class="ev"><time>' + hm(e.t) + '</time><div class="bd">📋 Cập nhật danh sách việc cần làm</div></div>';
+        var i = e.i || {}, det = i.cmd || i.file || i.pattern || i.url || i.query || i.desc || '';
+        return '<div class="ev"><time>' + hm(e.t) + '</time><div class="bd">' + (det && (i.cmd || String(det).length > 70) ? '<details><summary>' + esc(e.l) + '</summary><pre>' + esc(det) + '</pre></details>' : esc(e.l)) + '</div></div>';
+      }
+      function drawSteps() {
+        var body = el('w-body'); if (!body) return;
+        var h = '';
+        if (todos && todos.length) {
+          var dn = todos.filter(function (t) { return t.s === 'completed'; }).length;
+          h += '<div class="wtodo"><b>📋 Việc cần làm ' + dn + '/' + todos.length + '</b>' + todos.map(function (t) { return '<div class="' + t.s + '">' + (t.s === 'completed' ? '☑' : t.s === 'in_progress' ? '▶️' : '☐') + ' ' + esc(t.s === 'in_progress' ? (t.a || t.c) : t.c) + '</div>'; }).join('') + '</div>';
+        }
+        h += events.length ? events.map(evHtml).join('') : '<p class="mute">Chưa có bước nào được ghi' + (doneFlag ? '' : ' (việc chưa bắt đầu, hoặc việc cũ trước khi có tính năng này)') + '.</p>';
+        if (!doneFlag && events.length) h += '<p class="mute">⏳ Đang làm…</p>';
+        if (doneFlag && detail && detail.result) h += '<div class="card" style="margin-top:12px"><h3>Câu trả lời cuối</h3><div style="white-space:pre-wrap">' + esc(detail.result) + '</div></div>';
+        if (doneFlag && detail && detail.error) h += '<p class="bad">Lỗi: ' + esc(detail.error) + '</p>';
+        var atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+        body.innerHTML = h;
+        if (atEnd && !doneFlag) window.scrollTo(0, document.body.scrollHeight);
+      }
+      function drawFiles() {
+        var body = el('w-body'); if (!body) return;
+        body.innerHTML = '<p class="mute">Đang tải...</p>';
+        var id = sel;
+        api('GET', 'watch/changes?id=' + id).then(function (c) {
+          if (id !== sel || tab !== 'files' || !el('w-body')) return;
+          changes = c;
+          var h = '';
+          if (!c.exists) h = '<p class="mute">Việc này không có tệp nào bị sửa/xóa (hoặc chưa ghi nhật ký trước-khi-sửa).</p>';
+          else {
+            h = '<p class="mute">' + c.total + ' tệp đã đổi' + (c.total > c.files.length ? ' (hiện ' + c.files.length + ' tệp đầu)' : '') + '. Bấm một tệp để xem khác biệt từng dòng. Muốn quay lại như trước việc này: gõ /hoantac trên Telegram.</p>';
+            c.files.forEach(function (f, n) {
+              var st = f.status === 'created' ? 'mới tạo' : f.status === 'deleted' ? 'đã xóa' : 'đã sửa';
+              h += '<div class="wf" data-f="' + n + '"><span class="wst-' + f.status + '"><b>' + st + '</b></span><code>' + esc(f.p) + '</code>' + (f.add != null ? '<span class="ok">+' + f.add + '</span> <span class="bad">−' + (f.del || 0) + '</span>' : '') + (f.note ? '<small>' + esc(f.note) + '</small>' : '') + '</div><div id="wdf-' + n + '"></div>';
+            });
+            if (c.unsafe && c.unsafe.length) h += '<div class="banner">⚠️ Bot không tự hoàn tác được:<br>' + c.unsafe.slice(0, 6).map(esc).join('<br>') + '</div>';
+          }
+          el('w-body').innerHTML = h;
+          [].forEach.call(el('w-body').querySelectorAll('[data-f]'), function (d) { d.onclick = function () { var n = d.getAttribute('data-f'), box = el('wdf-' + n); if (box.innerHTML) { box.innerHTML = ''; return; } var f = c.files[Number(n)]; if (!f.rows) { box.innerHTML = '<p class="mute">' + esc(f.note || 'Không có nội dung để so sánh.') + '</p>'; return; } box.innerHTML = '<div class="wd">' + f.rows.map(function (r) { return '<div class="' + r.t + '">' + (r.t === 'add' ? '+ ' : r.t === 'del' ? '− ' : r.t === 'skip' ? '… ' : '  ') + esc(r.text) + '</div>'; }).join('') + (f.cut ? '<div class="skip">… còn nữa, đã cắt bớt</div>' : '') + '</div>'; }; });
+        }).catch(function (e) { if (el('w-body')) el('w-body').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+      }
+      function drawProj() {
+        var body = el('w-body'); if (!body) return;
+        function paint() {
+          body.innerHTML = '<div class="row"><select id="w-pj">' + projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === proj ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select><span class="mute" id="w-path"></span></div><div id="w-tree" class="wtree"></div><div id="w-prev"></div>';
+          el('w-pj').onchange = function () { proj = el('w-pj').value; tpath = ''; list(); };
+          list();
+        }
+        function list() {
+          el('w-path').textContent = '/' + tpath;
+          api('GET', 'watch/tree?project=' + encodeURIComponent(proj) + '&path=' + encodeURIComponent(tpath)).then(function (t) {
+            var h = tpath ? '<div data-up="1">⬆ ..</div>' : '';
+            t.entries.forEach(function (e) { h += '<div data-n="' + esc(e.name) + '" data-d="' + (e.dir ? 1 : 0) + '">' + (e.dir ? '📁 ' : '📄 ') + esc(e.name) + (e.dir ? '' : ' <small>' + (e.size >= 1048576 ? (e.size / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(e.size / 1024)) + ' KB') + '</small>') + '</div>'; });
+            el('w-tree').innerHTML = h || '<p class="mute">Thư mục trống.</p>'; el('w-prev').innerHTML = '';
+            [].forEach.call(el('w-tree').querySelectorAll('div'), function (d) {
+              d.onclick = function () {
+                if (d.getAttribute('data-up')) { tpath = tpath.split('/').slice(0, -1).join('/'); list(); return; }
+                var rel = (tpath ? tpath + '/' : '') + d.getAttribute('data-n');
+                if (d.getAttribute('data-d') === '1') { tpath = rel; list(); return; }
+                preview(rel);
+              };
+            });
+          }).catch(function (e) { el('w-tree').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+        }
+        function preview(rel) {
+          api('GET', 'watch/file?project=' + encodeURIComponent(proj) + '&path=' + encodeURIComponent(rel)).then(function (f) {
+            var h;
+            if (f.kind === 'image') h = '<img src="' + f.dataUrl + '" alt="">';
+            else if (f.kind === 'html') h = '<iframe sandbox="" srcdoc="' + esc(f.text) + '"></iframe>' + (f.cut ? '<p class="mute">(đã cắt bớt)</p>' : '');
+            else if (f.kind === 'text') h = '<pre>' + esc(f.text) + '</pre>' + (f.cut ? '<p class="mute">… tệp dài, chỉ hiện phần đầu</p>' : '');
+            else h = '<p class="mute">' + (f.kind === 'big' ? 'Ảnh quá lớn để xem trước.' : 'Tệp không phải chữ/ảnh nên không xem trước được.') + ' (' + Math.round(f.size / 1024) + ' KB)</p>';
+            el('w-prev').innerHTML = '<div class="wprev"><b>' + esc(rel) + '</b>' + h + '</div>';
+          }).catch(function (e) { el('w-prev').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+        }
+        if (projects.length) paint();
+        else api('GET', 'projects').then(function (r) { projects = (r.list || []).filter(function (p) { return !p.deleted; }).map(function (p) { return { id: p.id, name: p.name }; }); if (!proj && detail && detail.project) proj = detail.project; if (!proj && projects.length) proj = projects[0].id; if (!projects.length) { body.innerHTML = '<p class="mute">Chưa có dự án nào.</p>'; return; } paint(); }).catch(fail);
+      }
+      loadList();
+      var tick = setInterval(function () { if (!alive()) { clearInterval(tick); return; } if (!doneFlag) pull(false); }, 1500);
+      var tick2 = setInterval(function () { if (!alive()) { clearInterval(tick2); return; } loadList(); }, 6000);
     },
     usg: function () {
       var days = 30;

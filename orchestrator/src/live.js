@@ -1,5 +1,5 @@
 'use strict';
-const { describe } = require('./progress');
+const { describe, clean } = require('./progress');
 const { esc } = require('./tgFormat');
 
 // TIN TRẠNG THÁI TRỰC TIẾP (như thanh tiến trình của Claude Code): khi AI đang làm, bot hiện "đang gõ" và MỘT tin trạng thái được sửa liên tục
@@ -23,12 +23,22 @@ function createLive(o) {
     });
     return '\n<i>Trợ lý phụ:</i>\n' + rows.join('\n');
   }
+  // Danh sách việc cần làm của AI (công cụ TodoWrite của Claude Code) → ☑ xong · ▶️ đang làm · ☐ chờ
+  function todoLines(st) {
+    if (!st.todos || !st.todos.length) return '';
+    const done = st.todos.filter((t) => t.s === 'completed').length;
+    const ico = { completed: '☑', in_progress: '▶️', pending: '☐' };
+    const open = st.todos.filter((t) => t.s !== 'completed').slice(0, 6), lastDone = st.todos.filter((t) => t.s === 'completed').slice(-1);
+    const rows = st.todos.filter((t) => open.includes(t) || lastDone.includes(t)).map((t) => ico[t.s] + ' ' + esc(t.s === 'in_progress' ? (t.a || t.c) : t.c));
+    const more = st.todos.length - rows.length;
+    return '\n<i>📋 Việc cần làm ' + done + '/' + st.todos.length + ':</i>\n' + rows.join('\n') + (more > 0 ? '\n<i>… ' + more + ' việc nữa</i>' : '');
+  }
   function render(st) {
     const secs = Math.max(0, Math.round((now() - st.start) / 1000));
     const hidden = st.steps.length - maxSteps;
     const shown = st.steps.slice(-maxSteps).map((x) => esc(x));
     return '⏳ <b>Đang làm…</b> <i>' + secs + ' giây' + (st.steps.length ? ' · ' + st.steps.length + ' bước' : '') + '</i>' +
-      (hidden > 0 ? '\n<i>… ' + hidden + ' bước trước</i>' : '') + (shown.length ? '\n' + shown.join('\n') : '') + subLines(st);
+      todoLines(st) + (hidden > 0 ? '\n<i>… ' + hidden + ' bước trước</i>' : '') + (shown.length ? '\n' + shown.join('\n') : '') + subLines(st);
   }
   async function paint(st) {
     st.timer = null; st.last = now();
@@ -57,6 +67,10 @@ function createLive(o) {
     },
     step(job, ev) {
       const st = jobs.get(job.id); if (!st || st.ended) return;
+      if (ev && ev.kind === 'tool' && ev.name === 'TodoWrite' && ev.input && Array.isArray(ev.input.todos)) {
+        st.todos = ev.input.todos.slice(0, 25).map((t) => ({ c: clean(t && (t.content || t.activeForm), 90), a: clean(t && t.activeForm, 90), s: ['completed', 'in_progress', 'pending'].includes(t && t.status) ? t.status : 'pending' })).filter((t) => t.c);
+        schedule(st); return;
+      }
       const line = describe(ev);
       if (!line) return;
       if (ev.kind === 'text') { const prev = st.steps[st.steps.length - 1]; if (prev && prev.startsWith('💬 ')) { st.steps[st.steps.length - 1] = line; schedule(st); return; } }   // lời dẫn mới thay lời dẫn trước

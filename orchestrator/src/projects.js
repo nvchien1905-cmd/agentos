@@ -204,7 +204,10 @@ function createProjects(o) {
     const mdIn = (dir) => { let l = []; try { l = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; } for (const d of l) if (d.isFile() && /\.md$/i.test(d.name)) add(path.join(dir, d.name), d.name.replace(/\.md$/i, '')); };
     mdIn(path.join(base, 'KY-NANG')); mdIn(path.join(base, '.agentos', 'skills'));
     try { for (const d of fs.readdirSync(path.join(base, '.claude', 'skills'), { withFileTypes: true })) if (d.isDirectory()) add(path.join(base, '.claude', 'skills', d.name, 'SKILL.md'), d.name); } catch (e) { /* không có */ }
-    return out.slice(0, 20);
+    out.length = Math.min(out.length, 20);
+    // Kỹ năng của các plugin đã cài (plugins.js): dùng cho MỌI dự án; kỹ năng của dự án trùng tên thì thắng
+    try { for (const d of (o.extraSkillDirs ? o.extraSkillDirs() : [])) mdIn(d); } catch (e) { /* bỏ qua */ }
+    return out.slice(0, 40);
   }
   function extras(id) {
     const base = dirOf(id), parts = [];

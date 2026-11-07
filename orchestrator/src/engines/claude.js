@@ -34,6 +34,8 @@ function startClaude(opts) {
   if (opts.mcpConfig) args.push('--mcp-config', opts.mcpConfig, '--strict-mcp-config');
   if (opts.appendSystemPrompt) args.push('--append-system-prompt', opts.appendSystemPrompt);
   if (opts.resumeId) args.push('--resume', opts.resumeId);
+  if (opts.model) args.push('--model', opts.model);
+  if (opts.noTools) args.push('--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}');            // tóm tắt/nén: không công cụ, không máy chủ MCP nào
 
   let finalEv = null;
   const reader = stream ? lineReader((line) => {

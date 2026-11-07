@@ -1,0 +1,10 @@
+{
+  "id": "ban-hang",
+  "name": "Bán hàng cửa hàng",
+  "version": "1.0.0",
+  "icon": "🛒",
+  "category": "Bán hàng",
+  "author": "AgentOS",
+  "default": true,
+  "description": "Bộ kỹ năng cho chủ cửa hàng: báo cáo cuối ngày từ KiotViet, trả lời khách, báo giá khách sỉ, kiểm tồn và gợi ý nhập hàng."
+}

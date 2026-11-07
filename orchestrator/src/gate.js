@@ -6,7 +6,7 @@ const { decide, decideGuard, originOf } = require('./policy');
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
 //   POST /gate  header x-gate-token  body {jobId, tool, input}  ->  {behavior:'allow',updatedInput} | {behavior:'deny',message}
-function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub }) {
+function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub, journal }) {
   log = log || (() => {});
   const token = crypto.randomBytes(24).toString('hex');
   const jobs = new Map();     // jobId -> { job, policy, state:{tainted, allowed:Set} }
@@ -16,11 +16,22 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     try { db.addAudit({ jobId, tool, cls: d.cls, decision, source, summary: d.summary }); } catch (e) { log('ghi nhật ký lỗi: ' + e.message); }
   }
 
+  // Nhật ký "trước khi sửa" (journal.js): thao tác được CHO PHÉP thì lưu bản gốc của tệp sắp bị sửa/xóa TRƯỚC khi công cụ chạy (hook chờ kết quả này). Lỗi ghi nhật ký không chặn việc.
   async function evaluate(body) {
+    const r = await decideOne(body);
+    if (journal && r && r.behavior === 'allow') {
+      const entry = jobs.get(Number(body.jobId));
+      if (entry) { try { await journal.before(entry.job, String(body.tool || ''), body.input && typeof body.input === 'object' ? body.input : {}); } catch (e) { log('nhật ký trước-khi-sửa lỗi: ' + e.message); } }
+    }
+    return r;
+  }
+
+  async function decideOne(body) {
     const entry = jobs.get(Number(body.jobId));
     if (!entry) return { behavior: 'deny', message: 'Việc không còn chạy, từ chối.' };
     const tool = String(body.tool || '');
     const input = body.input && typeof body.input === 'object' ? body.input : {};
+    if (entry.journalOnly) return { behavior: 'allow', updatedInput: input };            // hàng rào tắt: chỉ ghi nhật ký, không hỏi/chặn gì
     // Luật CẤM của dự án thắng mọi thứ (kể cả tự cho phép)
     if (perms) { let why = null; try { why = perms.denies(entry.job, tool, input); } catch (e) { why = null; } if (why) { audit(entry.job.id, tool, { cls: 'policy', summary: String(input.command || input.file_path || input.url || '') }, 'deny', 'policy'); return { behavior: 'deny', message: 'Bị chặn: ' + why + '. Đừng thử lại cách này; báo người dùng nếu cần.' }; } }
     // Thao tác đã được chủ máy cho phép sẵn bằng cấu hình (vd. ghi sổ chứng từ của dự án bật chế độ chứng từ): tự cho phép, vẫn ghi nhật ký
@@ -95,7 +106,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     evaluate,
     // Gọi trước khi chạy engine / sau khi xong. `profile.policy` là chính sách của bộ công cụ.
     // dirsFor(job): thư mục được đọc/ghi riêng cho việc này (việc trong DỰ ÁN chỉ được làm trong thư mục dự án); trả null = dùng chung extraDirs
-    begin(job, profile, opts) { jobs.set(job.id, { job, extraDirs: dirsFor ? dirsFor(job) : null, guard: !!(opts && opts.guard), policy: profile.policy || {}, state: { tainted: false, allowed: new Set(), origins: new Set() } }); },
+    begin(job, profile, opts) { jobs.set(job.id, { job, extraDirs: dirsFor ? dirsFor(job) : null, guard: !!(opts && opts.guard), journalOnly: !!(opts && opts.journalOnly), policy: profile.policy || {}, state: { tainted: false, allowed: new Set(), origins: new Set() } }); },
     end(jobId) { jobs.delete(jobId); if (approvals) approvals.cancelJob(jobId); },
     state(jobId) { const e = jobs.get(jobId); return e ? e.state : null; },
     listen(port) {

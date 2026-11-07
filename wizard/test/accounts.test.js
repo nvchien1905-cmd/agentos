@@ -42,7 +42,7 @@ function boot(extra) {
   const conf = path.join(dir, 'od'); fs.mkdirSync(conf, { recursive: true });
   const envFile = path.join(dir, 'orchestrator.env');
   const KEYS = { claude: 'sk-ant-' + 'a1B2c3D4'.repeat(4), deepseekapi: 'sk-' + 'Zz9'.repeat(12) };
-  fs.writeFileSync(envFile, ['TELEGRAM_TOKEN=' + TOKEN, 'ALLOWED_USER_IDS=111222333,5', 'ADMIN_USER_IDS=111222333', 'ENGINE_ORDER=claude,codex',
+  fs.writeFileSync(envFile, ['TELEGRAM_TOKEN=' + TOKEN, 'ALLOWED_USER_IDS=111222333,5', 'ADMIN_USER_IDS=111222333', 'ENGINE_ORDER=claude,codex', 'CLAUDE_ONLY=0',
     apikeys.VAR.claude + '=' + KEYS.claude, apikeys.VAR.deepseekapi + '=' + KEYS.deepseekapi,
     'KIOTVIET_CLIENT_ID=kv-client-id-0123456789abcdef', 'KIOTVIET_CLIENT_SECRET=kv-secret-ABCDEFGHIJKLMNOPQRSTUV', 'KIOTVIET_RETAILER=cuahanghuyenanh', ''].join('\n'));
   fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'chien.nguyen@gmail.com' } }));

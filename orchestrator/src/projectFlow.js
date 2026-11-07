@@ -67,9 +67,21 @@ function createProjectFlow(o) {
 
   // /hoantac: MỐC KHÔI PHỤC của dự án đang ở (checkpoints.js): bot tự chụp thư mục dự án trước mỗi việc; AI sửa hỏng thì xem thay đổi rồi quay về mốc
   const ck = o.checkpoints || null;
+  const jr = o.journal || null;           // nhật ký "trước khi sửa" toàn máy (journal.js): chỉ chủ máy thấy/quay lại
   const clock = (t) => { const d = new Date(t), p = (n) => String(n).padStart(2, '0'); return (new Date(now()).toDateString() === d.toDateString() ? '' : p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ') + p(d.getHours()) + ':' + p(d.getMinutes()); };
   const names = (arr, mark) => arr.slice(0, 8).map((f) => mark + ' ' + cut(f, 60)).join('\n') + (arr.length > 8 ? '\n…và ' + (arr.length - 8) + ' tệp nữa' : '');
   async function checkCard(chatId, uid) {
+    const base = await checkCardBase(chatId, uid);
+    if (!jr || !isAdmin(uid)) return base;
+    let list = []; try { list = (await jr.list(10)).filter((x) => x.files || (x.unsafe && x.unsafe.length)).slice(0, 5); } catch (e) { list = []; }
+    if (!list.length) return base;
+    const mb = (b) => (b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1048576)) + ' MB');
+    const lines = list.map((x) => '#' + x.id + ' · ' + clock(x.at) + ' · ' + cut(x.label || 'việc', 34) + ' · ' + x.files + ' mục, ' + mb(x.bytes) + (x.unsafe && x.unsafe.length ? ' · ⚠️ ' + x.unsafe.length + ' việc không hoàn tác được tự động' : ''));
+    const text = (typeof base === 'string' ? base : base.text) + '\n\n🗂 Việc đã sửa tệp trên máy (kể cả ngoài dự án, tệp lớn; bot lưu bản gốc TRƯỚC khi sửa):\n' + lines.join('\n');
+    const buttons = ((base && base.buttons) || []).concat(list.map((x) => [{ text: '🗂 #' + x.id + ' · ' + cut(x.label || 'việc', 22), data: 'pj:jr:show:' + x.id }]));
+    return { text, buttons };
+  }
+  async function checkCardBase(chatId, uid) {
     if (!ck) return 'Máy này chưa hỗ trợ mốc khôi phục.';
     const p = projects.active(chatId);
     if (!p) return 'Anh đang ở chế độ chung, chưa có thư mục dự án để quay về. Gõ /duan để vào một dự án.';
@@ -81,6 +93,28 @@ function createProjectFlow(o) {
         '\n\nBấm một mốc để xem AI đã đổi gì so với lúc đó, rồi quyết định quay về. Quay về cũng hoàn tác được (bot lưu lại trạng thái hiện tại thành một mốc mới).',
       buttons: list.map((s, i) => [{ text: (i + 1) + ') ' + clock(s.at) + ' · ' + cut(s.label || 'mốc', 20), data: 'pj:ck:show:' + s.id }]),
     };
+  }
+  async function journalCallback(d, chatId, uid, reply) {
+    if (!jr || !isAdmin(uid)) return 'Chỉ chủ máy quay lại được việc này.';
+    const m = d.match(/^pj:jr:(show|do):([\w.-]+)$/);
+    if (!m) return null;
+    const meta = await jr.get(m[2]);
+    if (!meta) return 'Nhật ký này không còn (đã dọn).';
+    if (m[1] === 'show') {
+      const plan = await jr.plan(m[2]);
+      const warn = (meta.unsafe || []).slice(0, 5).map((u) => '⚠️ ' + cut(u, 90)).join('\n');
+      if (!plan.length && !warn) { await reply('🗂 Việc #' + meta.id + ': không có gì khác so với lúc đó, không cần quay lại.'); return ''; }
+      const list = plan.length ? plan.slice(0, 12).map((x) => '• ' + cut(x.p, 60) + ' — ' + x.act).join('\n') + (plan.length > 12 ? '\n…và ' + (plan.length - 12) + ' mục nữa' : '') : 'Không có tệp nào cần trả lại.';
+      await reply({
+        text: '🗂 Việc #' + meta.id + ' (' + cut(meta.label || 'việc', 60) + '). Nếu quay lại:\n\n' + list + (warn ? '\n\nBot KHÔNG tự hoàn tác được:\n' + warn : '') + (meta.partial ? '\n\n(Một phần bản gốc không lưu được — xem cảnh báo ở trên.)' : '') + '\n\nQuay lại? (Bot lưu trạng thái hiện tại trước, nên hoàn tác được.)',
+        buttons: plan.length ? [[{ text: '⏪ Quay lại như trước việc này', data: 'pj:jr:do:' + meta.id }, { text: 'Thôi', data: 'pj:ck:no' }]] : [[{ text: 'Đã rõ', data: 'pj:ck:no' }]],
+      });
+      return '';
+    }
+    if (o.running && o.running(chatId)) return 'Đang có việc chạy trong cuộc này — chờ xong hoặc gõ /huy rồi hãy quay lại.';
+    const r = await jr.restore(meta.id);
+    await reply((r.ok ? '✅ Đã quay lại như trước việc #' + meta.id + ': trả ' + r.restored + ' mục' + (r.deleted ? ', xóa ' + r.deleted + ' tệp do việc đó tạo' : '') + (r.skipped ? ', bỏ qua ' + r.skipped : '') + '.' : '⚠️ Quay lại chưa trọn vẹn: ' + (r.error || (r.errors || []).join('; '))) + (r.undoId ? '\nMuốn hủy việc quay lại: /hoantac rồi chọn nhật ký #' + r.undoId + '.' : ''));
+    return r.ok ? 'Đã quay lại' : 'Chưa trọn vẹn';
   }
   async function checkCallback(d, chatId, uid, reply) {
     if (!ck) return 'Máy này chưa hỗ trợ mốc khôi phục.';
@@ -167,6 +201,8 @@ function createProjectFlow(o) {
     const chatId = String(cq.message && cq.message.chat ? cq.message.chat.id : cq.from.id), uid = String(cq.from.id), d = String(cq.data);
     const reply = (t) => (o.send ? o.send(chatId, t) : null);
     let m;
+    if (/^pj:jr:/.test(d)) return journalCallback(d, chatId, uid, reply);
+    if (d === 'pj:ck:no') return 'Thôi, giữ nguyên.';
     if (/^pj:ck:/.test(d)) return checkCallback(d, chatId, uid, reply);
     if ((m = d.match(/^pj:(go|info|pick):(.+)$/))) {
       const p = projects.get(m[2]);

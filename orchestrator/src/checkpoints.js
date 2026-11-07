@@ -9,7 +9,8 @@ const crypto = require('crypto');
 //  - Chỉ chụp tệp thường trong thư mục dự án; bỏ qua thư mục thư viện/ẩn (node_modules, .git…), liên kết tắt, tệp quá lớn, và dừng khi quá nhiều tệp/quá nặng (ghi "chụp một phần").
 //  - Khôi phục: tự chụp trạng thái HIỆN TẠI thành một mốc mới ("Trước khi khôi phục") rồi mới ghi đè → quay về cũng hoàn tác được. Tệp mới tạo sau mốc bị xóa; tệp nằm ngoài phạm vi chụp không bao giờ bị đụng.
 //  - Chỉ giữ `keep` mốc gần nhất cho mỗi dự án; bản nội dung không còn mốc nào dùng thì dọn đi.
-const DEFAULTS = { maxFiles: 4000, maxFileBytes: 5 * 1024 * 1024, maxTotalBytes: 200 * 1024 * 1024, keep: 20 };
+const GiB = 1024 * 1024 * 1024;
+const DEFAULTS = { maxFiles: 20000, maxFileBytes: 8 * GiB, maxTotalBytes: 30 * GiB, keep: 20, minFreeBytes: 1 * GiB };      // tệp đến 8 GB; tổng cây thư mục đến 30 GB; chừa 1 GB trống trên đĩa
 const SKIP_DIRS = new Set(['node_modules', '.git', '.cache', '__pycache__', '.venv', 'venv', '.next', '.agentos-trash', '.Trash', '$RECYCLE.BIN']);
 const SAFE_ID = /^[\w.-]{1,80}$/;
 
@@ -61,13 +62,15 @@ function createCheckpoints(o) {
     return { files, skipped, bytes: total, partial: skipped.over > 0 };
   }
 
-  const hashFile = async (abs) => crypto.createHash('sha1').update(await fsp.readFile(abs)).digest('hex');
+  // Băm theo luồng (tệp nhiều GB không đọc hết vào bộ nhớ)
+  const hashFile = (abs) => new Promise((resolve, reject) => { const h = crypto.createHash('sha1'); const s = fs.createReadStream(abs); s.on('data', (c) => h.update(c)); s.on('error', reject); s.on('end', () => resolve(h.digest('hex'))); });
+  const freeBytes = async (where) => { try { const x = await fsp.statfs(where); return Number(x.bavail) * Number(x.bsize); } catch (e) { return Infinity; } };
   const loadIndex = async (pid) => readJson(path.join(pdir(pid), 'index.json'), []);
   const loadManifest = async (pid, id) => readJson(path.join(pdir(pid), 'snap-' + id + '.json'), null);
 
   async function gc(pid, index) {
     const used = new Set();
-    for (const s of index) { const m = await loadManifest(pid, s.id); if (m) for (const k of Object.keys(m)) used.add(m[k][0]); }
+    for (const s of index) { const m = await loadManifest(pid, s.id); if (m) for (const k of Object.keys(m)) if (m[k][0]) used.add(m[k][0]); }
     const bdir = path.join(pdir(pid), 'blobs');
     let subs; try { subs = await fsp.readdir(bdir); } catch (e) { return; }
     for (const sd of subs) {
@@ -81,13 +84,19 @@ function createCheckpoints(o) {
     const last = index[0] ? await loadManifest(pid, index[0].id) : null;
     const sc = await scan(root);
     const manifest = {};
+    let unsaved = 0;
     for (const f of sc.files) {
       const p = last && last[f.rel];
       let h;
       if (p && p[1] === f.size && p[2] === f.mtime) h = p[0];
       else { try { h = await hashFile(f.abs); } catch (e) { continue; } }
       const bp = blobPath(pid, h);
-      try { await fsp.access(bp); } catch (e) { await fsp.mkdir(path.dirname(bp), { recursive: true }); try { await fsp.copyFile(f.abs, bp, fs.constants.COPYFILE_EXCL); } catch (er) { if (er.code !== 'EEXIST') continue; } }
+      let saved = true;
+      try { await fsp.access(bp); } catch (e) {
+        if (await freeBytes(dir) < f.size + L.minFreeBytes) saved = false;                       // đĩa gần đầy: không chép nữa, KHÔNG xóa mất tệp này khi quay lại
+        else { await fsp.mkdir(path.dirname(bp), { recursive: true }); try { await fsp.copyFile(f.abs, bp, fs.constants.COPYFILE_EXCL | fs.constants.COPYFILE_FICLONE); } catch (er) { if (er.code !== 'EEXIST') saved = false; } }
+      }
+      if (!saved) { unsaved++; manifest[f.rel] = ['', f.size, f.mtime, f.mode]; continue; }
       manifest[f.rel] = [h, f.size, f.mtime, f.mode];
     }
     if (last && !(meta && meta.force)) {
@@ -95,7 +104,7 @@ function createCheckpoints(o) {
       if (a.length === b.length && a.every((k) => last[k] && last[k][0] === manifest[k][0])) return { ok: true, id: index[0].id, unchanged: true, files: a.length };
     }
     const id = now().toString(36) + (++seq).toString(36);
-    const entry = { id, at: now(), label: String((meta && meta.label) || '').slice(0, 160), jobId: meta && meta.jobId != null ? meta.jobId : null, files: Object.keys(manifest).length, bytes: sc.bytes, partial: sc.partial, skipped: sc.skipped.big + sc.skipped.over };
+    const entry = { id, at: now(), label: String((meta && meta.label) || '').slice(0, 160), jobId: meta && meta.jobId != null ? meta.jobId : null, files: Object.keys(manifest).length, bytes: sc.bytes, partial: sc.partial || unsaved > 0, skipped: sc.skipped.big + sc.skipped.over + unsaved };
     await writeJson(path.join(pdir(pid), 'snap-' + id + '.json'), manifest);
     index.unshift(entry);
     const drop = meta && meta.noPrune ? [] : index.splice(Math.max(1, L.keep));          // khôi phục: chưa dọn, kẻo xóa mất dữ liệu của chính mốc đang quay về (mốc mới sau đó sẽ dọn)
@@ -113,7 +122,8 @@ function createCheckpoints(o) {
     const changed = [], added = [], removed = [];
     for (const rel of Object.keys(m)) {
       const f = cur.get(rel);
-      if (!f) { removed.push(rel); continue; }
+      if (!f) { if (m[rel][0]) removed.push(rel); continue; }
+      if (!m[rel][0]) continue;                                   // mốc không lưu được nội dung tệp này (đĩa đầy): không đụng
       if (f.size === m[rel][1] && f.mtime === m[rel][2]) continue;
       let h; try { h = await hashFile(f.abs); } catch (e) { continue; }
       if (h !== m[rel][0]) changed.push(rel);

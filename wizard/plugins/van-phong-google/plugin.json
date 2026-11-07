@@ -1,0 +1,29 @@
+{
+  "id": "van-phong-google",
+  "name": "Văn phòng Google (Lịch, Gmail)",
+  "version": "1.0.0",
+  "icon": "📅",
+  "category": "Văn phòng",
+  "author": "AgentOS",
+  "description": "Kỹ năng soạn email, tóm tắt cuộc họp, lập kế hoạch tuần; kèm kết nối Google Lịch và Gmail (cần cấp quyền Google một lần).",
+  "connectors": [
+    {
+      "key": "lich",
+      "label": "Google Lịch",
+      "about": "Xem/tạo/sửa sự kiện Google Calendar (gói cộng đồng @cocal/google-calendar-mcp).",
+      "command": "npx",
+      "args": ["-y", "@cocal/google-calendar-mcp"],
+      "secrets": [{ "name": "GOOGLE_OAUTH_CREDENTIALS", "plain": true, "ask": "Đường dẫn tới tệp gcp-oauth.keys.json trên máy (khóa OAuth loại Desktop app tạo ở console.cloud.google.com)." }],
+      "manual": "Cần làm MỘT LẦN: bật Google Calendar API, tạo OAuth client (Desktop app), tải tệp JSON, rồi chạy `GOOGLE_OAUTH_CREDENTIALS=<đường dẫn> npx @cocal/google-calendar-mcp auth` và đăng nhập tài khoản Google."
+    },
+    {
+      "key": "gmail",
+      "label": "Gmail",
+      "about": "Đọc/tìm/soạn thư Gmail (gói cộng đồng @gongrzhe/server-gmail-autoauth-mcp).",
+      "command": "npx",
+      "args": ["-y", "@gongrzhe/server-gmail-autoauth-mcp"],
+      "secrets": [],
+      "manual": "Cần làm MỘT LẦN: tạo OAuth client (Desktop app) ở Google Cloud, lưu thành ~/.gmail-mcp/gcp-oauth.keys.json rồi chạy `npx @gongrzhe/server-gmail-autoauth-mcp auth` và đăng nhập Gmail."
+    }
+  ]
+}

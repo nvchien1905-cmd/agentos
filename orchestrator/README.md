@@ -96,3 +96,5 @@ test/                 67 test (fake-claude.js, fake-codex.js, fake-tree.js)
 - GĐ 3b: điều khiển ứng dụng đồ họa (chụp màn hình + chuột/phím trên Xvfb) qua một MCP server tự viết dùng xdotool/scrot; chỉ làm được và kiểm trên Linux. Nên ưu tiên API/CLI/trình duyệt, chỉ dùng khi bắt buộc.
 - MCP nghiệp vụ (Gmail, Drive, Sheets, KiotViet...): thêm vào `servers` rồi gắn vào một bộ công cụ mới.
 - Dịch vụ systemd cho ISO đã viết (`iso/config/includes.chroot/etc/systemd/system/agentos-*.service`) nhưng chưa chạy thử.
+
+Từ 2026.11.08.1: máy CHỈ DÙNG CLAUDE (`CLAUDE_ONLY=0` để bỏ); `/cho` (chợ kỹ năng/plugin, tự cập nhật theo bản AgentOS); `/hoantac` có thêm mục "Việc đã sửa tệp trên máy" (nhật ký trước-khi-sửa toàn máy, tệp đến 8 GB); tin "Đang làm…" hiện danh sách việc cần làm; trang Cài đặt có "Màn hình AI" (xem từng bước, tệp đã đổi, duyệt tệp dự án) và "Kết nối và kỹ năng".

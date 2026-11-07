@@ -14,7 +14,7 @@ const KEY = { deepseekapi: 'sk-' + 'd'.repeat(32) };
 async function boot(extra) {
   const dir = tmp();
   const envFile = path.join(dir, 'orchestrator.env');
-  if (!(extra && extra.noEnv)) fs.writeFileSync(envFile, 'TELEGRAM_TOKEN=' + TOKEN + '\nALLOWED_USER_IDS=5\nADMIN_USER_IDS=5\nENGINE_ORDER=claude\nFULL_ACCESS=0\n');
+  if (!(extra && extra.noEnv)) fs.writeFileSync(envFile, 'TELEGRAM_TOKEN=' + TOKEN + '\nALLOWED_USER_IDS=5\nADMIN_USER_IDS=5\nENGINE_ORDER=claude\nCLAUDE_ONLY=0\nFULL_ACCESS=0\n');
   fs.writeFileSync(path.join(dir, 'VERSION'), '2026.10.21.2\n');
   const calls = [], spawned = [];
   const run = async (cmd, args) => {
@@ -240,5 +240,16 @@ test('Máy từ xa: lưu ID + mật khẩu vào kho mã hóa, danh sách không 
     assert.equal((await S.call('POST', 'vault/delete', { name: 'máy văn phòng' })).body.deleted, true);
     assert.equal((await S.call('POST', 'vault/delete', { name: 'khong co' })).status >= 400, true);
     const page = await fetch('http://127.0.0.1:' + S.port + '/'); assert.match(await page.text(), /Máy từ xa/);
+  } finally { await S.s.close(); }
+});
+
+test('settings: mặc định CHỈ DÙNG CLAUDE → trang AI ẩn Codex/Gemini/DeepSeek; CLAUDE_ONLY=0 thì hiện lại', async () => {
+  const S = await boot();
+  try {
+    fs.writeFileSync(S.envFile, fs.readFileSync(S.envFile, 'utf8').replace('CLAUDE_ONLY=0\n', ''));
+    const r = await S.call('GET', 'ai');
+    assert.equal(r.body.claudeOnly, true); assert.deepEqual(r.body.engines.map((e) => e.id), ['claude']); assert.deepEqual(r.body.order, ['claude']);
+    fs.writeFileSync(S.envFile, fs.readFileSync(S.envFile, 'utf8') + 'CLAUDE_ONLY=0\n');
+    const r2 = await S.call('GET', 'ai'); assert.equal(r2.body.claudeOnly, false); assert.ok(r2.body.engines.length >= 3);
   } finally { await S.s.close(); }
 });

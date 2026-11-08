@@ -78,6 +78,9 @@ const { createRemote } = require('./remote');
 const { createOffice } = require('./office');
 const { createRoles } = require('./roles');
 const { createSelfTest } = require('./selftest');
+const { createHwCheck } = require('./hwcheck');
+const { createSkillLayers } = require('./skillLayers');
+const { createGoogleAuth } = require('./googleAuth');
 const { createHealthMon } = require('./healthmon');
 const { createTriggers } = require('./triggers');
 const { createSnapshot } = require('./snapshot');
@@ -209,8 +212,9 @@ async function main() {
     edit: (chatId, msgId, text) => tg.editMessage(chatId, msgId, text),
   });
   // DỰ ÁN: mỗi dự án có thư mục, chỉ dẫn, sổ tay, phiên riêng (projects.js). Dữ liệu do AgentOS giữ nên mọi AI dùng chung được.
+  const layersRef = { v: null };             // hai lớp kỹ năng gốc / của chủ máy (skillLayers.js)
   const pluginRef = { v: null };             // chợ kỹ năng/plugin (plugins.js), tạo sau khi có kết nối dịch vụ
-  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log, extraSkillDirs: () => (pluginRef.v ? pluginRef.v.skillDirs() : []), extraAgentDirs: () => (pluginRef.v ? pluginRef.v.agentDirs() : []) });
+  const projects = createProjects({ db, baseDir: cfg.oneDriveDir, log, skillNote: (f) => (layersRef.v ? layersRef.v.noteFor(f) : null), extraSkillDirs: () => (pluginRef.v ? pluginRef.v.skillDirs() : []), extraAgentDirs: () => (pluginRef.v ? pluginRef.v.agentDirs() : []) });
   // CÁCH LY DỮ LIỆU THEO ID: AI của ID thường (không phải chủ máy) chạy trong hộp cô lập mà thư mục AgentOS của OneDrive (dự án, sổ tay chung, danh sách dự án), thư mục tệp gửi/nhận của mọi chat
   // đều bị che; chỉ mở lại đúng dự án của mình + thư mục tệp riêng của chat đó. Chủ máy không bị che. Cần SANDBOX=auto|bwrap (xem sandbox.js); tắt thì chỉ còn cách ly theo thư mục.
   const safeChat = (c) => String(c).replace(/[^\w.-]/g, '_');
@@ -662,8 +666,9 @@ async function main() {
     deepseekapi: { label: 'DeepSeek (API)', bin: cfg.claudeBin, binArgs: cfg.claudeBinArgs, key: !!cfg.apiKeys.deepseek, login: [] },
   };
   const backup = createBackup();
+  const hw = createHwCheck({ save: (rep) => { try { fs.writeFileSync(path.join(dataDir, 'hw-report.json'), JSON.stringify(rep, null, 1)); } catch (e) { /* bỏ qua */ } } });
   const selftest = createSelfTest({
-    backup, tg, tgwatch, db, desk: createDeskClient(), tailscale, home: process.env.HOME || require('os').homedir(),
+    hw, backup, tg, tgwatch, db, desk: createDeskClient(), tailscale, home: process.env.HOME || require('os').homedir(),
     engines: cfg.engineOrder.filter((e) => ENGINE_INFO[e]).map((e) => Object.assign({ name: e }, ENGINE_INFO[e])),
     diskFreeMb: () => maint.diskFreeMb(cfg.workdir), minFreeMb: cfg.minFreeMb,
     writable: { 'thư mục làm việc': cfg.workdir, 'thư mục OneDrive': path.join(cfg.oneDriveDir, 'AgentOS'), 'điểm khôi phục': path.join(dataDir, 'snapshots') },
@@ -691,6 +696,9 @@ async function main() {
   // CHỢ KỸ NĂNG / PLUGIN: danh mục nằm trong bản cài (tự cập nhật theo bản cập nhật có chữ ký); sync() cài plugin mặc định mới + nâng phiên bản plugin đã cài
   const plugins = createPlugins({ dir: process.env.PLUGINS_DIR || path.join(__dirname, '..', '..', 'wizard', 'plugins'), stateFile: path.join(dataDir, 'plugins.json'), userDir: path.join(path.dirname(dataDir), 'plugins-user'), connectors, log });
   pluginRef.v = plugins;
+  const skillLayers = createSkillLayers({ plugins, projects, notesDir: process.env.SKILL_NOTES_DIR || path.join(path.dirname(dataDir), 'skill-notes'), stateFile: path.join(dataDir, 'skill-layers.json') });
+  layersRef.v = skillLayers;
+  setTimeout(() => { try { const st = skillLayers.staleOverrides(); if (st.length) log('kỹ năng của dự án đang che bản gốc đã cập nhật: ' + st.map((x) => x.project + ' (' + x.names.join(', ') + ')').join('; ')); } catch (e) { /* bỏ qua */ } }, 90 * 1000).unref();
   const syncPlugins = () => { const r = plugins.sync(); const n = connectors.apply(tools); if (r.installed.length || r.updated.length) { const lines = r.installed.map((x) => '➕ ' + x.name + ' v' + x.version + ' (tự cài)').concat(r.updated.map((x) => '⬆️ ' + x.name + ' ' + x.from + ' → ' + x.to)); for (const a of cfg.adminUserIds) tg.sendMessage(a, '🧩 Chợ kỹ năng vừa cập nhật theo bản AgentOS mới:\n' + lines.join('\n') + '\nXem: /cho').catch(() => {}); } return n; };
   const connNames = syncPlugins();
   if (connNames.length) log('Kết nối dịch vụ đang bật: ' + connNames.join(', '));
@@ -711,8 +719,9 @@ async function main() {
     },
     pairing: createPairing({ db, roles, adminIds: [...cfg.adminUserIds], log, send: (chat, r) => (r && typeof r === 'object' && r.buttons ? tg.sendButtons(chat, r.text, r.buttons) : tg.sendMessage(chat, r && typeof r === 'object' ? r.text : r)) }),
     voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
-    send: botSend, connectorsUi, pluginsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend }),
-    quick: createQuick({ vault, access, isAdmin, browserHost, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
+    googleStatus: () => createGoogleAuth({ dir: path.join(dataDir, 'google') }).status(),
+    send: botSend, connectorsUi, pluginsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend, layers: skillLayers }),
+    quick: createQuick({ hw, vault, access, isAdmin, browserHost, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
     fullAccess: {
       get: isFull, set: (on) => { db.kvSet('fullAccess', on ? '1' : '0'); log('chế độ ' + (on ? 'TOÀN QUYỀN' : 'bảo vệ') + ' (đổi bằng lệnh Telegram)'); },

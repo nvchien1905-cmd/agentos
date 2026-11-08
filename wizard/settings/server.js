@@ -40,6 +40,9 @@ const { createWatch } = require('../lib/watch');
 const { createConnectors } = require('../../orchestrator/src/connectors');
 const { createPlugins } = require('../../orchestrator/src/plugins');
 const { createGoogleAuth } = require('../../orchestrator/src/googleAuth');
+const { createSkillLayers } = require('../../orchestrator/src/skillLayers');
+const { collect: hwCollect, evaluate: hwEvaluate } = require('../../orchestrator/src/hwcheck');
+let hwCache = null;
 
 const PORT = 8089;
 const SERVICES = { orchestrator: 'agentos-orchestrator', deskd: 'agentos-deskd', onedrive: 'onedrive-agentos', tailscale: 'tailscaled', cups: 'cups', network: 'NetworkManager', capnhat: 'agentos-update.path', saoluu: 'agentos-sao-luu.timer' };
@@ -130,6 +133,11 @@ function createSettings(o) {
   let connInst = null, plugInst = null;
   const connLib = () => connInst || (connInst = createConnectors({ file: connFile, extraCatalog: () => (plugInst ? plugInst.extraCatalog() : []), spawn: o.connSpawn || asAgentosSpawn }));
   const plugLib = () => { if (!plugInst) { const c = connLib(); plugInst = createPlugins({ dir: o.pluginsDir || path.join(__dirname, '..', 'plugins'), stateFile: plugFile, userDir: o.pluginsUserDir || '/var/lib/agentos/plugins-user', fetch: o.pluginsFetch, connectors: c }); } return plugInst; };
+  // Hai lớp kỹ năng: gốc (plugin, chỉ đọc) / của chủ máy (ghi chú riêng + kỹ năng dự án đè bản gốc) — skillLayers.js
+  const skillNotesDir = o.skillNotesDir || '/var/lib/agentos/skill-notes';
+  let layersInst = null;
+  const layersLib = () => layersInst || (layersInst = createSkillLayers({ plugins: plugLib(), projects: projectsLib(), notesDir: skillNotesDir, stateFile: o.skillLayersFile || path.join(path.dirname(plugFile), 'skill-layers.json') }));
+  const fixSkillNotes = () => { try { chownTree(skillNotesDir); } catch (e) { /* máy thử */ } try { chownAgentos(o.skillLayersFile || path.join(path.dirname(plugFile), 'skill-layers.json')); } catch (e) { /* máy thử */ } };
   const fixUserPlugins = () => { try { chownTree(o.pluginsUserDir || '/var/lib/agentos/plugins-user'); } catch (e) { /* máy thử */ } };
   const fixConnOwner = () => { for (const f of [connFile, plugFile]) { try { chownAgentos(f); } catch (e) { /* máy thử */ } } };
   const connOut = () => ({ connectors: connLib().list(), catalog: connLib().catalog(), plugins: plugLib().list() });
@@ -274,6 +282,11 @@ function createSettings(o) {
 
   // ---------- xử lý yêu cầu ----------
   const A = {
+    // Kiểm tra phần cứng (hwcheck.js, chỉ đọc); nhớ 60 giây để mở trang không chạy lspci liên tục
+    async 'GET /api/hardware'(b, ctx) {
+      if (hwCache && Date.now() - hwCache.at < 60000 && !(ctx && ctx.query && ctx.query.get('force'))) return hwCache.rep;
+      const rep = hwEvaluate(await hwCollect(o.hwOptions || {})); hwCache = { at: Date.now(), rep }; return rep;
+    },
     async 'GET /api/overview'() {
       const stats = (() => { try { const s = fs.statfsSync('/'); return { freeMb: Math.floor((s.bavail * s.bsize) / 1048576), totalMb: Math.floor((s.blocks * s.bsize) / 1048576) }; } catch (e) { return { freeMb: null, totalMb: null }; } })();
       const services = {};
@@ -714,13 +727,17 @@ function createSettings(o) {
       const P = projectsLib(), id = String(ctx.query.get('project') || ''), p = P.get(id); if (!p) throw new Error('Không có dự án này.');
       plugLib();
       const mine = path.join(p.dir, SKILL_DIR) + path.sep;
-      return { project: { id: p.id, name: p.name }, skills: P.skillsOf(id).map((s) => ({ name: s.name, description: s.description, slug: path.basename(s.file).replace(/\.md$/i, ''), kind: s.file.startsWith(mine) ? 'mine' : 'other' })) };
+      const an = layersLib().analyze(id), byKey = new Map(an.skills.map((x) => [x.name.toLowerCase(), x]));
+      return { project: { id: p.id, name: p.name }, officialChanged: an.officialChanged, hidden: an.hidden, skills: P.skillsOf(id).map((s) => { const x = byKey.get(String(s.name).toLowerCase()) || {}; return { name: s.name, description: s.description, slug: path.basename(s.file).replace(/\.md$/i, ''), kind: s.file.startsWith(mine) ? 'mine' : 'other', layer: x.layer || (s.file.startsWith(mine) ? 'custom' : 'official'), plugin: x.plugin || null, pluginName: x.pluginName || null, hasNote: !!x.hasNote, overrides: x.overrides || null }; }) };
     },
     async 'GET /api/skills/text'(b, ctx) {
       const P = projectsLib(), id = String(ctx.query.get('project') || ''), p = P.get(id); if (!p) throw new Error('Không có dự án này.');
       plugLib(); const s = P.skillsOf(id).find((x) => path.basename(x.file).replace(/\.md$/i, '') === String(ctx.query.get('slug') || '')); if (!s) throw new Error('Không có kỹ năng này.');
       return { text: fs.readFileSync(s.file, 'utf8').slice(0, 30000) };
     },
+    async 'GET /api/skills/note'(b, ctx) { return layersLib().getNote(String(ctx.query.get('plugin') || ''), String(ctx.query.get('slug') || '')); },
+    async 'POST /api/skills/note'(b) { const r = layersLib().setNote(String(b.plugin || ''), String(b.slug || ''), b.text); fixSkillNotes(); if (!r.ok) throw new Error(r.error); return r; },
+    async 'POST /api/skills/use-official'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); const r = layersLib().useOfficial(String(b.project || ''), String(b.name || '')); fixSkillNotes(); if (!r.ok) throw new Error(r.error); return { ok: true, plugin: r.plugin }; },
     async 'POST /api/skills/save'(b) {
       const P = projectsLib(), p = P.get(String(b.project || '')); if (!p) throw new Error('Không có dự án này.');
       const name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 60), description = String(b.description || '').replace(/\s+/g, ' ').trim().slice(0, 160), body = String(b.body || '').trim();

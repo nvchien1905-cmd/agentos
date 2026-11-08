@@ -17,6 +17,7 @@ function createGoogleAuth(o) {
   const f = o.fetch || fetch;
   const origins = Object.assign({}, ORIGINS, o.origins || {});
   const clientFile = path.join(dir, 'client.json'), tokenFile = path.join(dir, 'tokens.json');
+  const sharedFile = o.sharedClientFile || process.env.GOOGLE_SHARED_CLIENT || '';       // khóa DÙNG CHUNG do nhà phát hành AgentOS cấp sẵn (khách khỏi tự tạo); khóa khách tự nhập được ưu tiên
   const pending = new Map();                 // state -> { verifier, redirectUri, write, until }
   let refreshing = null;
 
@@ -28,13 +29,22 @@ function createGoogleAuth(o) {
     fs.renameSync(t, file); try { fs.chmodSync(file, 0o600); } catch (e) { /* hệ tệp không hỗ trợ */ }
   };
 
+  const okClient = (c) => !!(c && c.client_id && c.client_secret);
+  const getClient = () => { const c = read(clientFile); if (okClient(c)) return c; let s = sharedFile ? read(sharedFile) : null; s = s && (s.installed || s); return okClient(s) ? { client_id: s.client_id, client_secret: s.client_secret } : null; };
+
   const api = {
     SCOPES,
-    clientSet: () => { const c = read(clientFile); return !!(c && c.client_id && c.client_secret); },
+    clientSet: () => !!getClient(),
     // Nhận cả tệp JSON Google cho tải về ({installed:{client_id,client_secret…}}) lẫn {client_id, client_secret}
     saveClient(input) {
-      let c = input; if (typeof c === 'string') { try { c = JSON.parse(c); } catch (e) { return { ok: false, error: 'Không đọc được JSON.' }; } }
-      c = (c && (c.installed || c.web)) || c || {};
+      let c = input;
+      if (typeof c === 'string') {
+        if (!c.trim()) return { ok: false, error: 'Chưa có nội dung. Bấm "Chọn tệp JSON" rồi chọn tệp client_secret_….json vừa tải từ Google.' };
+        try { c = JSON.parse(c); } catch (e) { return { ok: false, error: 'Tệp này không phải JSON của Google (có thể bị cắt dở). Tải lại tệp từ Google rồi chọn lại, đừng dán thiếu.' }; }
+      }
+      if (c && c.type === 'service_account') return { ok: false, error: 'Đây là tệp "tài khoản dịch vụ", không dùng được. Cần tạo "Mã ứng dụng khách OAuth" loại Ứng dụng máy tính để bàn (Desktop app).' };
+      if (c && c.web && !c.installed) return { ok: false, error: 'Anh đã tạo nhầm loại "Ứng dụng web". Quay lại Google Cloud tạo lại mã ứng dụng khách loại "Ứng dụng máy tính để bàn" (Desktop app), rồi tải tệp JSON mới.' };
+      c = (c && c.installed) || c || {};
       const id = String(c.client_id || '').trim(), secret = String(c.client_secret || '').trim();
       if (!/^[\w.-]+\.apps\.googleusercontent\.com$/.test(id)) return { ok: false, error: 'Mã ứng dụng khách (client_id) phải kết thúc bằng .apps.googleusercontent.com' };
       if (secret.length < 8 || /\s/.test(secret)) return { ok: false, error: 'Mật khẩu ứng dụng khách (client_secret) không hợp lệ.' };
@@ -43,11 +53,11 @@ function createGoogleAuth(o) {
     status() {
       const t = read(tokenFile);
       const sc = t && t.scope ? String(t.scope).split(/\s+/) : [];
-      return { clientSet: api.clientSet(), connected: !!(t && t.refresh_token), write: sc.includes(SCOPES.write[0]) || sc.includes(SCOPES.write[1]), scopes: sc, at: t && t.at ? t.at : 0 };
+      return { clientSet: api.clientSet(), ownClient: okClient(read(clientFile)), sharedClient: !okClient(read(clientFile)) && api.clientSet(), connected: !!(t && t.refresh_token), write: sc.includes(SCOPES.write[0]) || sc.includes(SCOPES.write[1]), scopes: sc, at: t && t.at ? t.at : 0 };
     },
     // Bắt đầu đăng nhập: trả đường link Google; redirectUri là địa chỉ loopback bắt mã (vd http://127.0.0.1:8089/google/callback)
     start({ write: wantWrite, redirectUri }) {
-      const c = read(clientFile); if (!c) return { ok: false, error: 'Chưa nhập khóa ứng dụng Google (client).' };
+      const c = getClient(); if (!c) return { ok: false, error: 'Chưa nhập khóa ứng dụng Google (client).' };
       if (!/^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d{2,5}\//.test(String(redirectUri))) return { ok: false, error: 'Địa chỉ chuyển hướng phải là loopback (127.0.0.1).' };
       const verifier = b64url(crypto.randomBytes(48)), state = b64url(crypto.randomBytes(24));
       for (const [k, v] of pending) if (v.until < now()) pending.delete(k);
@@ -59,7 +69,7 @@ function createGoogleAuth(o) {
     async finish({ code, state }) {
       const p = pending.get(String(state)); pending.delete(String(state));
       if (!p || p.until < now()) return { ok: false, error: 'Phiên đăng nhập hết hạn hoặc không đúng — bấm Đăng nhập lại.' };
-      const c = read(clientFile); if (!c) return { ok: false, error: 'Chưa có khóa ứng dụng Google.' };
+      const c = getClient(); if (!c) return { ok: false, error: 'Chưa có khóa ứng dụng Google.' };
       const r = await f(origins.token, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code: String(code), client_id: c.client_id, client_secret: c.client_secret, redirect_uri: p.redirectUri, grant_type: 'authorization_code', code_verifier: p.verifier }).toString() });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.access_token) return { ok: false, error: 'Google từ chối: ' + String(j.error_description || j.error || r.status).slice(0, 200) };
@@ -73,7 +83,7 @@ function createGoogleAuth(o) {
       if (t.access_token && t.expiry - now() > 60000) return t.access_token;
       if (refreshing) return refreshing;
       refreshing = (async () => {
-        const c = read(clientFile); if (!c) throw new Error('Thiếu khóa ứng dụng Google.');
+        const c = getClient(); if (!c) throw new Error('Thiếu khóa ứng dụng Google.');
         const r = await f(origins.token, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: c.client_id, client_secret: c.client_secret, refresh_token: t.refresh_token, grant_type: 'refresh_token' }).toString() });
         const j = await r.json().catch(() => ({}));
         if (!r.ok || !j.access_token) throw new Error('Làm mới đăng nhập Google lỗi: ' + String(j.error_description || j.error || r.status).slice(0, 160) + ' — đăng nhập lại ở Cài đặt.');

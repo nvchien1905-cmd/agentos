@@ -15,7 +15,7 @@ const noAccent = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
 const slugOf = (name) => noAccent(name).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 
 function createSkillsUi(o) {
-  const { projects, isAdmin } = o;
+  const { projects, isAdmin } = o, layers = o.layers || null;
   const now = o.now || Date.now, send = o.send || null;
   const pending = new Map();                          // chatId -> { projectId, slug, name, overwrite, until }
 
@@ -24,14 +24,15 @@ function createSkillsUi(o) {
   const managed = (p) => projects.skillsOf(p.id).map((s) => Object.assign({}, s, { mine: s.file.startsWith(path.join(p.dir, SKILLS_DIR) + path.sep), slug: path.basename(s.file).replace(/\.md$/i, '') }));
   const exists = (p, slug) => fs.existsSync(fileOf(p, slug));
 
+  const layerMark = (p) => { const m = new Map(); if (!layers) return m; try { for (const r of layers.analyze(p.id).skills) m.set(r.name.toLowerCase(), r); } catch (e) { /* bỏ qua */ } return m; };
   function card(p) {
-    const list = managed(p);
+    const list = managed(p), marks = layerMark(p);
     const files = ['CHI-DAN.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md'].filter((n) => { try { return fs.statSync(path.join(p.dir, n)).isFile(); } catch (e) { return false; } });
     const text = '🧠 Kỹ năng của ' + (p.home ? 'dự án tổng' : p.name) + ' — mỗi kỹ năng dạy AI cách làm một loại việc; AI tự đọc khi việc khớp mô tả.\n' +
       'Tệp chỉ dẫn đang có: ' + (files.join(', ') || '(chưa có)') + '  (sửa chỉ dẫn: /duan chidan)\n\n' +
-      (list.length ? list.map((s, i) => (i + 1) + ') ' + s.name + ' — ' + cut(s.description, 90) + (s.mine ? '' : ' [tệp ngoài, chỉ xem]')).join('\n') : 'Chưa có kỹ năng nào.') +
+      (list.length ? list.map((s, i) => (i + 1) + ') ' + s.name + ' — ' + cut(s.description, 90) + (() => { const r = marks.get(String(s.name).toLowerCase()); if (r && r.layer === 'official') return ' 🔒 gốc AgentOS' + (r.hasNote ? ' + 📝 ghi chú của anh' : ''); if (r && r.overrides) return ' ✏️ của anh, ĐÈ bản gốc' + (r.overrides.officialChanged ? ' ⚠️ bản gốc đã cập nhật (gõ /kynang goc ' + s.name + ' để lấy bản mới)' : ''); return s.mine ? '' : ' [tệp ngoài, chỉ xem]'; })()).join('\n') : 'Chưa có kỹ năng nào.') +
       (list.length >= 20 ? '\n⚠️ AI chỉ thấy 20 kỹ năng đầu.' : '') +
-      '\n\nThêm: /kynang moi <tên>  (vd /kynang moi Báo giá khách sỉ) · Sửa: /kynang sua <tên> · Xem: /kynang xem <tên> · Xóa: /kynang xoa <tên>';
+      '\n\n🔒 = kỹ năng GỐC của AgentOS (tự cập nhật, không sửa được); muốn chỉnh theo cách của cửa hàng: /kynang ghichu <tên> | <nội dung> (bổ sung, không mất khi cập nhật).\nThêm: /kynang moi <tên>  (vd /kynang moi Báo giá khách sỉ) · Sửa: /kynang sua <tên> · Xem: /kynang xem <tên> · Xóa: /kynang xoa <tên>';
     const rows = list.filter((s) => s.mine).slice(0, 8).map((s) => [{ text: '👁 ' + cut(s.name, 18), data: 'ky:view:' + s.slug }, { text: '✏️ Sửa', data: 'ky:edit:' + s.slug }, { text: '🗑', data: 'ky:del:' + s.slug }]);
     return { text, buttons: rows.length ? rows : undefined };
   }
@@ -64,11 +65,29 @@ function createSkillsUi(o) {
       if (!rest) return 'Cách dùng: /kynang ' + sub + ' <tên kỹ năng>';
       return begin(chatId, p, rest, sub === 'sua');
     }
+    if (sub === 'ghichu' || sub === 'note') {
+      if (!layers) return 'Máy này chưa hỗ trợ ghi chú riêng.';
+      const del = rest.match(/^xoa\s+(.+)$/i), bar = rest.indexOf('|');
+      const name = del ? del[1].trim() : (bar >= 0 ? rest.slice(0, bar).trim() : rest), text = bar >= 0 && !del ? rest.slice(bar + 1).trim() : '';
+      if (!name) return 'Cách dùng: /kynang ghichu <tên kỹ năng gốc> | <nội dung> · xem: /kynang ghichu <tên> · xóa: /kynang ghichu xoa <tên>';
+      const row = layers.analyze(p.id).skills.find((r) => r.layer === 'official' && (noAccent(r.name) === noAccent(name) || r.slug === slugOf(name)));
+      if (!row) return 'Không có kỹ năng GỐC tên "' + name + '" (chỉ kỹ năng gốc mới có ghi chú; kỹ năng của dự án thì sửa thẳng bằng /kynang sua). Gõ /kynang để xem.';
+      if (del) { layers.clearNote(row.plugin, row.slug); return '🗑 Đã xóa ghi chú — "' + row.name + '" dùng đúng bản gốc.'; }
+      if (!text) { const cur = layers.getNote(row.plugin, row.slug).text.trim(); return cur ? '📝 Ghi chú của anh cho "' + row.name + '":\n' + cur : 'Chưa có ghi chú cho "' + row.name + '". Thêm: /kynang ghichu ' + row.name + ' | <nội dung>'; }
+      const r = layers.setNote(row.plugin, row.slug, text);
+      return r.ok ? '✅ Đã lưu ghi chú cho "' + row.name + '" — AI đọc kèm bản gốc từ việc kế tiếp. Bản gốc vẫn tự cập nhật, ghi chú được giữ.' : '⚠️ ' + r.error;
+    }
+    if (sub === 'goc') {
+      if (!layers) return 'Máy này chưa hỗ trợ.';
+      if (!rest) return 'Cách dùng: /kynang goc <tên kỹ năng của anh đang đè bản gốc>';
+      const r = layers.useOfficial(p.id, rest);
+      return r.ok ? '✅ Đã chuyển "' + rest + '" về bản gốc của AgentOS. Bản của anh được cất ở KY-NANG/.da-thay-the (không mất); điểm khác biệt nên ghi bằng /kynang ghichu.' : '⚠️ ' + r.error;
+    }
     if (sub === 'xoa') {
       const slug = slugOf(rest); if (!slug || !exists(p, slug)) return 'Không có kỹ năng "' + rest + '" trong KY-NANG. Gõ /kynang để xem.';
       return { text: 'Xóa kỹ năng "' + slug + '"? Không khôi phục được.', buttons: [[{ text: '🗑 Xóa hẳn', data: 'ky:delyes:' + slug }, { text: 'Thôi', data: 'ky:no' }]] };
     }
-    return 'Không hiểu "' + sub + '". Lệnh: /kynang · moi · sua · xem · xoa · huy';
+    return 'Không hiểu "' + sub + '". Lệnh: /kynang · moi · sua · xem · xoa · ghichu · goc · huy';
   }
 
   // Tin chữ của chủ máy khi đang chờ nội dung kỹ năng (tin không bắt đầu bằng "/")

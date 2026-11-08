@@ -4,6 +4,7 @@ const { createProjectCommands } = require('./projectCmd');
 const { createProjectFlow } = require('./projectFlow');
 const { capsText } = require('./engineCaps');
 const { createSessions } = require('./sessions');
+const { createMenuUi } = require('./menuUi');
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
@@ -39,7 +40,7 @@ function helpText(profiles) {
     '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +
     '/nhatky [tuan] - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ; /nhatky tuan = báo cáo 7 ngày (ai nhắn, AI làm gì, bị từ chối gì); xem chi tiết trên Cài đặt → Nhật ký\n' +
-    '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
+    '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /menu - MENU NÚT BẤM (khỏi nhớ lệnh) · /google - kết nối và hỏi nhanh Lịch/Gmail · /phancung - kiểm tra phần cứng máy (RAM, ổ đĩa, card mạng/Wi-Fi, đồ họa, firmware) và chỉ cách xử lý · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
     '/hangrao [bat|tat] - hàng rào cho AI toàn quyền (cấm đọc khóa, hỏi trước khi gửi ra ngoài/dính tiền)\n' +
     '/nen <việc> - giao việc NỀN chạy song song (không chờ hàng đợi), xong báo riêng · /tieptuc [số việc] - làm tiếp việc bị ngắt/lỗi · /sukien - AI tự làm khi có hóa đơn mới, hàng sắp hết, hoặc webhook\n' +
     '/vaitro - phân vai cho nhân viên/kế toán (chỉ chủ máy); họ nhắn bot được nhưng việc luôn ở chế độ bảo vệ\n' +
@@ -64,7 +65,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
 const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien', 'vao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -73,6 +74,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
   const profileByName = new Map(profiles.map((p) => [p.name, p]));
   const help = helpText(profiles);
   const pcmd = projects ? createProjectCommands({ db, projects, isAdmin, memory, engines: () => worker.engineNames() }) : null;
+  const menuUi = createMenuUi({ isAdmin, run: (m) => handle(m), send, submit: (c, t, e) => submit(c, t, e), googleStatus });
   let flow = null;                                 // điều hướng dự án: nút Tiếp tục, hỏi chọn dự án khi quay lại sau vài giờ, đặt tên dự án mới (projectFlow.js)
 
   // project: undefined = dự án đang chọn của cuộc trò chuyện; null = chế độ chung; chuỗi = mã dự án (cú pháp #tên)
@@ -223,7 +225,10 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
       }
       switch (name) {
         case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
-        case 'start': case 'help': return help;
+        case 'menu': return isAdmin(uid) ? menuUi.card() : help;
+        case 'google': return isAdmin(uid) ? menuUi.google() : 'Chỉ chủ máy dùng được /google.';
+        case 'start': return isAdmin(uid) ? menuUi.card() : help;
+        case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
         case 'camera': {                                      // chụp ảnh camera trong cửa hàng; có câu hỏi thì AI nhìn ảnh trả lời
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /camera.';
@@ -464,6 +469,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     if (!cq || !cq.from) return null;
     if (!allowed.has(String(cq.from.id))) return null;           // người lạ bấm nút: bỏ qua
     if (pairing && pairing.isCallback(cq.data)) return pairing.answer(cq.data, cq.from.id);
+    if (menuUi.isCallback(cq.data)) return menuUi.callback(cq);
     if (connectorsUi && connectorsUi.isCallback(cq.data)) return connectorsUi.callback(cq);
     if (pluginsUi && pluginsUi.isCallback(cq.data)) return pluginsUi.callback(cq);
     if (skillsUi && skillsUi.isCallback(cq.data)) return skillsUi.callback(cq);

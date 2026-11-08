@@ -1,0 +1,5 @@
+#!/bin/sh
+# Kiểm tra máy có hợp với AgentOS không (RAM, ổ đĩa, kiểu khởi động, card mạng/Wi-Fi, đồ họa, firmware) và chỉ cách xử lý. Chỉ ĐỌC, không sửa gì.
+# Chạy được ngay trong phiên USB (trước khi cài):  agentos-hwcheck   |   agentos-hwcheck --json
+for d in /opt/agentos/orchestrator/src /usr/lib/agentos/orchestrator/src; do [ -f "$d/hwcheck-cli.js" ] && exec node "$d/hwcheck-cli.js" "$@"; done
+echo "Không thấy bộ kiểm tra phần cứng của AgentOS" >&2; exit 1

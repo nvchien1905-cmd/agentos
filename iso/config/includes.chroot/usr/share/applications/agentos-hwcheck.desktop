@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Kiểm tra máy có hợp không
+Comment=Kiểm tra RAM, ổ đĩa, Wi-Fi, đồ họa... của máy này và chỉ cách xử lý nếu có gì lạ
+Exec=xfce4-terminal --title="Kiểm tra phần cứng AgentOS" -x sh -c "agentos-hwcheck; echo; echo 'Bấm Enter để đóng.'; read x"
+Icon=computer
+Terminal=false
+Categories=Settings;

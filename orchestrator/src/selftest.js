@@ -19,6 +19,15 @@ function createSelfTest(o) {
   const safe = (id, name, fn) => Promise.resolve().then(fn).catch((e) => R(id, name, 'fail', 'lỗi khi kiểm tra: ' + (e && e.message || e)));
 
   const checks = {
+    // Phần cứng lạ (driver/firmware thiếu, RAM/ổ nhỏ, BIOS cũ...): chỉ ĐỌC; xem đầy đủ bằng /phancung
+    hardware: () => safe('hardware', 'Phần cứng', async () => {
+      if (!o.hw) return R('hardware', 'Phần cứng', 'ok', 'không kiểm (chưa bật)');
+      const rep = await o.hw.report();
+      const bad = rep.items.filter((i) => i.status === 'fail' || i.status === 'warn');
+      if (!bad.length) return R('hardware', 'Phần cứng', 'ok', 'phù hợp (' + rep.facts.cores + ' nhân, ' + Math.round(rep.facts.ramMb / 1024) + ' GB RAM)');
+      return R('hardware', 'Phần cứng', rep.verdict === 'fail' ? 'fail' : 'warn', bad.map((i) => i.name + ': ' + i.detail).join('; ').slice(0, 400) + ' (gõ /phancung xem cách xử lý)');
+    }),
+
     telegram: () => safe('telegram', 'Telegram', async () => {
       const w = o.tgwatch ? o.tgwatch.state() : { kind: 'ok' };
       if (w.kind === 'conflict') return R('telegram', 'Telegram', 'fail', 'XUNG ĐỘT NHẬN TIN (409): chương trình khác dùng chung token hoặc đang đặt webhook. Tạo bot riêng ở @BotFather.');
@@ -153,8 +162,8 @@ function createSelfTest(o) {
     }),
   };
 
-  const LIGHT = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'kiotviet', 'queue'];
-  const FULL = ['telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'kiotviet', 'queue'];
+  const LIGHT = ['hardware', 'telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'kiotviet', 'queue'];
+  const FULL = ['hardware', 'telegram', 'ipv4', 'services', 'engines', 'resources', 'storage', 'cloud', 'backup', 'tools', 'desk', 'network', 'kiotviet', 'queue'];
 
   async function runList(ids) { const out = []; for (const id of ids) out.push(await checks[id]()); return out; }
 

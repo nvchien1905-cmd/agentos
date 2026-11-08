@@ -126,6 +126,15 @@ function createPlugins(o) {
       st.enabled = !!on; save(); return { ok: true };
     },
     // Thư mục kỹ năng / tác nhân của các plugin ĐÃ CÀI và ĐANG BẬT (projects.js đọc thêm cho mọi dự án)
+    // Kỹ năng GỐC của plugin đang bật (bản cài, chỉ đọc): [{plugin, pluginName, source, slug, name, description, file, hash}] — skillLayers.js dùng để nhận ra kỹ năng của dự án đè lên bản gốc
+    officialSkills() {
+      const out = [];
+      for (const p of enabledPlugins()) for (const k of p.skills) {
+        const file = path.join(p.root, 'skills', k.slug + '.md'); let raw = ''; try { raw = fs.readFileSync(file, 'utf8'); } catch (e) { continue; }
+        out.push({ plugin: p.id, pluginName: p.name, source: p.source, slug: k.slug, name: k.name, description: k.description, file, hash: require('crypto').createHash('sha256').update(raw).digest('hex').slice(0, 16) });
+      }
+      return out;
+    },
     skillDirs() { return enabledPlugins().map((p) => path.join(p.root, 'skills')).filter((d) => fs.existsSync(d)); },
     agentDirs() { return enabledPlugins().map((p) => path.join(p.root, 'agents')).filter((d) => fs.existsSync(d)); },
     // Kết nối do plugin đã cài và đang bật cung cấp (hiện trong danh mục /dichvu)

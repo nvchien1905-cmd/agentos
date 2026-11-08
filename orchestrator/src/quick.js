@@ -5,7 +5,7 @@ const { noAccent } = require('./kiotviet');
 //   /manhinh /cuaso /mo <ứng dụng> /dong <ứng dụng> /khoamay /khoimay co /tatmay co   -> qua trợ lý màn hình (deskd)
 //   /doanhso [hôm nay|hôm qua|tuần|tháng] [tên chi nhánh]  /ton <sản phẩm>  /hanghoa  -> KiotViet API chính thức, chỉ đọc (cả khi hỏi bằng câu thường: "doanh thu hôm nay")
 //   /deepseek <việc>  -> mở DeepSeek web trên màn hình máy + chép sẵn câu lệnh; NGƯỜI bấm Ctrl+V và Gửi (điều khoản DeepSeek cấm robot tự gửi)
-const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'sukien', 'vao', 'quyenmay', 'nhaman'];
+const NAMES = ['manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'hanghoa', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'lenh', 'lay', 'maytinh', 'go', 'phim', 'bam', 'tuxa', 'guilen', 'timchu', 'bamchu', 'chuyen', 'dan', 'mokhoa', 'saoluu', 'saoluudia', 'chiphi', 'gia', 'canhbao', 'dien', 'bat', 'doc', 'doi', 'thay', 'hangrao', 'tuchan', 'phancung', 'log', 'sukien', 'vao', 'quyenmay', 'nhaman'];
 
 const ALIAS = { 'dang nhap facebook': 'fbbot', 'trinh duyet cua bot': 'webbot', 'dang nhap web': 'webbot', 'dang nhap kiotviet': 'webbot', facebook: 'fbbot', 'trinh duyet': 'chrome', google: 'chrome', 'google chrome': 'chrome', 'deep seek': 'deepseek', 'tu xa': 'rustdesk', 'dieu khien tu xa': 'rustdesk', 'claude code': 'claude' };
 const appKey = (s) => { const k = noAccent(s); return ALIAS[k] || k.replace(/ /g, ''); };
@@ -189,6 +189,10 @@ function createQuick(o) {
           if (w === 'ai') { const r = await selftest.full({ ai: true, engineNames: o.engineNames || [], startFn: o.pingStart }); return selftest.format(r, '🩺 Tự chẩn đoán đầy đủ + thử hỏi từng AI'); }
           if (w === 'nhanh') return selftest.format(await selftest.light(), '🩺 Chẩn đoán nhanh');
           return selftest.format(await selftest.full(), '🩺 Tự chẩn đoán') + '\n\n(Gõ /tuchan ai để thử hỏi từng AI một câu, tốn một ít hạn mức.)';
+        }
+        case 'phancung': {
+          if (!o.hw) return '⚠️ Máy này chưa có kiểm tra phần cứng.';
+          return o.hw.format(await o.hw.report(true));
         }
         case 'log': return remote ? await remote.logs((arg.match(/\d+/) || [])[0]) : '⚠️ Máy này chưa có điều khiển từ xa.';
         case 'hangrao': {

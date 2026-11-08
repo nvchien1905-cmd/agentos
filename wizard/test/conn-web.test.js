@@ -125,7 +125,7 @@ test('trang Cài đặt: Google — lưu khóa, bắt đầu đăng nhập (mặ
   const port = await s.listen();
   const call = async (m, p, body) => { const r = await fetch('http://127.0.0.1:' + port + '/api/' + p, { method: m, headers: { 'content-type': 'application/json', 'x-agentos-settings': '1' }, body: m === 'GET' ? undefined : JSON.stringify(body || {}) }); const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* html */ } return { status: r.status, body: j, text }; };
   try {
-    assert.deepEqual((await call('GET', 'google')).body, { clientSet: false, connected: false, write: false, scopes: [], at: 0, connector: null });
+    assert.deepEqual((await call('GET', 'google')).body, { clientSet: false, ownClient: false, sharedClient: false, connected: false, write: false, scopes: [], at: 0, connector: null });
     assert.equal((await call('POST', 'google/start', {})).status, 400, 'chưa có khóa');
     assert.equal((await call('POST', 'google/client', { json: '{"installed":{"client_id":"sai","client_secret":"x"}}' })).status, 400);
     const ok = await call('POST', 'google/client', { json: { installed: { client_id: '123-abc.apps.googleusercontent.com', client_secret: 'GOCSPX-secret-for-tests' } } });

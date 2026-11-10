@@ -198,7 +198,7 @@ function createAgentCtl(deps) {
   }
 
   async function init() {
-    for (const [d, mode] of [[P.ctl, 0o755], [P.ctl + '/req', 0o730], [P.ctl + '/res', 0o750], [P.homes, 0o711], [P.etc + '/agents', 0o700]]) {
+    for (const [d, mode] of [[P.ctl, 0o755], [P.ctl + '/req', 0o730], [P.ctl + '/res', 0o750], [P.homes, 0o755], [P.etc + '/agents', 0o700]]) {
       F.mkdirSync(d, { recursive: true });
       try { F.chmodSync(d, mode); } catch (e) { /* bỏ qua */ }
     }
@@ -212,7 +212,7 @@ function createAgentCtl(deps) {
     if (readMeta(id) || F.existsSync(P.units + '/' + unitName(id) + '.service')) return fail('Agent ' + id + ' đã có.');
     const meta = { id, name: r.name, owners: r.owners, ramMb: r.ramMb, cpuPct: r.cpuPct, createdAt: now() };
     const claude = await ensureClaudeBin(); if (!claude.ok) return fail(claude.msg);
-    F.mkdirSync(P.etc + '/agents', { recursive: true, mode: 0o700 }); F.mkdirSync(P.homes, { recursive: true, mode: 0o711 });
+    F.mkdirSync(P.etc + '/agents', { recursive: true, mode: 0o700 }); F.mkdirSync(P.homes, { recursive: true, mode: 0o755 }); F.chmodSync(P.homes, 0o755);   // 755 (không phải 711): bubblewrap trong agent cần ĐỌC thư mục cha mới gắn được thư mục riêng
     const home = P.homes + '/' + id;
     const user = userName(id);
     const has = await sh('id', ['-u', user]);

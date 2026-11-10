@@ -584,3 +584,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - **Giới hạn**: bot không nhắn trực tiếp cho bot khác (giới hạn Telegram) nên chưa có "giao việc" tự động từ bot quản lý sang agent; agent chưa có trình duyệt/màn hình ảo; phiên đăng nhập Claude dùng bản sao nếu máy chưa có token dài hạn.
 - **Kiểm tra phần cứng máy thật** không cần cài: `tools/thu-may-that.sh` + `tools/hwcheck-replay.js` (xem `docs/phan-cung.md`).
 - Test: orchestrator 498 (497 đạt, 1 bỏ qua) · wizard 100.
+
+## 2026.11.09.2 — Sửa: hộp cô lập bubblewrap trong agent
+- Thử với bot Telegram thật phát hiện: thư mục `/var/lib/agentos-agents` quyền 711 làm bubblewrap trong agent báo "Can't mkdir parents … Permission denied" nên hộp cô lập AI của agent KHÔNG bật. Đổi sang 755 (tên thư mục agent thấy được, nội dung từng agent vẫn quyền 700). Bản này tự đặt lại quyền khi chạy `agentos-agentctl init` (có trong cập nhật).

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.09.1",
-  "file": "agentos-update-2026.11.09.1.tar.gz",
-  "size": 528434,
-  "sha256": "e80b91f5ae6770e779f93c2bbc4dd8f5a501450140e8fdec3d94a5976a38e886",
+  "version": "2026.11.09.2",
+  "file": "agentos-update-2026.11.09.2.tar.gz",
+  "size": 528476,
+  "sha256": "936acf0ceee714822c4881247b99e1239c5b26c364ce38146282e65e7c6c18a4",
   "date": "2026-11-10",
-  "notes": "Nhiều bot Telegram: mỗi bot là một agent chạy độc lập (/daily)"
+  "notes": "Sửa hộp cô lập bubblewrap của agent"
 }

@@ -15,6 +15,36 @@ const RID_RE = /^[a-f0-9]{16}$/;
 const TOKEN_RE = /^\d{6,}:[A-Za-z0-9_-]{30,}$/;
 const NUM_RE = /^\d{1,15}$/;
 const LIMITS = { ramMb: [256, 16384, 1536], cpuPct: [25, 1600, 100] };
+// QUYỀN HẠN / CHẾ ĐỘ từng agent (chỉnh ở Cài đặt → Bot Telegram hoặc /daily che-do). Mỗi mục ghi thẳng vào tệp cấu hình của agent; chỉ các khóa dưới đây được nhận.
+const SETTINGS = {
+  full:        { env: 'FULL_ACCESS', kind: 'bool', def: false, label: 'Toàn quyền trong tài khoản riêng (AI chạy không hỏi duyệt, không hộp cô lập; vẫn KHÔNG có sudo, chỉ ghi được thư mục riêng)' },
+  sandbox:     { env: 'SANDBOX', kind: 'enum', values: ['auto', 'off', 'bwrap'], def: 'auto', label: 'Hộp cô lập AI (bubblewrap): auto / off / bwrap' },
+  tools:       { env: 'CLAUDE_ALLOWED_TOOLS', kind: 'text', re: /^[A-Za-z0-9_,*():. /-]{0,300}$/, label: 'Công cụ AI được dùng không cần hỏi (vd Read,Glob,Grep,Bash)' },
+  jobTimeoutMin:      { env: 'JOB_TIMEOUT_SEC', kind: 'int', lo: 1, hi: 480, def: 15, mul: 60, label: 'Thời gian tối đa một việc (phút)' },
+  approvalTimeoutMin: { env: 'APPROVAL_TIMEOUT_SEC', kind: 'int', lo: 1, hi: 120, def: 5, mul: 60, label: 'Thời gian chờ chủ duyệt (phút)' },
+  parallel:    { env: 'PARALLEL_CHATS', kind: 'int', lo: 1, hi: 6, def: 2, label: 'Số người làm việc cùng lúc' },
+  subagents:   { env: 'SUBAGENTS', kind: 'bool', def: false, label: 'Cho AI giao việc cho trợ lý phụ' },
+  checkpoints: { env: 'CHECKPOINTS', kind: 'bool', def: true, label: 'Chụp mốc khôi phục trước mỗi việc (/hoantac)' },
+  memory:      { env: 'MEMORY_ENABLED', kind: 'bool', def: true, label: 'Bộ nhớ dài hạn' },
+  netGuard:    { env: 'NET_GUARD', kind: 'bool', def: true, label: 'Giới hạn mạng của AI (chỉ cổng web)' },
+};
+
+// Làm sạch cấu hình quyền hạn: chỉ khóa biết, đúng kiểu. Giá trị null = đưa về mặc định.
+function validateSettings(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) throw new Error('Cấu hình quyền hạn không hợp lệ');
+  const out = {};
+  for (const [k, v] of Object.entries(s)) {
+    const d = SETTINGS[k]; if (!d) throw new Error('Mục cấu hình lạ: ' + String(k).slice(0, 30));
+    if (v === null) { out[k] = null; continue; }
+    if (d.kind === 'bool') { if (typeof v !== 'boolean') throw new Error(k + ' phải là bật/tắt'); out[k] = v; }
+    else if (d.kind === 'enum') { if (!d.values.includes(v)) throw new Error(k + ' phải là một trong: ' + d.values.join(', ')); out[k] = v; }
+    else if (d.kind === 'int') { const n = Number(v); if (!Number.isInteger(n) || n < d.lo || n > d.hi) throw new Error(k + ' phải là số nguyên từ ' + d.lo + ' đến ' + d.hi); out[k] = n; }
+    else if (d.kind === 'text') { const x = String(v).trim(); if (!d.re.test(x)) throw new Error(k + ' có ký tự không được phép'); out[k] = x; }
+  }
+  return out;
+}
+const settingEnv = (k, v) => { const d = SETTINGS[k]; const val = d.kind === 'bool' ? (d.env === 'MEMORY_ENABLED' ? String(!!v) : (v ? '1' : '0')) : d.kind === 'int' ? String(v * (d.mul || 1)) : String(v); return d.env + '=' + val; };
+
 const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update', 'logs'];
 
 const PATHS = {
@@ -65,6 +95,7 @@ function validate(req) {
     if (req.ramMb !== undefined || req.action === 'create') out.ramMb = clamp('ramMb', req.ramMb);
     if (req.cpuPct !== undefined || req.action === 'create') out.cpuPct = clamp('cpuPct', req.cpuPct);
   }
+  if ((req.action === 'create' || req.action === 'update') && req.settings !== undefined) out.settings = validateSettings(req.settings);
   if (req.action === 'remove') out.purge = req.purge === true;
   if (req.action === 'logs') out.lines = Math.max(5, Math.min(300, Number(req.lines) || 60));
   return out;
@@ -145,6 +176,12 @@ function envText(id, meta, token, mainEnvText) {
     'PARALLEL_CHATS=2',
     'SUBAGENTS=0',
   ];
+  for (const [k, v] of Object.entries(meta.settings || {})) {
+    if (!SETTINGS[k] || v === null || v === undefined) continue;
+    const line = settingEnv(k, v), key = line.slice(0, line.indexOf('=') + 1);
+    const i = lines.findIndex((l) => l.startsWith(key)); if (i >= 0) lines.splice(i, 1);
+    lines.push(line);
+  }
   let shared = 0;
   for (const l of String(mainEnvText || '').split(/\r?\n/)) {
     if (SHARED_KEYS.test(l) && !/[\0]/.test(l)) { lines.push(l.trim()); shared++; }
@@ -210,7 +247,7 @@ function createAgentCtl(deps) {
   async function create(r) {
     const id = r.id;
     if (readMeta(id) || F.existsSync(P.units + '/' + unitName(id) + '.service')) return fail('Agent ' + id + ' đã có.');
-    const meta = { id, name: r.name, owners: r.owners, ramMb: r.ramMb, cpuPct: r.cpuPct, createdAt: now() };
+    const meta = { id, name: r.name, owners: r.owners, ramMb: r.ramMb, cpuPct: r.cpuPct, settings: r.settings || {}, createdAt: now() };
     const claude = await ensureClaudeBin(); if (!claude.ok) return fail(claude.msg);
     F.mkdirSync(P.etc + '/agents', { recursive: true, mode: 0o700 }); F.mkdirSync(P.homes, { recursive: true, mode: 0o755 }); F.chmodSync(P.homes, 0o755);   // 755 (không phải 711): bubblewrap trong agent cần ĐỌC thư mục cha mới gắn được thư mục riêng
     const home = P.homes + '/' + id;
@@ -271,6 +308,7 @@ function createAgentCtl(deps) {
     const oldEnv = F.readFileSync(envFile, 'utf8');
     const token = parseEnv(oldEnv).TELEGRAM_TOKEN;
     for (const k of ['name', 'owners', 'ramMb', 'cpuPct']) if (r[k] !== undefined) meta[k] = r[k];
+    if (r.settings) { meta.settings = Object.assign({}, meta.settings); for (const [k, v] of Object.entries(r.settings)) { if (v === null) delete meta.settings[k]; else meta.settings[k] = v; } }
     const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
     const env = withPaths(() => envText(id, meta, token, mainText));
     // Giữ nguyên khóa Claude đã có trong env cũ nếu cấu hình chung không còn
@@ -352,4 +390,4 @@ function realRun(bin, args) {
   return new Promise((res) => execFile(bin, args, { timeout: 120000, maxBuffer: 4 << 20 }, (e, so, se) => res({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, out: String(so || '') + String(se || '') })));
 }
 
-module.exports = { createAgentCtl, validate, unitText, envText, parseEnv, unitName, userName, maskTokens, PATHS, LIMITS, ID_RE, TOKEN_RE };
+module.exports = { createAgentCtl, validate, validateSettings, SETTINGS, unitText, envText, parseEnv, unitName, userName, maskTokens, PATHS, LIMITS, ID_RE, TOKEN_RE };

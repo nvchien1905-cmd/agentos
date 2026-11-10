@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
-const { TOKEN_RE, ID_RE, LIMITS, unitName } = require('./agentctl');
+const { TOKEN_RE, ID_RE, LIMITS, unitName, validateSettings } = require('./agentctl');
 
 const CTL = '/var/lib/agentos-agentctl';
 const MAX_AGENTS = 12;
@@ -43,6 +43,7 @@ function createAgents(o) {
 
   // Thả yêu cầu cho root và chờ kết quả
   async function call(req) {
+    if (o.call) return o.call(req);                         // chạy bằng ROOT (trang Cài đặt): gọi thẳng agentctl, không qua tệp yêu cầu
     const rid = crypto.randomBytes(8).toString('hex');
     const body = JSON.stringify(Object.assign({}, req, { rid }));
     const f = path.join(reqDir, rid + '.json');
@@ -65,7 +66,7 @@ function createAgents(o) {
   }
   const nextId = (st) => { const used = new Set(st.map((a) => a.id)); for (let i = 1; i < 1000; i++) if (!used.has('a' + i)) return 'a' + i; throw new Error('Hết mã agent'); };
 
-  async function add({ token, name, ramMb, cpuPct, ownerIds }) {
+  async function add({ token, name, ramMb, cpuPct, ownerIds, settings }) {
     token = String(token || '').trim();
     if (!TOKEN_RE.test(token)) throw new Error('Token bot không đúng dạng (dạng 123456789:AAAA...). Lấy ở @BotFather.');
     if (token === mainToken) throw new Error('Đó là token của bot quản lý. Mỗi agent phải có bot RIÊNG: tạo bot mới ở @BotFather (/newbot).');
@@ -77,9 +78,9 @@ function createAgents(o) {
     if (!ow.length) throw new Error('Chưa có ID chủ máy để gán cho agent.');
     const id = nextId(st.agents);
     const nm = String(name || '').trim() || me.first_name || ('Agent ' + id);
-    const r = await call({ action: 'create', id, token, name: nm, owners: ow, ramMb: ramMb || LIMITS.ramMb[2], cpuPct: cpuPct || LIMITS.cpuPct[2] });
+    const r = await call({ action: 'create', id, token, name: nm, owners: ow, ramMb: ramMb || LIMITS.ramMb[2], cpuPct: cpuPct || LIMITS.cpuPct[2], settings: settings ? validateSettings(settings) : undefined });
     if (!r.ok) throw new Error(r.msg);
-    st.agents.push({ id, name: nm.slice(0, 40), bot: { id: me.id, username: me.username }, owners: ow, ramMb: ramMb || LIMITS.ramMb[2], cpuPct: cpuPct || LIMITS.cpuPct[2], createdAt: now() });
+    st.agents.push({ id, name: nm.slice(0, 40), bot: { id: me.id, username: me.username }, owners: ow, ramMb: ramMb || LIMITS.ramMb[2], cpuPct: cpuPct || LIMITS.cpuPct[2], settings: settings ? validateSettings(settings) : {}, createdAt: now() });
     save(st);
     log('agent ' + id + ' (@' + me.username + ') đã tạo');
     return { agent: get(id), warn: r.warn || '' };
@@ -108,6 +109,7 @@ function createAgents(o) {
     if (fields.owners !== undefined) req.owners = fields.owners.map(String);
     if (fields.ramMb !== undefined) req.ramMb = fields.ramMb;
     if (fields.cpuPct !== undefined) req.cpuPct = fields.cpuPct;
+    if (fields.settings !== undefined) req.settings = validateSettings(fields.settings);
     const r = await call(req);
     if (!r.ok) throw new Error(r.msg);
     const st = load(), x = st.agents.find((y) => y.id === a.id);
@@ -115,6 +117,7 @@ function createAgents(o) {
     if (req.owners !== undefined) x.owners = req.owners;
     if (req.ramMb !== undefined) x.ramMb = req.ramMb;
     if (req.cpuPct !== undefined) x.cpuPct = req.cpuPct;
+    if (req.settings) { x.settings = Object.assign({}, x.settings); for (const [k, v] of Object.entries(req.settings)) { if (v === null) delete x.settings[k]; else x.settings[k] = v; } }
     save(st);
     return { agent: x };
   }

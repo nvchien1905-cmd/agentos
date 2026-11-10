@@ -267,3 +267,40 @@ test('bot quản lý: /daily và /agent chuyển cho giao diện agent; không c
   assert.equal(await bot.handleCallback({ data: 'ag:stop:a1', from: { id: 1 }, message: { chat: { id: 1 } } }), 'cb');
   assert.match(await botWith().bot.handle(msg('/daily')), /chưa hỗ trợ agent/);
 });
+
+test('quyền hạn từng agent: chỉ khóa biết, đúng kiểu; ghi vào env; cập nhật gộp và null = về mặc định; không chèn được dòng lạ', async () => {
+  const w = world();
+  assert.equal((await create(w, { settings: { full: true, jobTimeoutMin: 30, memory: false, sandbox: 'off', tools: 'Read,Bash(git:*)' } })).ok, true);
+  let env = fs.readFileSync(path.join(w.paths.etc, 'agents/a1.env'), 'utf8');
+  assert.match(env, /^FULL_ACCESS=1$/m); assert.match(env, /^JOB_TIMEOUT_SEC=1800$/m); assert.match(env, /^MEMORY_ENABLED=false$/m);
+  assert.match(env, /^SANDBOX=off$/m); assert.match(env, /^CLAUDE_ALLOWED_TOOLS=Read,Bash\(git:\*\)$/m);
+  assert.equal((env.match(/^FULL_ACCESS=/gm) || []).length, 1, 'đè mặc định, không lặp dòng');
+  assert.equal((await w.ctl.handle({ rid: RID, action: 'update', id: 'a1', settings: { full: null, parallel: 4 } })).ok, true);
+  env = fs.readFileSync(path.join(w.paths.etc, 'agents/a1.env'), 'utf8');
+  assert.match(env, /^FULL_ACCESS=0$/m); assert.match(env, /^PARALLEL_CHATS=4$/m); assert.match(env, /^JOB_TIMEOUT_SEC=1800$/m, 'giữ mục không đổi');
+  const bad = (s) => w.ctl.handle({ rid: RID, action: 'update', id: 'a1', settings: s });
+  assert.match((await bad({ evil: 1 })).msg, /lạ/);
+  assert.match((await bad({ sandbox: 'x' })).msg, /một trong/);
+  assert.match((await bad({ parallel: 99 })).msg, /từ 1 đến 6/);
+  assert.match((await bad({ full: 'yes' })).msg, /bật\/tắt/);
+  assert.match((await bad({ tools: 'Read\nTELEGRAM_TOKEN=1' })).msg, /không được phép/);
+  assert.match((await bad({ tools: 'a;b' })).msg, /không được phép/);
+});
+
+test('/daily quyen: xem danh sách, đổi bật/tắt, số, chữ, về mặc định; khóa lạ bị báo', async () => {
+  const m = manager(); await m.w.ctl.init();
+  const ui = createAgentsUi({ agents: m.mgr, isAdmin: (u) => String(u) === '1', send: async () => {}, deleteMessage: async () => {} });
+  try {
+    await ui.command('1', '1', 'them ' + TOKEN + ' Kế toán', { message_id: 1 });
+    const list = await ui.command('1', '1', 'quyen a1'); assert.match(list, /Quyền hạn agent a1/); assert.match(list, /full/); assert.match(list, /jobTimeoutMin/);
+    assert.match(await ui.command('1', '1', 'quyen a1 full bat'), /full = true/);
+    assert.match(await ui.command('1', '1', 'quyen a1 jobTimeoutMin 45'), /jobTimeoutMin = 45/);
+    assert.match(await ui.command('1', '1', 'quyen a1 tools Read,Glob'), /tools = Read,Glob/);
+    assert.deepEqual(m.mgr.get('a1').settings, { full: true, jobTimeoutMin: 45, tools: 'Read,Glob' });
+    assert.match(await ui.command('1', '1', 'quyen a1 full macdinh'), /full = mặc định/);
+    assert.equal(m.mgr.get('a1').settings.full, undefined);
+    assert.match(await ui.command('1', '1', 'quyen a1 khonghop 1'), /Không có mục/);
+    assert.match(await ui.command('1', '1', 'quyen a1 full ???'), /bật hoặc tắt/);
+    assert.match(await ui.command('1', '2', 'quyen a1 full bat'), /chỉ chủ máy/i);
+  } finally { m.stop(); }
+});

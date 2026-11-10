@@ -118,6 +118,14 @@ function createSettings(o) {
   let devicesInst = null; const devicesFile = o.devicesFile || '/var/lib/agentos/data/devices.json';
   const devicesLib = () => devicesInst || (devicesInst = createDevices({ file: devicesFile, outDir: o.devicesOut || require('os').tmpdir(), fetch: o.devicesFetch, run: o.devicesRun }));
   const fixDevicesOwner = () => { try { chownAgentos(devicesFile); } catch (e) { /* bỏ qua */ } };
+  let botsInst = null;
+  const botsLib = () => botsInst || (botsInst = require('../lib/bots').createBots({
+    ctl: o.agentCtl, file: o.agentsFile || '/var/lib/agentos/data/agents.json', show: o.agentShow,
+    mainToken: () => envVal(readEnv() || '', 'TELEGRAM_TOKEN'),
+    owners: () => envVal(readEnv() || '', 'ALLOWED_USER_IDS').split(',').filter(Boolean),
+    getMe: (token) => tgLib.getMe(token, { fetch: fetchImpl }),
+    afterSave: (p) => chownAgentos(p),
+  }));
   let fleetInst = null; const fleetLib = () => fleetInst || (fleetInst = createFleet({ file: o.fleetFile || '/var/lib/agentos/data/fleet.json', fetch: o.fleetFetch }));
   // Mở cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC, chạy fn({raw, kvGet}), rồi đóng
   const withRoDb = (fn) => {
@@ -526,6 +534,14 @@ function createSettings(o) {
       saveEnv(t); await restart('agentos-orchestrator');
       return { full: on };
     },
+
+    // ----- Các bot Telegram phụ (agent): xem, thêm, dừng/chạy, chỉnh quyền hạn và chế độ từng bot -----
+    async 'GET /api/bots'() { return botsLib().list(); },
+    async 'POST /api/bots/agent/add'(b) { return botsLib().add(b || {}); },
+    async 'POST /api/bots/agent/control'(b) { return botsLib().control(b || {}); },
+    async 'POST /api/bots/agent/update'(b) { return botsLib().update(b || {}); },
+    async 'POST /api/bots/agent/logs'(b) { return botsLib().logs(b || {}); },
+    async 'POST /api/bots/agent/remove'(b) { return botsLib().remove(b || {}); },
 
     // ----- Bộ nhớ dùng chung cho mọi AI, nén ngữ cảnh, định tuyến theo độ khó -----
     async 'GET /api/memory'() {

@@ -5,17 +5,18 @@
 //   /daily dung|chay|khoidong <agent>   tạm dừng / chạy lại / khởi động lại
 //   /daily nhatky <agent> [số dòng]     xem nhật ký
 //   /daily gioihan <agent> <RAM MB> [CPU %]   ví dụ: /daily gioihan a1 2048 150
+//   /daily quyen <agent> [khóa giá_trị]      xem/đổi quyền hạn, chế độ (toàn quyền, hộp cô lập, công cụ, thời gian...)
 //   /daily chu <agent> <ID,ID,...>      ai được nhắn cho agent này
 //   /daily ten <agent> <tên mới>
 //   /daily xoa <agent>                  xóa (có hỏi lại; dữ liệu giữ lại trong thư mục lưu trữ)
-const { LIMITS } = require('./agentctl');
+const { LIMITS, SETTINGS } = require('./agentctl');
 
 const noAcc = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
 const esc = (s) => String(s == null ? '' : s);
 
 const HELP = '🤖 Agent = bot Telegram phụ, mỗi cái làm việc ĐỘC LẬP (tài khoản, dữ liệu, bộ nhớ, giới hạn RAM/CPU riêng), anh quản lý ở đây.\n\n' +
   '➕ Thêm: tạo bot mới ở @BotFather (/newbot), chép token rồi gõ:\n/daily them <token> [tên agent]\n(bot tự xóa tin có token để khỏi lộ)\n\n' +
-  'Lệnh khác: /daily dung|chay|khoidong <agent> · /daily nhatky <agent> · /daily gioihan <agent> <RAM MB> [CPU %] · /daily chu <agent> <ID,ID> · /daily ten <agent> <tên> · /daily xoa <agent>';
+  'Lệnh khác: /daily dung|chay|khoidong <agent> · /daily nhatky <agent> · /daily gioihan <agent> <RAM MB> [CPU %] · /daily quyen <agent> [khóa giá_trị] · /daily chu <agent> <ID,ID> · /daily ten <agent> <tên> · /daily xoa <agent>';
 
 function createAgentsUi(o) {
   const { agents, isAdmin, send, deleteMessage } = o;
@@ -68,6 +69,23 @@ function createAgentsUi(o) {
         const f = { ramMb: ram }; if (cpu) f.cpuPct = cpu;
         const r = await agents.update(ref, f);
         return done(r.agent, 'giới hạn RAM ' + r.agent.ramMb + ' MB, CPU ' + r.agent.cpuPct + '% (đã khởi động lại).');
+      }
+      if (sub === 'quyen' || sub === 'chedo') {
+        const a = agents.resolve(ref); if (!a) return 'Không có agent "' + ref + '".';
+        const cur = a.settings || {};
+        const [key, ...vv] = args.split(/\s+/).filter(Boolean);
+        if (!key) {
+          return '⚙️ Quyền hạn agent ' + a.id + ' (' + esc(a.name) + '):\n' + Object.keys(SETTINGS).map((k) => '• ' + k + ' = ' + (cur[k] === undefined ? '(mặc định' + (SETTINGS[k].def !== undefined ? ' ' + SETTINGS[k].def : '') + ')' : cur[k]) + ' — ' + SETTINGS[k].label).join('\n') + '\n\nĐổi: /daily quyen ' + a.id + ' <khóa> <bật|tắt|số|chữ|macdinh>. Ví dụ: /daily quyen ' + a.id + ' full bat';
+        }
+        const d = SETTINGS[key]; if (!d) return 'Không có mục "' + key + '". Gõ /daily quyen ' + a.id + ' để xem danh sách.';
+        const raw = vv.join(' ').trim(); if (!raw) return 'Thiếu giá trị. Mục này: ' + d.label;
+        let val;
+        if (/^(macdinh|mặc định|default)$/i.test(raw)) val = null;
+        else if (d.kind === 'bool') { if (/^(bat|bật|on|1|true|co|có)$/i.test(raw)) val = true; else if (/^(tat|tắt|off|0|false|khong|không)$/i.test(raw)) val = false; else return 'Giá trị phải là bật hoặc tắt.'; }
+        else if (d.kind === 'int') val = Number(raw);
+        else val = raw;
+        const r = await agents.update(ref, { settings: { [key]: val } });
+        return done(r.agent, 'đã đặt ' + key + ' = ' + (val === null ? 'mặc định' : val) + ' (đã khởi động lại).');
       }
       if (sub === 'chu' || sub === 'owner') {
         const ids = args.split(/[\s,;]+/).filter(Boolean);

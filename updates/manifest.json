@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.09.3",
-  "file": "agentos-update-2026.11.09.3.tar.gz",
-  "size": 534848,
-  "sha256": "598ec50d88720e7710cf113ff5de8cfd43045f326259acd40abb086894ea50dd",
+  "version": "2026.11.09.4",
+  "file": "agentos-update-2026.11.09.4.tar.gz",
+  "size": 534986,
+  "sha256": "794b19273fb522642cb339df5c6332212a797f6044275b8404cf26b605a57659",
   "date": "2026-11-10",
-  "notes": "Bot tự sửa lỗi và làm tới cùng; Cài đặt quản lý mọi bot Telegram"
+  "notes": "Sửa lỗi vẽ giao diện Cài đặt trên máy thật (tắt tăng tốc đồ họa)"
 }

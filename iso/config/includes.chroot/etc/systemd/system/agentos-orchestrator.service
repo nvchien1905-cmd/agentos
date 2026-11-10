@@ -41,6 +41,8 @@ ReadWritePaths=/var/lib/agentos
 ReadWritePaths=-/srv/onedrive
 # Thả yêu cầu tạo/xóa agent (bot phụ) cho agentos-agentctl; "-" = không lỗi nếu chưa có
 ReadWritePaths=-/var/lib/agentos-agentctl/req
+# Hộp thư giao việc cho bot thường (mail.js): thả việc vào in/, đọc kết quả ở out/
+ReadWritePaths=-/var/lib/agentos-agents/.mail
 PrivateTmp=true
 # KHÔNG đặt ProtectKernelTunables=yes: đo trên máy cài thật, nó làm bubblewrap không gắn được /proc ("Can't mount proc on /proc: Operation not permitted").
 ProtectControlGroups=true

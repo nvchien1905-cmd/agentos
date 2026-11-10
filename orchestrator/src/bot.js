@@ -232,7 +232,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
         case 'menu': return isAdmin(uid) ? menuUi.card() : help;
         case 'google': return isAdmin(uid) ? menuUi.google() : 'Chỉ chủ máy dùng được /google.';
-        case 'daily': case 'agent': return agentsUi ? agentsUi.command(chatId, uid, cmd[3], msg) : 'Máy này chưa hỗ trợ agent (bot phụ).';
+        case 'giao': return agentsUi ? agentsUi.assignCommand(chatId, uid, cmd[3]) : 'Bot này không giao việc được (chỉ bot quản lý giao việc cho bot thường).';
+        case 'daily': case 'agent': return agentsUi ? agentsUi.command(chatId, uid, cmd[3], msg) : 'Máy này chưa hỗ trợ nhiều bot.';
         case 'start': return isAdmin(uid) ? menuUi.card() : help;
         case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
@@ -464,7 +465,9 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         return quietAck ? (ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó).' : null) : 'Đang tra giúp bạn...';
       }, (e) => '⚠️ Chưa tra được: ' + e.message);
     }
-    const nl = engineCtl && isAdmin(uid) ? naturalAi(text) : null;                  // "chuyển sang dùng codex" -> như /ai codex (không qua AI, không bị chặn)
+    const asg = agentsUi ? agentsUi.tryAssign(chatId, uid, text) : null;             // "giao cho bot X làm Y" -> hộp thư của bot thường (không qua AI)
+    if (asg) return asg;
+    const nl = engineCtl && isAdmin(uid) ? naturalAi(text) : null;                 // "chuyển sang dùng codex" -> như /ai codex (không qua AI, không bị chặn)
     if (nl) return aiCommand(uid, nl);
     if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo: gõ /doanhso hoặc /ton <sản phẩm>.';
     if (flow) { const g = flow.gate(chatId, uid, text, prevAt); if (g) return g; }       // quay lại sau vài giờ: chọn dự án trước; đang đặt tên dự án mới: tin này là tên

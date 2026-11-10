@@ -18,7 +18,7 @@ const RID = 'a1b2c3d4e5f60718';
 
 function world() {
   const d = tmp();
-  const paths = { ctl: path.join(d, 'ctl'), homes: path.join(d, 'homes'), etc: path.join(d, 'etc'), units: path.join(d, 'units'), mainEnv: path.join(d, 'etc', 'orchestrator.env'), mainHome: path.join(d, 'mainhome'), appDir: '/opt/agentos/orchestrator', node: '/usr/bin/node' };
+  const paths = { ctl: path.join(d, 'ctl'), homes: path.join(d, 'homes'), mail: path.join(d, 'homes', '.mail'), bin: path.join(d, 'homes', '.bin'), etc: path.join(d, 'etc'), units: path.join(d, 'units'), mainEnv: path.join(d, 'etc', 'orchestrator.env'), mainHome: path.join(d, 'mainhome'), appDir: '/opt/agentos/orchestrator', node: '/usr/bin/node' };
   fs.mkdirSync(paths.etc, { recursive: true }); fs.mkdirSync(paths.units, { recursive: true });
   fs.mkdirSync(paths.mainHome + '/.local/bin', { recursive: true });
   fs.writeFileSync(paths.mainHome + '/.local/bin/claude', 'ELF-claude');
@@ -75,8 +75,8 @@ test('tạo agent: tài khoản riêng, thư mục 700, env 600 chỉ chứa kh�
   const order = w.cmds.map((c) => c.split(' ').slice(0, 2).join(' '));
   assert.ok(order.indexOf('systemctl daemon-reload') < order.indexOf('systemctl enable'), 'nạp lại rồi mới bật');
   assert.ok(w.cmds.includes('systemctl enable --now agentos-agent-a1'));
-  assert.ok(fs.existsSync(path.join(w.paths.ctl, 'bin/claude')), 'có bản Claude dùng chung');
-  assert.equal(fs.readFileSync(path.join(w.paths.ctl, 'bin/claude'), 'utf8'), 'ELF-claude');
+  assert.ok(fs.existsSync(path.join(w.paths.bin, 'claude')), 'có bản Claude dùng chung');
+  assert.equal(fs.readFileSync(path.join(w.paths.bin, 'claude'), 'utf8'), 'ELF-claude');
 });
 
 test('tạo trùng bị từ chối; thiếu khóa Claude chung thì chép đăng nhập hiện có và cảnh báo', async () => {
@@ -265,7 +265,7 @@ test('bot quản lý: /daily và /agent chuyển cho giao diện agent; không c
   assert.equal(await bot.handle(msg('/agent')), 'ok');
   assert.deepEqual(calls[0], ['1', '1', 'them xyz', 3]);
   assert.equal(await bot.handleCallback({ data: 'ag:stop:a1', from: { id: 1 }, message: { chat: { id: 1 } } }), 'cb');
-  assert.match(await botWith().bot.handle(msg('/daily')), /chưa hỗ trợ agent/);
+  assert.match(await botWith().bot.handle(msg('/daily')), /chưa hỗ trợ nhiều bot/);
 });
 
 test('quyền hạn từng agent: chỉ khóa biết, đúng kiểu; ghi vào env; cập nhật gộp và null = về mặc định; không chèn được dòng lạ', async () => {
@@ -303,4 +303,29 @@ test('/daily quyen: xem danh sách, đổi bật/tắt, số, chữ, về mặc 
     assert.match(await ui.command('1', '1', 'quyen a1 full ???'), /bật hoặc tắt/);
     assert.match(await ui.command('1', '2', 'quyen a1 full bat'), /chỉ chủ máy/i);
   } finally { m.stop(); }
+});
+
+test('nâng cấp agent cũ (init): thêm hộp thư giao việc, chuyển Claude sang chỗ dịch vụ agent vào được, khởi động lại đúng agent đó; chạy lại không làm gì thêm', async () => {
+  const w = world();
+  await create(w);
+  const envFile = path.join(w.paths.etc, 'agents/a1.env'), unitFile = path.join(w.paths.units, 'agentos-agent-a1.service');
+  // dựng lại trạng thái của bản cũ: Claude nằm trong thư mục agentctl, không có hộp thư
+  fs.writeFileSync(envFile, fs.readFileSync(envFile, 'utf8').replace(/^MAIL_ROOT=.*\n/m, '').replace(/^CLAUDE_BIN=.*$/m, 'CLAUDE_BIN=' + w.paths.ctl + '/bin/claude'));
+  fs.writeFileSync(unitFile, fs.readFileSync(unitFile, 'utf8').replace(/^ReadWritePaths=-.*\n/m, ''));
+  fs.rmSync(path.join(w.paths.bin, 'claude'), { force: true });
+  w.cmds.length = 0;
+  const r = await w.ctl.handle({ rid: RID, action: 'init' });
+  assert.equal(r.ok, true); assert.match(r.msg, /nâng cấp 1 agent/);
+  const env = fs.readFileSync(envFile, 'utf8');
+  assert.ok(env.split('\n').includes('CLAUDE_BIN=' + w.paths.bin + '/claude'), 'CLAUDE_BIN trỏ chỗ mới');
+  assert.match(env, /^MAIL_ROOT=/m);
+  assert.ok(fs.existsSync(path.join(w.paths.bin, 'claude')), 'chép Claude sang chỗ mới');
+  assert.match(fs.readFileSync(unitFile, 'utf8'), /^ReadWritePaths=-.*\/a1$/m);
+  for (const s of ['in', 'out']) assert.ok(fs.existsSync(path.join(w.paths.mail, 'a1', s)), 'hộp thư ' + s);
+  assert.ok(w.cmds.includes('systemctl restart agentos-agent-a1'));
+  w.cmds.length = 0;
+  const r2 = await w.ctl.handle({ rid: RID, action: 'init' });
+  assert.ok(!/nâng cấp/.test(r2.msg)); assert.ok(!w.cmds.some((c) => c.startsWith('systemctl restart')), 'không khởi động lại thừa');
+  const rm = await w.ctl.handle({ rid: RID, action: 'remove', id: 'a1' });
+  assert.equal(rm.ok, true); assert.ok(!fs.existsSync(path.join(w.paths.mail, 'a1')), 'xóa agent xóa luôn hộp thư');
 });

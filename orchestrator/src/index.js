@@ -76,6 +76,8 @@ const { createConnectorsUi } = require('./connectorsUi');
 const { createSkillsUi } = require('./skillsUi');
 const { createAgents } = require('./agents');
 const { createAgentsUi } = require('./agentsUi');
+const { createMail } = require('./mail');
+const { startMailWorker, startMailCollector } = require('./mailLoop');
 const { createRemote } = require('./remote');
 const { createOffice } = require('./office');
 const { createRoles } = require('./roles');
@@ -709,6 +711,9 @@ async function main() {
   for (const f of ['connectors.json', 'plugins.json']) fs.watchFile(path.join(dataDir, f), { interval: 3000, persistent: false }, () => { try { connectors.reload(); plugins.reload(); const n = connectors.apply(tools); log('Kết nối dịch vụ đang bật (cập nhật từ Cài đặt): ' + (n.join(', ') || '(không)')); } catch (e) { log('nạp lại kết nối/plugin lỗi: ' + e.message); } });
   const connectorsUi = createConnectorsUi({ connectors, isAdmin, send: botSend, deleteMessage: (c, m) => tg.deleteMessage(c, m), onChange: () => { const n = connectors.apply(tools); log('Kết nối dịch vụ đang bật: ' + (n.join(', ') || '(không)')); } });
   const pluginsUi = createPluginsUi({ plugins, connectors, isAdmin, send: botSend, onChange: () => { const n = connectors.apply(tools); log('Kết nối dịch vụ đang bật: ' + (n.join(', ') || '(không)')); } });
+  // Giao việc giữa các bot (mail.js): bot quản lý giao + đọc kết quả; bot thường nhận việc, làm, trả kết quả (mailLoop.js)
+  const agentsReg = cfg.agentId ? null : createAgents({ file: path.join(dataDir, 'agents.json'), mainToken: cfg.token, owners: () => [...cfg.adminUserIds], log });
+  const mail = cfg.agentId ? (cfg.mailRoot ? createMail({ root: cfg.mailRoot }) : null) : createMail({});
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
     fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage: (c, m) => tg.deleteMessage(c, m),
@@ -723,7 +728,7 @@ async function main() {
     pairing: createPairing({ db, roles, adminIds: [...cfg.adminUserIds], log, send: (chat, r) => (r && typeof r === 'object' && r.buttons ? tg.sendButtons(chat, r.text, r.buttons) : tg.sendMessage(chat, r && typeof r === 'object' ? r.text : r)) }),
     voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
     googleStatus: () => createGoogleAuth({ dir: path.join(dataDir, 'google') }).status(),
-    agentMode: !!cfg.agentId, agentsUi: cfg.agentId ? null : createAgentsUi({ agents: createAgents({ file: path.join(dataDir, 'agents.json'), mainToken: cfg.token, owners: () => [...cfg.adminUserIds], log }), isAdmin, send: botSend, deleteMessage: (c, m) => tg.deleteMessage(c, m) }),
+    agentMode: !!cfg.agentId, agentsUi: cfg.agentId ? null : createAgentsUi({ agents: agentsReg, mail, isAdmin, send: botSend, deleteMessage: (c, m) => tg.deleteMessage(c, m) }),
     send: botSend, connectorsUi, pluginsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend, layers: skillLayers }),
     quick: createQuick({ hw, vault, access, isAdmin, browserHost, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
@@ -742,6 +747,8 @@ async function main() {
     notify(j.chat_id, 'Việc #' + j.id + ' bị ngắt vì hệ thống khởi động lại. Gửi lại nếu cần làm tiếp.').catch(() => {});
   }
   crew.wake();
+  if (cfg.agentId) { if (mail) startMailWorker({ mail, db, crew, cfg, log }); }
+  else startMailCollector({ mail, agents: agentsReg, send: (chat, text) => tg.sendMessage(chat, text), log });
   // Điều khiển từng việc từ trang Cài đặt (tệp yêu cầu trong thư mục control, xem control.js)
   const controlDir = path.join(dataDir, 'control'); try { fs.mkdirSync(controlDir, { recursive: true, mode: 0o700 }); } catch (e) { /* tick sẽ bỏ qua nếu không có thư mục */ }
   const control = createControl({ dir: controlDir, db, worker: crew, schedule, projects, log, approvals, adminId: [...cfg.adminUserIds][0] });

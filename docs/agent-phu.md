@@ -1,6 +1,12 @@
-# Agent = bot Telegram phụ chạy độc lập (`/daily`)
+# Nhiều bot Telegram: bot quản lý + các bot thường (`/daily`, `/giao`)
 
-Mỗi agent là **một bot Telegram riêng** do bot quản lý (bot hiện tại) tạo và điều khiển. Agent làm việc tách hẳn nhau và tách khỏi bot quản lý.
+Mọi bot đều là **bot thường** (có token, ID được nhắn, chế độ Bảo vệ/Toàn quyền và quyền hạn riêng, chỉnh ở **Cài đặt → Bot Telegram**). Một bot được đánh dấu **⭐ Quản lý**: nó vừa tự làm việc như các bot khác, vừa tạo/điều khiển các bot còn lại và **giao việc** cho chúng. Bot thường làm việc tách hẳn nhau và tách khỏi bot quản lý. (Trong mã gọi bot thường là "agent".)
+
+## Giao việc (bot quản lý → bot thường)
+Nhắn cho bot quản lý: `giao cho bot Bán hàng làm: lập báo cáo doanh số hôm nay` (hoặc `/giao a1 lập báo cáo…`, `@tên_bot`, mã `a1`). Bot quản lý đặt việc vào hộp thư nội bộ trên máy (Telegram không cho bot nhắn thẳng cho bot khác), bot thường nhận trong vài giây, làm như thể anh nhắn trực tiếp (anh cũng thấy nó làm trong khung chat với bot đó nếu đã bấm Start), xong thì **bot quản lý báo lại kết quả cho anh**.
+- Bot thường chỉ nhận việc từ ID nằm trong danh sách "Người được phép" của nó; ID khác bị từ chối và báo lại.
+- Câu bắt đầu bằng "giao hàng…" không bị hiểu nhầm là giao việc (phải có "giao việc/giao cho/bot", hoặc dùng mã `a1`/`@tên_bot`).
+- Hộp thư ở `/var/lib/agentos-agents/.mail/<mã>/in|out`, quyền do root đặt: bot này không vào được hộp thư của bot khác. Nội dung hộp thư coi là dữ liệu không tin cậy.
 
 ## Dùng
 1. Ở @BotFather gõ `/newbot`, đặt tên, chép **token**.
@@ -34,7 +40,7 @@ Agent chỉ dùng được lệnh cơ bản (nhắn việc, `/duan`, `/kynang`, 
 Bot quản lý chạy bằng người dùng thường (`agentos`) nên **không tự tạo được tài khoản**. Nó thả tệp yêu cầu vào `/var/lib/agentos-agentctl/req/`; `agentos-agentctl.path` đánh thức `agentos-agentctl` (root) để làm. Vì người gửi kém quyền hơn root, root **kiểm lại mọi giá trị** (mã agent, token, ID, giới hạn), không đi theo liên kết tượng trưng, chỉ ghi kết quả vào `res/`.
 - Token của agent chỉ nằm trong `/etc/agentos/agents/aN.env` (root 600); bot quản lý **không lưu** token (sổ `data/agents.json` chỉ có tên, @bot, ID chủ, giới hạn).
 - Agent nhận khóa Claude dùng chung (`CLAUDE_CODE_OAUTH_TOKEN` hoặc khóa API) chép từ cấu hình máy; **không** nhận token bot chính, khóa KiotViet, Google…
-- Chương trình `claude` được chép một bản vào `/var/lib/agentos-agentctl/bin/claude` (agent không đọc được thư mục của bot quản lý).
+- Chương trình `claude` được chép một bản vào `/var/lib/agentos-agents/.bin/claude` (agent không đọc được thư mục của bot quản lý, và cũng bị cấm vào thư mục của agentctl).
 
 ## Giới hạn hiện tại
 - Agent chỉ dùng **Claude** (không Codex/Gemini/DeepSeek).

@@ -12,7 +12,7 @@ const ITEMS = [
   { k: 'kn', label: '🔌 Kết nối dịch vụ', cmd: '/dichvu' },
   { k: 'gg', label: '📅 Google (Lịch, Gmail)', google: true },
   { k: 'da', label: '📁 Dự án', cmd: '/duan' },
-  { k: 'ag', label: '🤖 Agent (bot phụ)', cmd: '/daily' },
+  { k: 'ag', label: '🤖 Các bot (giao việc)', cmd: '/daily' },
   { k: 'mh', label: '📸 Xem màn hình máy', cmd: '/manhinh' },
   { k: 'cd', label: '🛡 Chế độ & quyền AI', cmd: '/cheodo' },
   { k: 'cn', label: '🔄 Cập nhật hệ điều hành', cmd: '/capnhat co', confirm: 'Cập nhật hệ điều hành lên bản mới nhất? Máy có thể khởi động lại một vài dịch vụ (khoảng 1 phút).' },

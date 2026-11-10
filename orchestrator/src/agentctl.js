@@ -50,6 +50,8 @@ const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update
 const PATHS = {
   ctl: '/var/lib/agentos-agentctl',            // gốc do root sở hữu; req/ và res/ nằm trong (agentos không đổi được thư mục cha)
   homes: '/var/lib/agentos-agents',
+  mail: '/var/lib/agentos-agents/.mail',        // hộp thư giao việc bot quản lý <-> bot thường (xem mail.js)
+  bin: '/var/lib/agentos-agents/.bin',            // bản Claude dùng chung cho agent (KHÔNG để trong thư mục agentctl: dịch vụ agent bị cấm vào đó)
   etc: '/etc/agentos',
   units: '/etc/systemd/system',
   mainEnv: '/etc/agentos/orchestrator.env',
@@ -137,6 +139,7 @@ function unitText(id, meta) {
     'NoNewPrivileges=true',
     'ProtectSystem=strict',
     'ReadWritePaths=' + home,
+    'ReadWritePaths=-' + PATHS.mail + '/' + id,
     'ProtectHome=true',
     'InaccessiblePaths=' + PATHS.etc + ' ' + PATHS.mainHome + ' ' + PATHS.ctl + ' /srv/onedrive /root',
     'PrivateTmp=true',
@@ -162,11 +165,12 @@ function envText(id, meta, token, mainEnvText) {
     'ADMIN_USER_IDS=' + owners,
     'AGENT_ID=' + id,
     'AGENT_NAME=' + String(meta.name).replace(/[\r\n]/g, ' '),
+    'MAIL_ROOT=' + PATHS.mail,
     'ENGINE_ORDER=claude',
     'WORKDIR=' + home + '/work',
     'DB_PATH=' + home + '/data/agentos.db',
     'TOOLS_FILE=' + PATHS.appDir + '/tools.json',
-    'CLAUDE_BIN=' + PATHS.ctl + '/bin/claude',
+    'CLAUDE_BIN=' + PATHS.bin + '/claude',
     'DISABLE_AUTOUPDATER=1',
     'SANDBOX=auto',
     'FULL_ACCESS=0',
@@ -226,12 +230,22 @@ function createAgentCtl(deps) {
     const main = parseEnv(F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '');
     const src = main.CLAUDE_BIN || P.mainHome + '/.local/bin/claude';
     let real; try { real = F.realpathSync(src); } catch (e) { return { ok: false, msg: 'Không thấy chương trình Claude (' + src + ') để chia sẻ cho agent.' }; }
-    const dst = P.ctl + '/bin/claude';
-    F.mkdirSync(P.ctl + '/bin', { recursive: true, mode: 0o755 });
+    const dst = P.bin + '/claude';
+    F.mkdirSync(P.bin, { recursive: true, mode: 0o755 }); try { F.chmodSync(P.bin, 0o755); } catch (e) { /* bỏ qua */ }
     let same = false;
     try { const a = F.statSync(real), b = F.statSync(dst); same = a.size === b.size && b.mtimeMs >= a.mtimeMs; } catch (e) { /* chưa có */ }
     if (!same) { F.copyFileSync(real, dst + '.new'); F.chmodSync(dst + '.new', 0o755); F.renameSync(dst + '.new', dst); }
+    // Chủ phải là root: bot quản lý (agentos) mà thay được tệp này thì chạy được mã tùy ý trong mọi bot thường
+    await sh('chown', ['root:root', dst]);
     return { ok: true };
+  }
+
+  // Hộp thư giao việc của agent: in = agentos ghi / agent đọc+xóa; out = agent ghi / agentos đọc+xóa; agent khác không vào được (mục 711 chỉ cho đi qua)
+  async function ensureMail(id) {
+    const user = userName(id), d = P.mail + '/' + id;
+    for (const [p, mode] of [[P.mail, 0o711], [d, 0o711], [d + '/in', 0o2770], [d + '/out', 0o2770]]) { F.mkdirSync(p, { recursive: true }); try { F.chmodSync(p, mode); } catch (e) { /* bỏ qua */ } }
+    await sh('chown', ['agentos:' + user, d + '/in']);
+    await sh('chown', [user + ':agentos', d + '/out']);
   }
 
   async function init() {
@@ -241,7 +255,27 @@ function createAgentCtl(deps) {
     }
     // req/: agentos được tạo tệp; res/: agentos chỉ đọc
     await sh('chgrp', ['agentos', P.ctl + '/req', P.ctl + '/res']);
-    return ok('Đã chuẩn bị thư mục cho agent.');
+    // Agent đã có từ bản cũ: thêm hộp thư + cập nhật tệp cấu hình/dịch vụ; chỉ khởi động lại agent nào có tệp dịch vụ đổi (không làm gián đoạn agent khác)
+    let moved = 0;
+    try { await ensureClaudeBin(); } catch (e) { /* chưa có Claude để chia sẻ: bỏ qua */ }
+    let files = []; try { files = F.readdirSync(P.etc + '/agents'); } catch (e) { /* chưa có agent nào */ }
+    for (const f of files) {
+      const m = f.match(/^(a\d{1,3})\.meta\.json$/); if (!m) continue;
+      const id = m[1], meta = readMeta(id); if (!meta) continue;
+      const envFile = P.etc + '/agents/' + id + '.env';
+      let envOld = ''; try { envOld = F.readFileSync(envFile, 'utf8'); } catch (e) { continue; }
+      await ensureMail(id);
+      let envNew = envOld;
+      if (!/^MAIL_ROOT=/m.test(envNew)) envNew = envNew.replace(/\n*$/, '\n') + 'MAIL_ROOT=' + P.mail + '\n';
+      // Bản cũ để Claude trong thư mục agentctl mà dịch vụ agent bị cấm vào → agent không chạy được AI ("Permission denied"): chuyển sang thư mục dùng chung
+      if (/^CLAUDE_BIN=/m.test(envNew) && !envNew.includes('CLAUDE_BIN=' + P.bin + '/claude\n')) envNew = envNew.replace(/^CLAUDE_BIN=.*$/m, 'CLAUDE_BIN=' + P.bin + '/claude');
+      const envChanged = envNew !== envOld;
+      if (envChanged) F.writeFileSync(envFile, envNew, { mode: 0o600 });
+      const uf = P.units + '/' + unitName(id) + '.service', text = withPaths(() => unitText(id, meta));
+      let old = ''; try { old = F.readFileSync(uf, 'utf8'); } catch (e) { /* chưa có */ }
+      if (old !== text || envChanged) { F.writeFileSync(uf, text, { mode: 0o644 }); moved++; await sc('daemon-reload'); await sc('restart', unitName(id)); }
+    }
+    return ok('Đã chuẩn bị thư mục cho agent.' + (moved ? ' Đã nâng cấp ' + moved + ' agent (thêm hộp thư giao việc).' : ''));
   }
 
   async function create(r) {
@@ -273,6 +307,7 @@ function createAgentCtl(deps) {
     }
     await sh('chown', ['-R', user + ':' + user, home]);
     F.chmodSync(home, 0o700);
+    await ensureMail(id);
     writeSecure(P.etc + '/agents/' + id + '.env', env.text, 0o600);
     writeMeta(id, meta);
     F.writeFileSync(P.units + '/' + unitName(id) + '.service', withPaths(() => unitText(id, meta)), { mode: 0o644 });
@@ -290,6 +325,7 @@ function createAgentCtl(deps) {
     await sc('daemon-reload'); await sc('reset-failed', unitName(id) + '.service');
     for (const f of [id + '.env', id + '.meta.json']) { try { F.rmSync(P.etc + '/agents/' + f, { force: true }); } catch (e) { /* bỏ qua */ } }
     await sh('userdel', [userName(id)]);
+    try { F.rmSync(P.mail + '/' + id, { recursive: true, force: true }); } catch (e) { /* bỏ qua */ }
     const home = P.homes + '/' + id;
     let kept = '';
     if (r.purge) { try { F.rmSync(home, { recursive: true, force: true }); } catch (e) { /* bỏ qua */ } }
@@ -390,4 +426,4 @@ function realRun(bin, args) {
   return new Promise((res) => execFile(bin, args, { timeout: 120000, maxBuffer: 4 << 20 }, (e, so, se) => res({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, out: String(so || '') + String(se || '') })));
 }
 
-module.exports = { createAgentCtl, validate, validateSettings, SETTINGS, unitText, envText, parseEnv, unitName, userName, maskTokens, PATHS, LIMITS, ID_RE, TOKEN_RE };
+module.exports = { createAgentCtl, validate, validateSettings, settingEnv, SETTINGS, unitText, envText, parseEnv, unitName, userName, maskTokens, PATHS, LIMITS, ID_RE, TOKEN_RE };

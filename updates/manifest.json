@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.09.5",
-  "file": "agentos-update-2026.11.09.5.tar.gz",
-  "size": 535037,
-  "sha256": "2572ceb90c8461a3f3b7cd8ed83774ca6b389489cc84991a20844e28ab4aa638",
+  "version": "2026.11.09.8",
+  "file": "agentos-update-2026.11.09.8.tar.gz",
+  "size": 542236,
+  "sha256": "ea33898665c180956a6d97a382b4fdeaa78d9cc5f42df58edecf4d666d28f017",
   "date": "2026-11-10",
-  "notes": "Sửa giao diện Cài đặt: thanh bên cuộn được, hết chữ trắng trên nền trắng"
+  "notes": "Mọi bot cùng một kiểu thẻ trong Cài đặt; bot quản lý giao việc cho bot thường (/giao); sửa lỗi bot thường không chạy được AI"
 }

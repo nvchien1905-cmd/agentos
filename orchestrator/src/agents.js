@@ -141,7 +141,8 @@ function createAgents(o) {
     return out;
   }
 
-  return { add, remove, control, update, logs, list, get, resolve, status, call };
+  const all = () => load().agents.slice();
+  return { add, remove, control, update, logs, list, get, resolve, status, call, all };
 }
 
 module.exports = { createAgents, MAX_AGENTS, ID_RE };

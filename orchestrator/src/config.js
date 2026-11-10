@@ -27,6 +27,7 @@ function load(env) {
     // Chạy như AGENT (bot Telegram phụ do bot quản lý tạo, xem agentctl.js): AGENT_ID=a1... Trống = bot quản lý (máy chính)
     agentId: /^a\d{1,3}$/.test(env.AGENT_ID || '') ? env.AGENT_ID : '',
     agentName: String(env.AGENT_NAME || '').slice(0, 40),
+    mailRoot: env.MAIL_ROOT || '',                               // hộp thư giao việc (mail.js): bot thường nhận việc từ bot quản lý; bot quản lý đọc kết quả
     allowedUserIds: new Set(list(env.ALLOWED_USER_IDS)),
     // Quản trị viên: dùng được bộ công cụ adminOnly và duyệt lệnh/ghi file. Không đặt -> mọi người được phép đều là admin.
     adminUserIds: new Set(list(env.ADMIN_USER_IDS === undefined ? env.ALLOWED_USER_IDS : env.ADMIN_USER_IDS)),

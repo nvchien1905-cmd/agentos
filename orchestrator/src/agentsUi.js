@@ -14,12 +14,13 @@ const { LIMITS, SETTINGS } = require('./agentctl');
 const noAcc = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
 const esc = (s) => String(s == null ? '' : s);
 
-const HELP = '🤖 Agent = bot Telegram phụ, mỗi cái làm việc ĐỘC LẬP (tài khoản, dữ liệu, bộ nhớ, giới hạn RAM/CPU riêng), anh quản lý ở đây.\n\n' +
+const HELP = '🤖 Bot thường = bot Telegram riêng, mỗi cái làm việc ĐỘC LẬP (tài khoản, dữ liệu, bộ nhớ, giới hạn RAM/CPU riêng), anh quản lý ở đây.\n\n' +
   '➕ Thêm: tạo bot mới ở @BotFather (/newbot), chép token rồi gõ:\n/daily them <token> [tên agent]\n(bot tự xóa tin có token để khỏi lộ)\n\n' +
+  '📨 Giao việc: /giao <bot> <việc> (hoặc nhắn "giao cho bot Bán hàng làm: …"); bot làm xong sẽ báo lại ở đây.\n\n' +
   'Lệnh khác: /daily dung|chay|khoidong <agent> · /daily nhatky <agent> · /daily gioihan <agent> <RAM MB> [CPU %] · /daily quyen <agent> [khóa giá_trị] · /daily chu <agent> <ID,ID> · /daily ten <agent> <tên> · /daily xoa <agent>';
 
 function createAgentsUi(o) {
-  const { agents, isAdmin, send, deleteMessage } = o;
+  const { agents, isAdmin, send, deleteMessage, mail } = o;
 
   function line(a) {
     const s = a.status || {};
@@ -87,6 +88,7 @@ function createAgentsUi(o) {
         const r = await agents.update(ref, { settings: { [key]: val } });
         return done(r.agent, 'đã đặt ' + key + ' = ' + (val === null ? 'mặc định' : val) + ' (đã khởi động lại).');
       }
+      if (sub === 'giao') return assignCommand(chatId, uid, rest);
       if (sub === 'chu' || sub === 'owner') {
         const ids = args.split(/[\s,;]+/).filter(Boolean);
         if (!ids.length || !ids.every((x) => /^\d+$/.test(x))) return 'Cách dùng: /daily chu <agent> <ID Telegram,ID…> (ID là dãy số; người lạ gõ /id với bot để biết).';
@@ -104,6 +106,57 @@ function createAgentsUi(o) {
       }
       return HELP;
     });
+  }
+
+  // ===== GIAO VIỆC cho bot thường (hộp thư nội bộ, xem mail.js) =====
+  function normMap(t) { let norm = ''; const idx = []; for (let i = 0; i < t.length; i++) for (const ch of noAcc(t[i])) { norm += ch; idx.push(i); } idx.push(t.length); return { norm, idx }; }
+  const candidates = (a) => [a.id, a.name, a.bot && a.bot.username ? '@' + a.bot.username : '', a.bot && a.bot.username ? a.bot.username : ''].map((x) => noAcc(x).trim()).filter(Boolean);
+
+  // "giao cho bot Bán hàng làm: lập báo cáo" -> { agent, task } (không khớp bot nào thì null để câu đi tiếp cho AI)
+  function parseAssign(text) {
+    if (!mail) return null;
+    const t = String(text || '').trim();
+    const { norm, idx } = normMap(t);
+    const head = norm.match(/^(?:(?:hay|nho|xin|vui long) )*giao(?: (viec))?(?: (cho))?(?: (bot))? +/);
+    if (!head) return null;
+    const rest = norm.slice(head[0].length), explicit = !!(head[1] || head[2] || head[3]);
+    let best = null;
+    for (const a of agents.all()) {
+      for (const c of candidates(a)) {
+        const isRef = /^a\d+$/.test(c) || c[0] === '@' || c === noAcc((a.bot && a.bot.username) || '');
+        if (!explicit && !isRef) continue;                                        // "giao hàng ..." không được hiểu nhầm là giao việc
+        if (rest.startsWith(c) && (rest.length === c.length || /[\s:,;-]/.test(rest[c.length])) && (!best || c.length > best.len)) best = { a, len: c.length };
+      }
+    }
+    if (!best) return null;
+    let off = head[0].length + best.len;
+    const tail = norm.slice(off).match(/^(?:\s*(?:lam|thuc hien|xu ly|nhe|viec|giup)\b)*\s*[:,;-]?\s*/);
+    off += tail ? tail[0].length : 0;
+    const task = t.slice(idx[Math.min(off, idx.length - 1)]).trim();
+    return task ? { agent: best.a, task } : null;
+  }
+
+  async function assign(chatId, uid, a, task) {
+    if (!(a.owners || []).map(String).includes(String(uid))) return '⚠️ ID của anh (' + uid + ') chưa nằm trong danh sách được nhắn cho bot "' + esc(a.name) + '", nên bot sẽ từ chối. Thêm ở Cài đặt → Bot Telegram (thẻ của bot) hoặc gõ /daily chu ' + a.id + ' <ID,ID>.';
+    const st = await agents.status(a);
+    if (!st.active) return '⚠️ Bot "' + esc(a.name) + '" đang dừng nên chưa nhận việc được. Gõ /daily chay ' + a.id + ' để chạy lại rồi giao lại.';
+    const jid = mail.send(a.id, { from: uid, chat: chatId, text: task });
+    return '📨 Đã giao cho "' + esc(a.name) + '"' + (a.bot && a.bot.username ? ' (@' + a.bot.username + ')' : '') + ' (mã ' + jid.slice(0, 6) + '). Làm xong bot báo lại ngay ở đây; anh cũng thấy bot làm trong cuộc trò chuyện với @' + (a.bot && a.bot.username || 'bot đó') + ' nếu anh đã bấm Start với bot đó.';
+  }
+  // Câu thường "giao cho bot X làm Y": trả null nếu không phải việc giao (câu đi tiếp cho AI)
+  function tryAssign(chatId, uid, text) {
+    if (!isAdmin(uid)) return null;
+    const p = parseAssign(text); if (!p) return null;
+    return run(() => assign(chatId, uid, p.agent, p.task));
+  }
+  function assignCommand(chatId, uid, arg) {
+    if (!isAdmin(uid)) return 'Chỉ chủ máy giao việc cho bot được.';
+    const p = parseAssign('giao cho bot ' + String(arg || '').trim());
+    if (!p) {
+      const names = agents.all().map((a) => '• ' + a.id + ' — ' + esc(a.name) + (a.bot && a.bot.username ? ' (@' + a.bot.username + ')' : '')).join('\n');
+      return '📨 Giao việc cho bot thường: /giao <tên bot> <việc>\nVí dụ: /giao a1 lập báo cáo doanh số hôm nay\nHoặc cứ nhắn: "giao cho bot Bán hàng làm: lập báo cáo doanh số".\n\n' + (names ? 'Các bot:\n' + names : 'Chưa có bot thường nào. Thêm ở Cài đặt → Bot Telegram.');
+    }
+    return run(() => assign(chatId, uid, p.agent, p.task));
   }
 
   const isCallback = (d) => /^ag:/.test(String(d || ''));
@@ -127,7 +180,7 @@ function createAgentsUi(o) {
     return verb === 'logs' ? '' : 'Xong';
   }
 
-  return { command, card, isCallback, callback, HELP };
+  return { command, card, isCallback, callback, HELP, parseAssign, tryAssign, assignCommand };
 }
 
 module.exports = { createAgentsUi, HELP };

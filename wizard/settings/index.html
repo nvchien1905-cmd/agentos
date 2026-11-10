@@ -120,44 +120,67 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
   function rebootBanner(o) { return o && o.rebootRequired ? '<div class="banner">⚠️ Máy cần <b>khởi động lại</b> để hoàn tất cập nhật. <button class="b" id="rb">Khởi động lại bây giờ</button></div>' : ''; }
   function wireReboot() { on('rb', function () { if (ask('Khởi động lại máy bây giờ?')) api('POST', 'power', { action: 'reboot', confirm: true }).then(function () { toast('Máy sẽ khởi động lại...'); }).catch(fail); }); }
 
-  // ===== Các bot Telegram phụ (agent): mỗi bot một thẻ, có nút chỉnh mọi chế độ và quyền hạn =====
+  // ===== Bot Telegram: MỌI bot cùng một kiểu thẻ (bot quản lý có dấu ⭐), mỗi bot có cài đặt riêng: ID được nhắn, chế độ Bảo vệ/Toàn quyền, quyền hạn =====
   function renderAgents() {
     var host = document.getElementById('agp'); if (!host) return;
-    host.innerHTML = '<p class="mute">Đang tải các bot phụ...</p>';
+    host.innerHTML = '<p class="mute">Đang tải các bot...</p>';
     api('GET', 'bots').then(function (r) {
-      var h = '<h2 style="margin-top:26px">🤖 Các bot phụ (agent)</h2><p class="mute">Mỗi bot phụ là một bot Telegram riêng, chạy độc lập (tài khoản hệ thống, dịch vụ, bộ nhớ và giới hạn RAM/CPU riêng) dưới sự quản lý của bot chính. Bot nào cũng được dặn: gặp lỗi phải tự tìm cách sửa và làm tiếp, chỉ dừng khi hết hạn mức hoặc cần việc chỉ chủ máy làm được. Bot chính điều khiển được bằng <b>/daily</b>.</p>';
-      if (!r.agents.length) h += '<div class="card"><p class="mute">Chưa có bot phụ nào. Thêm ở khung bên dưới.</p></div>';
-      r.agents.forEach(function (a) { h += agentCard(a, r); });
-      h += '<div class="card"><h3>➕ Thêm bot phụ</h3><p class="mute">Tạo bot mới ở <b>@BotFather</b> (gõ <b>/newbot</b>), chép token dán vào đây. Mỗi bot phụ phải có token RIÊNG (không dùng lại token bot chính).</p>' +
+      var list = [];
+      if (r.main && r.main.configured) list.push(mainBot(r.main));
+      r.agents.forEach(function (a) { list.push(agentBot(a)); });
+      var names = r.agents.map(function (a) { return a.name; }).join(', ');
+      var h = '<p class="mute">Mọi bot đều giống nhau: mỗi bot có token, ID được nhắn, chế độ Bảo vệ/Toàn quyền và quyền hạn riêng. Bot có dấu <b>⭐ Quản lý</b> vừa tự làm việc như các bot khác, vừa giao việc được cho các bot còn lại: nhắn bot đó <b>"giao cho bot ' + esc(r.agents.length ? r.agents[0].name : 'Bán hàng') + ' làm: …"</b> (hoặc <b>/giao</b>), bot kia làm xong sẽ báo lại. ' +
+        (names ? 'Các bot thường hiện có: ' + esc(names) + '.' : 'Chưa có bot thường nào: thêm ở khung cuối trang.') + '</p>';
+      list.forEach(function (b) { h += botCard(b, r); });
+      h += '<div class="card"><h3>➕ Thêm bot</h3><p class="mute">Tạo bot mới ở <b>@BotFather</b> (gõ <b>/newbot</b>), chép token dán vào đây. Mỗi bot phải có token RIÊNG. Bot mới chạy độc lập (tài khoản hệ thống, dữ liệu, bộ nhớ, giới hạn RAM/CPU riêng).</p>' +
         '<div class="row"><input type="password" id="ag-tk" placeholder="Token bot mới (123456789:AAAA...)" autocomplete="off" class="grow"><input type="text" id="ag-nm" placeholder="Tên gọi (tùy chọn)" style="width:200px"><button class="b p" id="ag-add">Thêm bot</button></div></div>';
       host.innerHTML = h;
       on('ag-add', function () {
         var tk = document.getElementById('ag-tk').value, nm = document.getElementById('ag-nm').value;
-        toast('Đang tạo bot phụ...');
-        api('POST', 'bots/agent/add', { token: tk, name: nm }).then(function (j) { toast('Đã tạo bot phụ ' + j.agent.id + (j.warn ? ' — ' + j.warn : '')); renderAgents(); }).catch(fail);
+        toast('Đang tạo bot (khoảng 10–30 giây)...');
+        api('POST', 'bots/agent/add', { token: tk, name: nm }).then(function (j) { toast('Đã tạo bot ' + j.agent.id + (j.warn ? ' — ' + j.warn : '')); renderAgents(); }).catch(fail);
       });
-      r.agents.forEach(function (a) { bindAgent(a, r); });
-    }).catch(function (e) { host.innerHTML = '<div class="card"><p class="bad">Không tải được danh sách bot phụ: ' + esc(e.message || e) + '</p></div>'; });
+      list.forEach(function (b) { bindBot(b, r); });
+    }).catch(function (e) { host.innerHTML = '<div class="card"><p class="bad">Không tải được danh sách bot: ' + esc(e.message || e) + '</p></div>'; });
   }
 
-  function agentCard(a, r) {
-    var st = a.status || {}, on1 = !!st.active;
-    var h = '<div class="card" id="agc-' + a.id + '"><h3>' + esc(a.name) + ' <small class="mute">' + (a.bot ? '@' + esc(a.bot.username) : '') + ' · ' + a.id + '</small></h3>';
-    h += '<p>' + (on1 ? '<span class="ok">● Đang chạy</span>' : '<span class="bad">● ' + (st.state === 'activating' ? 'Đang khởi động / lỗi, tự thử lại' : 'Đã dừng') + '</span>') +
-      (st.memMb ? ' · dùng ' + st.memMb + ' MB RAM' : '') + (st.restarts ? ' · khởi động lại ' + st.restarts + ' lần' : '') + '</p>';
-    h += '<div class="row" style="margin-bottom:12px">' +
-      (on1 ? '<button class="b" data-ag="' + a.id + '" data-do="stop">⏸ Dừng</button>' : '<button class="b p" data-ag="' + a.id + '" data-do="start">▶ Chạy</button>') +
-      '<button class="b" data-ag="' + a.id + '" data-do="restart">🔄 Khởi động lại</button><button class="b" data-ag="' + a.id + '" data-do="logs">📜 Nhật ký</button><button class="b d" data-ag="' + a.id + '" data-do="del">🗑 Xóa bot</button></div>';
-    h += '<pre id="agl-' + a.id + '" class="keybox" style="display:none;white-space:pre-wrap;max-height:260px;overflow:auto"></pre>';
-    h += '<h4 style="margin:10px 0 6px">Thông tin và giới hạn</h4><div class="row">' +
-      '<label>Tên <input type="text" id="agn-' + a.id + '" value="' + esc(a.name) + '" style="width:170px"></label>' +
-      '<label>ID được nhắn <input type="text" id="ago-' + a.id + '" value="' + esc((a.owners || []).join(',')) + '" style="width:200px"></label>' +
-      '<label>RAM (MB) <input type="number" id="agr-' + a.id + '" value="' + a.ramMb + '" min="' + r.limits.ramMb[0] + '" max="' + r.limits.ramMb[1] + '" style="width:90px"></label>' +
-      '<label>CPU (%) <input type="number" id="agc2-' + a.id + '" value="' + a.cpuPct + '" min="' + r.limits.cpuPct[0] + '" max="' + r.limits.cpuPct[1] + '" style="width:80px"></label>' +
-      '<button class="b p" data-ag="' + a.id + '" data-do="info">Lưu</button></div>';
-    h += '<h4 style="margin:14px 0 6px">Chế độ và quyền hạn</h4><div class="keybox" style="padding:10px 12px">';
-    Object.keys(r.spec).forEach(function (k) {
-      var d = r.spec[k], cur = a.settings && a.settings[k] !== undefined ? a.settings[k] : d.def, id = 'ags-' + a.id + '-' + k;
+  // Chuẩn hóa dữ liệu hai loại bot về một dạng để vẽ chung một kiểu thẻ
+  function mainBot(m) {
+    return { key: 'main', main: true, name: 'Bot quản lý', username: m.bot ? m.bot.username : '', active: m.service === 'active', statusText: '', owners: m.owners || [], full: !!m.fullAccessEnabled, settings: m.settings || {}, masked: m.token };
+  }
+  function agentBot(a) {
+    var st = a.status || {};
+    return { key: a.id, main: false, id: a.id, name: a.name, username: a.bot ? a.bot.username : '', active: !!st.active, state: st.state, memMb: st.memMb, restarts: st.restarts, owners: a.owners || [], full: !!(a.settings && a.settings.full), settings: a.settings || {}, ramMb: a.ramMb, cpuPct: a.cpuPct };
+  }
+
+  function botCard(b, r) {
+    var k = b.key;
+    var h = '<div class="card" id="agc-' + k + '"><h3>' + (b.main ? '⭐ ' : '🤖 ') + esc(b.name) + ' <small class="mute">' + (b.username ? '@' + esc(b.username) : '') + (b.main ? ' · QUẢN LÝ + làm việc' : ' · ' + b.id) + '</small></h3>';
+    h += '<p>' + (b.active ? '<span class="ok">● Đang chạy</span>' : '<span class="bad">● ' + (b.state === 'activating' ? 'Đang khởi động / lỗi, tự thử lại' : 'Đã dừng') + '</span>') +
+      (b.memMb ? ' · dùng ' + b.memMb + ' MB RAM' : '') + (b.restarts ? ' · khởi động lại ' + b.restarts + ' lần' : '') + ' · chế độ <b>' + (b.full ? '⚡ Toàn quyền' : '🛡️ Bảo vệ') + '</b></p>';
+    if (!b.main) {
+      h += '<div class="row" style="margin-bottom:12px">' +
+        (b.active ? '<button class="b" data-ag="' + k + '" data-do="stop">⏸ Dừng</button>' : '<button class="b p" data-ag="' + k + '" data-do="start">▶ Chạy</button>') +
+        '<button class="b" data-ag="' + k + '" data-do="restart">🔄 Khởi động lại</button><button class="b" data-ag="' + k + '" data-do="logs">📜 Nhật ký</button><button class="b d" data-ag="' + k + '" data-do="del">🗑 Xóa bot</button></div>';
+      h += '<pre id="agl-' + k + '" class="keybox" style="display:none;white-space:pre-wrap;max-height:260px;overflow:auto"></pre>';
+    }
+    // Thông tin riêng của bot
+    h += '<h4 style="margin:10px 0 6px">Thông tin</h4><div class="row">';
+    if (b.main) h += '<input type="password" id="agt-' + k + '" placeholder="Đổi token bot (từ @BotFather)" autocomplete="off" class="grow" style="min-width:240px"><button class="b p" data-ag="' + k + '" data-do="token">Lưu token</button>';
+    else h += '<label>Tên <input type="text" id="agn-' + k + '" value="' + esc(b.name) + '" style="width:170px"></label>' +
+      '<label>RAM (MB) <input type="number" id="agr-' + k + '" value="' + b.ramMb + '" min="' + r.limits.ramMb[0] + '" max="' + r.limits.ramMb[1] + '" style="width:90px"></label>' +
+      '<label>CPU (%) <input type="number" id="agc2-' + k + '" value="' + b.cpuPct + '" min="' + r.limits.cpuPct[0] + '" max="' + r.limits.cpuPct[1] + '" style="width:80px"></label>' +
+      '<button class="b p" data-ag="' + k + '" data-do="info">Lưu</button>';
+    h += '</div>';
+    h += '<h4 style="margin:12px 0 6px">Người được phép điều khiển bot này (ID Telegram)</h4><p class="mute" style="margin:0 0 6px">Nhắn <b>/id</b> cho bot để biết ID. Nhiều ID ngăn cách bằng dấu phẩy. Muốn bot quản lý giao việc được thì ID của anh phải có ở đây.</p>' +
+      '<div class="row"><input type="text" id="ago-' + k + '" value="' + esc(b.owners.join(',')) + '" class="grow"><button class="b p" data-ag="' + k + '" data-do="owners">Lưu</button></div>';
+    h += '<h4 style="margin:14px 0 6px">Chế độ làm việc của AI</h4><p class="mute" style="margin:0 0 6px">' +
+      (b.main ? 'Bảo vệ: AI hỏi trước khi ghi tệp/chạy lệnh, chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, có quyền quản trị (sudo) trên máy.' : 'Bảo vệ: AI hỏi trước khi ghi tệp/chạy lệnh, chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, không hộp cô lập, nhưng vẫn bị nhốt trong tài khoản riêng của bot (KHÔNG có sudo, không đọc được dữ liệu bot khác).') + '</p>' +
+      '<div class="row"><button class="b' + (b.full ? '' : ' p') + '" data-ag="' + k + '" data-do="safe">🛡️ Bảo vệ</button><button class="b' + (b.full ? ' p' : ' d') + '" data-ag="' + k + '" data-do="full">⚡ Toàn quyền</button></div>';
+    h += '<h4 style="margin:14px 0 6px">Chế độ và quyền hạn riêng</h4><div class="keybox" style="padding:10px 12px">';
+    Object.keys(r.spec).forEach(function (sk) {
+      if (sk === 'full') return;                                               // đã có nút chế độ ở trên
+      var d = r.spec[sk], cur = b.settings && b.settings[sk] !== undefined ? b.settings[sk] : d.def, id = 'ags-' + k + '-' + sk;
       h += '<div class="row" style="margin:6px 0"><span class="grow">' + esc(d.label) + '</span>';
       if (d.kind === 'bool') h += '<label><input type="checkbox" id="' + id + '" ' + (cur ? 'checked' : '') + '> Bật</label>';
       else if (d.kind === 'enum') h += '<select id="' + id + '">' + d.values.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select>';
@@ -165,44 +188,60 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       else h += '<input type="text" id="' + id + '" value="' + esc(cur == null ? '' : cur) + '" placeholder="(mặc định)" style="width:260px">';
       h += '</div>';
     });
-    h += '<div class="row" style="margin-top:10px"><button class="b p" data-ag="' + a.id + '" data-do="perm">Lưu quyền hạn và khởi động lại bot</button><button class="b" data-ag="' + a.id + '" data-do="permreset">Về mặc định</button></div></div></div>';
+    h += '<div class="row" style="margin-top:10px"><button class="b p" data-ag="' + k + '" data-do="perm">Lưu quyền hạn và khởi động lại bot</button><button class="b" data-ag="' + k + '" data-do="permreset">Về mặc định</button></div></div></div>';
     return h;
   }
 
-  function bindAgent(a, r) {
-    var card = document.getElementById('agc-' + a.id); if (!card) return;
-    function val(k) {
-      var d = r.spec[k], e = document.getElementById('ags-' + a.id + '-' + k); if (!e) return undefined;
+  function bindBot(b, r) {
+    var k = b.key, card = document.getElementById('agc-' + k); if (!card) return;
+    var base = b.main ? 'bot/settings' : 'bots/agent/update';
+    function saveSettings(s, okMsg) {      // bot quản lý: POST bot/settings {settings}; bot thường: bots/agent/update {id, settings}
+      var body = b.main ? { settings: s } : { id: b.id, settings: s };
+      return api('POST', base, body).then(function () { toast(okMsg); renderAgents(); }).catch(fail);
+    }
+    function val(sk) {
+      var d = r.spec[sk], e = document.getElementById('ags-' + k + '-' + sk); if (!e) return undefined;
       if (d.kind === 'bool') return e.checked;
       if (d.kind === 'int') return e.value === '' ? null : Number(e.value);
       return e.value.trim();
     }
-    [].forEach.call(card.querySelectorAll('button[data-do]'), function (b) {
-      b.onclick = function () {
-        var what = b.getAttribute('data-do');
+    [].forEach.call(card.querySelectorAll('button[data-do]'), function (btn) {
+      btn.onclick = function () {
+        var what = btn.getAttribute('data-do');
         if (what === 'start' || what === 'stop' || what === 'restart') {
-          api('POST', 'bots/agent/control', { id: a.id, verb: what }).then(function (j) { toast(j.msg); renderAgents(); }).catch(fail);
+          api('POST', 'bots/agent/control', { id: b.id, verb: what }).then(function (j) { toast(j.msg); renderAgents(); }).catch(fail);
         } else if (what === 'logs') {
-          var pre = document.getElementById('agl-' + a.id); pre.style.display = 'block'; pre.textContent = 'Đang tải...';
-          api('POST', 'bots/agent/logs', { id: a.id, lines: 80 }).then(function (j) { pre.textContent = j.text || '(chưa có nhật ký)'; pre.scrollTop = pre.scrollHeight; }).catch(fail);
+          var pre = document.getElementById('agl-' + k); pre.style.display = 'block'; pre.textContent = 'Đang tải...';
+          api('POST', 'bots/agent/logs', { id: b.id, lines: 80 }).then(function (j) { pre.textContent = j.text || '(chưa có nhật ký)'; pre.scrollTop = pre.scrollHeight; }).catch(fail);
         } else if (what === 'del') {
-          if (!ask('Xóa bot phụ "' + a.name + '"? Bot dừng hẳn; dữ liệu của nó được CẤT trong /var/lib/agentos-agents/.da-xoa-... (xóa tay nếu muốn mất hẳn).')) return;
-          api('POST', 'bots/agent/remove', { id: a.id, confirm: true }).then(function () { toast('Đã xóa bot phụ'); renderAgents(); }).catch(fail);
+          if (!ask('Xóa bot "' + b.name + '"? Bot dừng hẳn; dữ liệu của nó được CẤT trong /var/lib/agentos-agents/.da-xoa-... (xóa tay nếu muốn mất hẳn).')) return;
+          api('POST', 'bots/agent/remove', { id: b.id, confirm: true }).then(function () { toast('Đã xóa bot'); renderAgents(); }).catch(fail);
+        } else if (what === 'token') {
+          api('POST', 'bot/token', { token: document.getElementById('agt-' + k).value }).then(function (j) { toast('Đã lưu bot @' + j.bot.username); renderAgents(); }).catch(fail);
         } else if (what === 'info') {
-          api('POST', 'bots/agent/update', { id: a.id, name: document.getElementById('agn-' + a.id).value, owners: document.getElementById('ago-' + a.id).value, ramMb: document.getElementById('agr-' + a.id).value, cpuPct: document.getElementById('agc2-' + a.id).value })
+          api('POST', 'bots/agent/update', { id: b.id, name: document.getElementById('agn-' + k).value, ramMb: document.getElementById('agr-' + k).value, cpuPct: document.getElementById('agc2-' + k).value })
             .then(function () { toast('Đã lưu, bot đã khởi động lại'); renderAgents(); }).catch(fail);
+        } else if (what === 'owners') {
+          var ids = document.getElementById('ago-' + k).value;
+          if (b.main) api('POST', 'bot/owner', { ids: ids }).then(function () { toast('Đã lưu'); renderAgents(); }).catch(fail);
+          else api('POST', 'bots/agent/update', { id: b.id, owners: ids }).then(function () { toast('Đã lưu, bot đã khởi động lại'); renderAgents(); }).catch(fail);
+        } else if (what === 'safe' || what === 'full') {
+          var on1 = what === 'full';
+          if (on1 && !b.full && !ask(b.main ? 'BẬT TOÀN QUYỀN: AI sẽ tự làm không hỏi và có quyền quản trị (sudo) trên máy này. Bạn chắc chắn?' : 'BẬT TOÀN QUYỀN cho bot "' + b.name + '": AI chạy không hỏi duyệt và không có hộp cô lập. Bot vẫn bị nhốt trong tài khoản riêng (không có sudo, không đọc được dữ liệu bot khác). Chắc chắn?')) return;
+          if (b.main) api('POST', 'bot/mode', { full: on1 }).then(function () { toast(on1 ? 'Đã bật Toàn quyền' : 'Đã chuyển sang chế độ Bảo vệ'); renderAgents(); }).catch(fail);
+          else api('POST', 'bots/agent/update', { id: b.id, settings: { full: on1 } }).then(function () { toast(on1 ? 'Đã bật Toàn quyền, bot đã khởi động lại' : 'Đã chuyển sang Bảo vệ, bot đã khởi động lại'); renderAgents(); }).catch(fail);
         } else if (what === 'perm' || what === 'permreset') {
+          if (what === 'permreset' && !ask('Đưa MỌI quyền hạn riêng của bot này về mặc định?')) return;
           var s = {};
-          Object.keys(r.spec).forEach(function (k) {
-            if (what === 'permreset') { s[k] = null; return; }
-            var v = val(k), d = r.spec[k], was = a.settings && a.settings[k] !== undefined;
+          Object.keys(r.spec).forEach(function (sk) {
+            if (sk === 'full') return;
+            if (what === 'permreset') { s[sk] = null; return; }
+            var v = val(sk), d = r.spec[sk], was = b.settings && b.settings[sk] !== undefined;
             if (v === undefined) return;
             if (!was && (v === d.def || (d.kind === 'text' && v === '') || (d.kind === 'int' && v === null))) return;   // chưa đổi gì: giữ "mặc định"
-            s[k] = (d.kind === 'text' && v === '') ? null : v;
+            s[sk] = (d.kind === 'text' && v === '') ? null : v;
           });
-          if (what === 'permreset' && !ask('Đưa MỌI quyền hạn của bot này về mặc định?')) return;
-          if (what === 'perm' && s.full === true && !(a.settings && a.settings.full) && !ask('BẬT TOÀN QUYỀN cho bot này: AI chạy không hỏi duyệt và không có hộp cô lập. Bot vẫn bị nhốt trong tài khoản riêng (không có sudo, không đọc được dữ liệu bot khác). Chắc chắn?')) return;
-          api('POST', 'bots/agent/update', { id: a.id, settings: s }).then(function () { toast('Đã lưu quyền hạn, bot đã khởi động lại'); renderAgents(); }).catch(fail);
+          saveSettings(s, 'Đã lưu quyền hạn, bot đã khởi động lại');
         }
       };
     });
@@ -336,16 +375,8 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     bot: function () {
       api('GET', 'bot').then(function (r) {
         if (!r.configured) return set('<h2>Bot Telegram</h2><div class="banner">Máy chưa cấu hình xong. Hoàn tất trình hướng dẫn lần đầu.</div>');
-        set('<h2>Bot Telegram</h2><div class="card"><h3>🤖 Bot quản lý (chính)</h3><p>' + (r.bot ? 'Đang dùng bot <b>@' + esc(r.bot.username) + '</b>' : '<span class="warn">Không đọc được thông tin bot (kiểm tra mạng/token)</span>') + ' · dịch vụ ' + dot(r.service) + '</p>' +
-          '<div class="row"><input type="password" id="tk" placeholder="Đổi token bot (từ @BotFather)" autocomplete="off"><button class="b p" id="tks">Lưu token</button></div></div>' +
-          '<div class="card"><h3>Người được phép điều khiển</h3><p class="mute">ID Telegram của chủ máy (nhắn <b>/id</b> cho bot để biết). Nhiều ID ngăn cách bằng dấu phẩy.</p><div class="row"><input type="text" id="ow" value="' + esc(r.owners.join(',')) + '"><button class="b p" id="ows">Lưu</button></div></div>' +
-          '<div class="card"><h3>Chế độ làm việc của AI</h3><p>Hiện tại: <b>' + (r.fullAccessEnabled ? '⚡ Toàn quyền' : '🛡️ Bảo vệ') + '</b></p><p class="mute">Bảo vệ: AI hỏi bạn trước khi ghi tệp/chạy lệnh và chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, có quyền quản trị (sudo) trên máy — chỉ bật khi hiểu rõ.</p>' +
-          '<div class="row"><button class="b" id="m0">Chuyển sang Bảo vệ</button><button class="b d" id="m1">Chuyển sang Toàn quyền</button></div></div><div id="agp"></div>');
+        set('<h2>Bot Telegram</h2><div id="agp"></div>');
         renderAgents();
-        on('tks', function () { api('POST', 'bot/token', { token: document.getElementById('tk').value }).then(function (j) { toast('Đã lưu bot @' + j.bot.username); render(); }).catch(fail); });
-        on('ows', function () { api('POST', 'bot/owner', { ids: document.getElementById('ow').value }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
-        on('m0', function () { api('POST', 'bot/mode', { full: false }).then(function () { toast('Đã chuyển sang chế độ Bảo vệ'); render(); }).catch(fail); });
-        on('m1', function () { if (ask('BẬT TOÀN QUYỀN: AI sẽ tự làm không hỏi và có quyền quản trị trên máy này. Bạn chắc chắn?')) api('POST', 'bot/mode', { full: true }).then(function () { toast('Đã bật Toàn quyền'); render(); }).catch(fail); });
       }).catch(fail);
     },
     mem: function () {

@@ -126,6 +126,20 @@ function createSettings(o) {
     getMe: (token) => tgLib.getMe(token, { fetch: fetchImpl }),
     afterSave: (p) => chownAgentos(p),
   }));
+  // Bot quản lý cũng có đủ chế độ/quyền hạn riêng như mọi bot: giá trị nằm trong tệp cấu hình của bộ điều phối (cùng khóa với agent, xem agentctl.SETTINGS)
+  const AC = () => require('../../orchestrator/src/agentctl');
+  const mainSettings = (t) => {
+    const out = {};
+    for (const [k, d] of Object.entries(AC().SETTINGS)) {
+      if (k === 'full') continue;                                         // toàn quyền của bot quản lý có nút riêng (cấp sudo)
+      const raw = envVal(t, d.env); if (raw === '') continue;
+      if (d.kind === 'bool') out[k] = /^(1|true|yes|on)$/i.test(raw);
+      else if (d.kind === 'int') { const n = Number(raw) / (d.mul || 1); if (Number.isFinite(n)) out[k] = n; }
+      else if (d.kind === 'enum') { if (d.values.includes(raw)) out[k] = raw; }
+      else out[k] = raw;
+    }
+    return out;
+  };
   let fleetInst = null; const fleetLib = () => fleetInst || (fleetInst = createFleet({ file: o.fleetFile || '/var/lib/agentos/data/fleet.json', fetch: o.fleetFetch }));
   // Mở cơ sở dữ liệu của bộ điều phối ở chế độ CHỈ ĐỌC, chạy fn({raw, kvGet}), rồi đóng
   const withRoDb = (fn) => {
@@ -536,7 +550,28 @@ function createSettings(o) {
     },
 
     // ----- Các bot Telegram phụ (agent): xem, thêm, dừng/chạy, chỉnh quyền hạn và chế độ từng bot -----
-    async 'GET /api/bots'() { return botsLib().list(); },
+    async 'GET /api/bots'() {
+      const l = await botsLib().list();
+      const t = readEnv();
+      if (t == null) { l.main = { configured: false }; return l; }
+      const token = envVal(t, 'TELEGRAM_TOKEN');
+      let bot = null; try { bot = token ? await tgLib.getMe(token, { fetch: fetchImpl }) : null; } catch (e) { bot = null; }
+      l.main = { configured: true, token: token ? apikeys.mask(token) : null, bot: bot ? { username: bot.username, name: bot.first_name } : null, owners: envVal(t, 'ALLOWED_USER_IDS').split(',').filter(Boolean),
+        fullAccessEnabled: fullaccess.isEnabled(o.fullAccessPaths), service: await isActive('agentos-orchestrator'), settings: mainSettings(t) };
+      return l;
+    },
+    // Quyền hạn / chế độ của bot quản lý (cùng các mục với bot thường, trừ Toàn quyền: có nút riêng)
+    async 'POST /api/bot/settings'(b) {
+      const s = AC().validateSettings(b.settings || {});
+      let t = needEnv();
+      for (const [k, v] of Object.entries(s)) {
+        if (k === 'full') throw new Error('Toàn quyền của bot quản lý đổi bằng nút "Chuyển sang Toàn quyền" (cần cấp quyền quản trị).');
+        const d = AC().SETTINGS[k];
+        t = setEnvLine(t, d.env, v === null ? null : AC().settingEnv(k, v).slice(d.env.length + 1));
+      }
+      saveEnv(t); await restart('agentos-orchestrator');
+      return { settings: mainSettings(t) };
+    },
     async 'POST /api/bots/agent/add'(b) { return botsLib().add(b || {}); },
     async 'POST /api/bots/agent/control'(b) { return botsLib().control(b || {}); },
     async 'POST /api/bots/agent/update'(b) { return botsLib().update(b || {}); },

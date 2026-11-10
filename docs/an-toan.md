@@ -595,3 +595,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.11.09.4 — Sửa lỗi vẽ giao diện Cài đặt trên máy thật
 - Ảnh chụp máy thật (Intel HD 630) cho thấy cửa sổ Cài đặt vẽ lỗi: chữ chồng lên nhau, thanh bên mất nút, vùng trắng loang. Nghi do tăng tốc đồ họa của Chrome (cùng họ lỗi đã gặp ở `agentos-app`). `agentos-settings` nay mở Chrome với `--disable-gpu --disable-gpu-compositing`. CHƯA xác nhận trên chính máy đó: cần mở lại Cài đặt sau khi cập nhật và báo lại.
+
+## 2026.11.09.5 — Sửa nguyên nhân thật của lỗi giao diện Cài đặt
+- Thanh bên có 22 mục nhưng không cuộn được: nền xanh chỉ cao bằng cửa sổ, các mục tràn xuống dưới là chữ trắng trên nền trắng (chỉ đọc được khi rê chuột vào). Không phải lỗi đồ họa. `nav` và `main` nay cao đúng 100vh và cuộn riêng. Cờ tắt GPU của bản .4 vẫn giữ.

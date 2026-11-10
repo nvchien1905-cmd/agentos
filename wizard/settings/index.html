@@ -4,11 +4,11 @@
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--ink:#17202b;--mute:#5b6b7c;--line:#dde3ea;--pri:#0b5c8f;--ok:#157a3c;--bad:#b3261e;--warn:#9a6700}
 *{box-sizing:border-box}html,body{height:100%}body{margin:0;font:15px/1.5 system-ui,"Noto Sans",sans-serif;color:var(--ink);background:var(--bg);display:flex}
-nav{width:218px;background:#12324a;color:#dbe7f0;padding:14px 8px;display:flex;flex-direction:column;gap:2px;flex:none}
+nav{width:218px;height:100vh;overflow-y:auto;background:#12324a;color:#dbe7f0;padding:14px 8px;display:flex;flex-direction:column;gap:2px;flex:none}nav button{flex:none}nav::-webkit-scrollbar{width:8px}nav::-webkit-scrollbar-thumb{background:#2c5878;border-radius:4px}
 nav h1{font-size:16px;margin:4px 10px 12px;color:#fff;letter-spacing:.2px}
 nav button{all:unset;cursor:pointer;padding:10px 12px;border-radius:8px;display:flex;gap:10px;align-items:center}
 nav button:hover{background:#1c4766}nav button.on{background:#0b5c8f;color:#fff;font-weight:600}
-main{flex:1;overflow:auto;padding:22px 28px}h2{margin:0 0 14px;font-size:20px}
+main{flex:1;height:100vh;overflow:auto;padding:22px 28px}h2{margin:0 0 14px;font-size:20px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
 .card h3{margin:0 0 8px;font-size:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.grow{flex:1}
 button.b{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}button.b:hover{background:#eef3f8}

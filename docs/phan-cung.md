@@ -34,6 +34,11 @@ Chạy trên bản sao của máy ảo AgentOS-Test ở nhiều cấu hình; k�
 - Nhận diện công tắc Wi-Fi cứng (`rfkill`) trên laptop thật.
 - GPU NVIDIA/AMD đời mới (driver nouveau/amdgpu cần firmware).
 
+## Thử trên máy thật (không cần cài gì)
+1. Khởi động máy cần thử bằng USB Linux bất kỳ (Ubuntu/Debian live), không cần cài.
+2. Chép `tools/thu-may-that.sh` vào USB, chạy `sh thu-may-that.sh` → ra tệp `may-that.txt` (chỉ model phần cứng, không có dữ liệu cá nhân).
+3. Ở máy phát triển: `node tools/hwcheck-replay.js may-that.txt` → ra đúng bảng chấm điểm như `/phancung`. Lưu ý: không biết gói nào đã cài trên USB nên mục firmware coi như chưa cài.
+
 ## Thêm hỗ trợ cho phần cứng mới
 1. Chạy `agentos-hwcheck --json` trên máy đó, gửi kết quả.
 2. Thiếu driver → thêm gói vào `iso/config/package-lists/agentos.list.chroot` (hoặc ánh xạ firmware trong `FW_PKG` của `orchestrator/src/hwcheck.js`).

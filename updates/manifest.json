@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.08.5",
-  "file": "agentos-update-2026.11.08.5.tar.gz",
-  "size": 516788,
-  "sha256": "5cc00faa5e6cbaae0ca5a8f4e5decb0cf6da6fd1e519477455cc68774fc9b18e",
-  "date": "2026-11-08",
-  "notes": "Kiểm tra phần cứng (/phancung), menu nút bấm (/menu, /google), Google dễ hơn, kỹ năng hai lớp gốc/của chủ máy"
+  "version": "2026.11.09.1",
+  "file": "agentos-update-2026.11.09.1.tar.gz",
+  "size": 528434,
+  "sha256": "e80b91f5ae6770e779f93c2bbc4dd8f5a501450140e8fdec3d94a5976a38e886",
+  "date": "2026-11-10",
+  "notes": "Nhiều bot Telegram: mỗi bot là một agent chạy độc lập (/daily)"
 }

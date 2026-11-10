@@ -1,0 +1,7 @@
+[Unit]
+Description=AgentOS - xử lý yêu cầu agent (tạo tài khoản + dịch vụ riêng cho bot Telegram phụ)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentos-agentctl drain
+Nice=10

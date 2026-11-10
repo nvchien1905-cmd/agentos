@@ -94,6 +94,10 @@ systemctl enable --now agentos-heal.path >/dev/null 2>&1 || systemctl enable age
 # Cho máy đầu não SSH vào (có sudo) sau khi chủ máy đầu não bấm Cho phép (/ketnoi): bộ điều phối chỉ xin qua tệp, agentos-remote làm bằng root
 chmod 755 /usr/local/sbin/agentos-remote 2>/dev/null || true
 systemctl enable --now agentos-remote.path >/dev/null 2>&1 || systemctl enable agentos-remote.path >/dev/null 2>&1 || true
+# Agent = bot Telegram phụ, mỗi cái một tài khoản + dịch vụ riêng (/daily): bộ điều phối chỉ thả tệp yêu cầu, agentos-agentctl (root) làm
+chmod 755 /usr/local/sbin/agentos-agentctl 2>/dev/null || true
+/usr/local/sbin/agentos-agentctl init >/dev/null 2>&1 || true
+systemctl enable --now agentos-agentctl.path >/dev/null 2>&1 || systemctl enable agentos-agentctl.path >/dev/null 2>&1 || true
 # Cổng cấp/thu hồi TOÀN QUYỀN cho chủ máy từ Telegram (/toanquyen co): chỉ tiến trình chính của bộ điều phối gọi được (kiểm SO_PEERCRED), xem agentos-fullaccess
 chmod 755 /usr/local/sbin/agentos-fullaccess 2>/dev/null || true
 systemctl daemon-reload >/dev/null 2>&1 || true

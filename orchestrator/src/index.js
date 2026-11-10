@@ -74,6 +74,8 @@ const { createPlugins } = require('./plugins');
 const { createPluginsUi } = require('./pluginsUi');
 const { createConnectorsUi } = require('./connectorsUi');
 const { createSkillsUi } = require('./skillsUi');
+const { createAgents } = require('./agents');
+const { createAgentsUi } = require('./agentsUi');
 const { createRemote } = require('./remote');
 const { createOffice } = require('./office');
 const { createRoles } = require('./roles');
@@ -618,6 +620,7 @@ async function main() {
     },
     stats: () => ({ queued: db.queuedCount(), running: crew.currentJobId(), diskFreeMb: maint.diskFreeMb(cfg.workdir), uptimeSec: Math.round(process.uptime()), engines: crew.engineStatus ? crew.engineStatus() : [] }),
   });
+  if (cfg.agentId) fleetAgent.listen = async () => null;            // agent (bot phụ) không nhận điều khiển từ máy đầu não
   (function listenFleet(tries) {
     fleetAgent.listen().then((a) => { if (a) log('Đội máy: cho phép máy đầu não điều khiển ở ' + a.address + ':' + a.port); }).catch((e) => { log('Đội máy: chưa mở được cổng (' + e.code + '), thử lại sau 60 giây'); if (tries < 60) setTimeout(() => listenFleet(tries + 1), 60000).unref(); });
   })(0);
@@ -720,6 +723,7 @@ async function main() {
     pairing: createPairing({ db, roles, adminIds: [...cfg.adminUserIds], log, send: (chat, r) => (r && typeof r === 'object' && r.buttons ? tg.sendButtons(chat, r.text, r.buttons) : tg.sendMessage(chat, r && typeof r === 'object' ? r.text : r)) }),
     voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
     googleStatus: () => createGoogleAuth({ dir: path.join(dataDir, 'google') }).status(),
+    agentMode: !!cfg.agentId, agentsUi: cfg.agentId ? null : createAgentsUi({ agents: createAgents({ file: path.join(dataDir, 'agents.json'), mainToken: cfg.token, owners: () => [...cfg.adminUserIds], log }), isAdmin, send: botSend, deleteMessage: (c, m) => tg.deleteMessage(c, m) }),
     send: botSend, connectorsUi, pluginsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend, layers: skillLayers }),
     quick: createQuick({ hw, vault, access, isAdmin, browserHost, onFbOpen: (open) => facebook.pause(open ? 30 : 0), guard: { get: guardOn, set: (on) => { db.kvSet('guard', on ? '1' : '0'); log('hàng rào chế độ toàn quyền: ' + (on ? 'BẬT' : 'TẮT')); } }, triggers, selftest, engineNames: cfg.engineOrder, pingStart: (name, prompt) => engines[name].start({ job: { id: -(Date.now() % 1000000), chat_id: [...cfg.adminUserIds][0], profile: null }, prompt, resumeId: null }), snapshot: snap, wol, office: createOffice({ inboxDir, oneDriveDir: cfg.oneDriveDir, cwd: cfg.workdir }), devices: { get: () => { try { return JSON.parse(db.kvGet('wol_devices') || '{}'); } catch (e) { return {}; } }, set: (v) => db.kvSet('wol_devices', JSON.stringify(v)) },
     remote: createRemote({ cwd: cfg.workdir, isFull, tailscale, log, snapshot: (label) => snap.create(label), state: { get: () => Number(db.kvGet('tuxa_until')) || null, set: (v) => (v ? db.kvSet('tuxa_until', v) : db.kvDel('tuxa_until')) } }), links, desk: createDeskClient(), onedrive: createOneDrive({ dir: cfg.oneDriveDir }), projects, backup, usage, alerts, fleet, iot, kiotviet, schedule, tailscale, update: updates, memory, printing: createPrinting({ dir: cfg.oneDriveDir }) }),
@@ -771,6 +775,7 @@ async function main() {
   if (cfg.bootNotice) {
     const free = maint.diskFreeMb(cfg.workdir);
     const lines = ['✅ AgentOS đã khởi động (' + new Date().toLocaleString('vi-VN') + '). Chế độ: ' + (isFull() ? '⚡ TOÀN QUYỀN (gõ /baove để bật hỏi duyệt)' : '🛡️ bảo vệ (gõ /toanquyen để AI tự làm không hỏi)') + '.'];
+    if (cfg.agentId) lines[0] = lines[0].replace('AgentOS đã khởi động', 'Agent "' + (cfg.agentName || cfg.agentId) + '" đã khởi động');
     if (interrupted.length) lines.push('Việc bị ngắt: ' + interrupted.map((j) => '#' + j.id).join(', ') + '. Gõ /tieptuc để làm tiếp phần còn dở.');
     if (free !== Infinity && free < cfg.minFreeMb * 3) lines.push('⚠️ Ổ đĩa còn ' + free + ' MB.');
     if (isFull()) { try { const st = await faCtl.osState(); if (!st.ok) lines.push('⚠️ Toàn quyền mới bật trong bot, hệ điều hành CHƯA cấp sudo (' + st.why + '): AI vẫn bị chặn. Gõ /toanquyen co để cấp đủ.'); } catch (e) { /* bỏ qua */ } }

@@ -1,0 +1,3 @@
+#!/bin/sh
+# AgentOS: việc của root cho các agent (bot Telegram phụ). `init` = chuẩn bị thư mục; mặc định = xử lý yêu cầu đang chờ.
+exec /usr/bin/node /opt/agentos/orchestrator/src/agentctl-cli.js "${1:-drain}"

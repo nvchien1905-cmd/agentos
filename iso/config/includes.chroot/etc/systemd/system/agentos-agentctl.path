@@ -1,0 +1,9 @@
+[Unit]
+Description=AgentOS - có yêu cầu tạo/xóa/đổi agent (bot Telegram phụ)
+
+[Path]
+PathExistsGlob=/var/lib/agentos-agentctl/req/*.json
+Unit=agentos-agentctl.service
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,9 @@ const { capsText } = require('./engineCaps');
 const { createSessions } = require('./sessions');
 const { createMenuUi } = require('./menuUi');
 
+// Lệnh agent (bot phụ) được dùng. Các lệnh còn lại (cập nhật, toàn quyền, kết nối máy, Google, màn hình...) chỉ ở bot quản lý.
+const AGENT_CMDS = new Set(['help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai']);
+
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
     '/claude, /codex, /gemini hoặc /deepseekapi <việc> - ép dùng một AI (khóa API hoặc tài khoản) (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
@@ -40,7 +43,7 @@ function helpText(profiles) {
     '🎙 Tin nhắn thoại: bot nghe và làm theo ("doanh số hôm nay", "tồn kho nồi chiên", "chụp màn hình"... chạy ngay; còn lại giao cho AI). Lệnh nguy hiểm (tắt máy, toàn quyền) chỉ gõ chữ mới làm được.\n' +
     '-----\n' +
     '/nhatky [tuan] - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ; /nhatky tuan = báo cáo 7 ngày (ai nhắn, AI làm gì, bị từ chối gì); xem chi tiết trên Cài đặt → Nhật ký\n' +
-    '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /menu - MENU NÚT BẤM (khỏi nhớ lệnh) · /google - kết nối và hỏi nhanh Lịch/Gmail · /phancung - kiểm tra phần cứng máy (RAM, ổ đĩa, card mạng/Wi-Fi, đồ họa, firmware) và chỉ cách xử lý · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
+    '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /menu - MENU NÚT BẤM (khỏi nhớ lệnh) · /google - kết nối và hỏi nhanh Lịch/Gmail · /daily - quản lý agent (bot Telegram phụ chạy độc lập) · /phancung - kiểm tra phần cứng máy (RAM, ổ đĩa, card mạng/Wi-Fi, đồ họa, firmware) và chỉ cách xử lý · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
     '/hangrao [bat|tat] - hàng rào cho AI toàn quyền (cấm đọc khóa, hỏi trước khi gửi ra ngoài/dính tiền)\n' +
     '/nen <việc> - giao việc NỀN chạy song song (không chờ hàng đợi), xong báo riêng · /tieptuc [số việc] - làm tiếp việc bị ngắt/lỗi · /sukien - AI tự làm khi có hóa đơn mới, hàng sắp hết, hoặc webhook\n' +
     '/vaitro - phân vai cho nhân viên/kế toán (chỉ chủ máy); họ nhắn bot được nhưng việc luôn ở chế độ bảo vệ\n' +
@@ -65,7 +68,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
 const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien', 'vao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -207,6 +210,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     const cmd = text.match(/^\/(\w+)(@\w+)?\s*([\s\S]*)$/);
     if (cmd) {
       const name = cmd[1].toLowerCase();
+      // AGENT (bot phụ): chỉ nhận việc và lệnh cơ bản; lệnh quản trị máy (cập nhật, toàn quyền, kết nối máy, Google...) chỉ có ở bot quản lý.
+      if (agentMode && !AGENT_CMDS.has(name) && !worker.engineNames().includes(name)) return 'Lệnh /' + name + ' chỉ có ở bot quản lý. Bot này là agent: cứ nhắn việc cần làm, hoặc gõ /help.';
       if (worker.engineNames().includes(name)) {
         if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo, chưa nhắn việc cho AI được.';
         const prompt = cmd[3].trim();
@@ -227,6 +232,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         case 'claude': case 'codex': case 'gemini': case 'deepseekapi': return 'Engine ' + name + ' chưa được bật trên máy này.';
         case 'menu': return isAdmin(uid) ? menuUi.card() : help;
         case 'google': return isAdmin(uid) ? menuUi.google() : 'Chỉ chủ máy dùng được /google.';
+        case 'daily': case 'agent': return agentsUi ? agentsUi.command(chatId, uid, cmd[3], msg) : 'Máy này chưa hỗ trợ agent (bot phụ).';
         case 'start': return isAdmin(uid) ? menuUi.card() : help;
         case 'help': return help;
         case 'id': return 'ID Telegram của bạn: ' + uid;
@@ -470,6 +476,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     if (!allowed.has(String(cq.from.id))) return null;           // người lạ bấm nút: bỏ qua
     if (pairing && pairing.isCallback(cq.data)) return pairing.answer(cq.data, cq.from.id);
     if (menuUi.isCallback(cq.data)) return menuUi.callback(cq);
+    if (agentsUi && agentsUi.isCallback(cq.data)) return agentsUi.callback(cq);
     if (connectorsUi && connectorsUi.isCallback(cq.data)) return connectorsUi.callback(cq);
     if (pluginsUi && pluginsUi.isCallback(cq.data)) return pluginsUi.callback(cq);
     if (skillsUi && skillsUi.isCallback(cq.data)) return skillsUi.callback(cq);

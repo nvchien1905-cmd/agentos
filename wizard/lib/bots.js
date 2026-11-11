@@ -56,7 +56,16 @@ function createBots(o) {
     if (b.confirm !== true) throw new Error('Cần xác nhận');
     const r = await make().remove(String(b.id || ''), b.purge === true); tidy(); return { kept: r.kept };
   }
-  return { list, add, control, update, logs, remove, spec };
+  // Tài nguyên chung (RAM/CPU) cho mọi bot: xem trạng thái / bật tắt / đổi phần RAM để lại cho hệ thống
+  async function pool() { return ctl.poolStatus ? ctl.poolStatus() : { enabled: false, unsupported: true }; }
+  async function setPool(b) {
+    const req = { rid: crypto.randomBytes(8).toString('hex'), action: 'pool' };
+    if (b.enabled !== undefined) { if (typeof b.enabled !== 'boolean') throw new Error('enabled phải là true/false'); req.enabled = b.enabled; }
+    if (b.reserveMb !== undefined) req.reserveMb = Number(b.reserveMb);
+    const r = await ctl.handle(req); if (!r.ok) throw new Error(r.msg);
+    return Object.assign({ msg: r.msg }, await pool());
+  }
+  return { list, add, control, update, logs, remove, spec, pool, setPool };
 }
 
 module.exports = { createBots, spec };

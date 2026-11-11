@@ -124,13 +124,15 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
   function renderAgents() {
     var host = document.getElementById('agp'); if (!host) return;
     host.innerHTML = '<p class="mute">Đang tải các bot...</p>';
-    api('GET', 'bots').then(function (r) {
+    Promise.all([api('GET', 'bots'), api('GET', 'pool').catch(function () { return { enabled: false, unsupported: true }; })]).then(function (rr) {
+      var r = rr[0]; r.pool = rr[1];
       var list = [];
       if (r.main && r.main.configured) list.push(mainBot(r.main));
       r.agents.forEach(function (a) { list.push(agentBot(a)); });
       var names = r.agents.map(function (a) { return a.name; }).join(', ');
       var h = '<p class="mute">Mọi bot đều giống nhau: mỗi bot có token, ID được nhắn, chế độ Bảo vệ/Toàn quyền và quyền hạn riêng. Bot có dấu <b>⭐ Quản lý</b> vừa tự làm việc như các bot khác, vừa giao việc được cho các bot còn lại: nhắn bot đó <b>"giao cho bot ' + esc(r.agents.length ? r.agents[0].name : 'Bán hàng') + ' làm: …"</b> (hoặc <b>/giao</b>), bot kia làm xong sẽ báo lại. ' +
         (names ? 'Các bot thường hiện có: ' + esc(names) + '.' : 'Chưa có bot thường nào: thêm ở khung cuối trang.') + '</p>';
+      h += poolCard(r.pool);
       list.forEach(function (b) { h += botCard(b, r); });
       h += '<div class="card"><h3>➕ Thêm bot</h3><p class="mute">Tạo bot mới ở <b>@BotFather</b> (gõ <b>/newbot</b>), chép token dán vào đây. Mỗi bot phải có token RIÊNG. Bot mới chạy độc lập (tài khoản hệ thống, dữ liệu, bộ nhớ, giới hạn RAM/CPU riêng).</p>' +
         '<div class="row"><input type="password" id="ag-tk" placeholder="Token bot mới (123456789:AAAA...)" autocomplete="off" class="grow"><input type="text" id="ag-nm" placeholder="Tên gọi (tùy chọn)" style="width:200px"><button class="b p" id="ag-add">Thêm bot</button></div></div>';
@@ -141,6 +143,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         api('POST', 'bots/agent/add', { token: tk, name: nm }).then(function (j) { toast('Đã tạo bot ' + j.agent.id + (j.warn ? ' — ' + j.warn : '')); renderAgents(); }).catch(fail);
       });
       list.forEach(function (b) { bindBot(b, r); });
+      bindPool(r.pool);
     }).catch(function (e) { host.innerHTML = '<div class="card"><p class="bad">Không tải được danh sách bot: ' + esc(e.message || e) + '</p></div>'; });
   }
 
@@ -151,6 +154,29 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
   function agentBot(a) {
     var st = a.status || {};
     return { key: a.id, main: false, id: a.id, name: a.name, username: a.bot ? a.bot.username : '', active: !!st.active, state: st.state, memMb: st.memMb, restarts: st.restarts, owners: a.owners || [], full: !!(a.settings && a.settings.full), sudo: a.sudo === true, settings: a.settings || {}, ramMb: a.ramMb, cpuPct: a.cpuPct };
+  }
+
+  // ===== Tài nguyên chung (RAM/CPU): mọi bot dùng chung một kho, bot chạy một mình dùng được hết, nhiều bot cùng chạy thì chia đều =====
+  function poolCard(p) {
+    if (!p || p.unsupported) return '';
+    var gb = function (mb) { return (mb / 1024).toFixed(1).replace('.0', '') + ' GB'; };
+    var h = '<div class="card" id="poolcard"><h3>🧮 Tài nguyên chung cho mọi bot</h3>';
+    if (p.enabled) {
+      h += '<p>' + '<span class="ok">● Đang BẬT</span> · kho chung <b>' + gb(p.maxMb) + '</b> RAM (máy có ' + gb(p.totalMb) + ', để lại ' + gb(p.reserveMb) + ' cho hệ thống) · đang dùng ' + (p.usedMb == null ? '—' : gb(p.usedMb)) + '</p>' +
+        '<p class="mute" style="margin:0 0 8px">Bot chạy <b>một mình</b> dùng được cả kho. Khi <b>' + p.active.length + ' bot</b> cùng chạy' + (p.active.length ? ' (' + esc(p.active.join(', ')) + ')' : '') + ', mỗi bot được bảo đảm <b>' + gb(p.perMb) + '</b>; ai dùng ít thì phần dư người khác dùng được. CPU cũng chia đều giữa các bot đang bận. Ổ đĩa vốn đã dùng chung, không chia hạn mức riêng cho từng bot.</p>' +
+        '<div class="row"><label>Để lại cho hệ thống <select id="pool-r">' + [[0, 'Tự động'], [1024, '1 GB'], [2048, '2 GB'], [3072, '3 GB'], [4096, '4 GB']].map(function (x) { return '<option value="' + x[0] + '"' + ((p.autoReserve ? 0 : p.reserveMb) === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></label>' +
+        '<button class="b p" id="pool-s">Lưu</button><button class="b d" id="pool-off">Tắt, dùng giới hạn riêng từng bot</button></div>';
+    } else {
+      h += '<p><span class="mute">● Đang TẮT</span> — mỗi bot dùng giới hạn RAM/CPU riêng (nhập ở từng thẻ bot bên dưới).</p><div class="row"><button class="b p" id="pool-on">Bật tài nguyên chung</button></div>';
+    }
+    return h + '</div>';
+  }
+  function bindPool(p) {
+    if (!p || p.unsupported) return;
+    function send(body, msg) { toast('Đang áp dụng (bot sẽ khởi động lại một lần)...'); api('POST', 'pool', body).then(function () { toast(msg); renderAgents(); }).catch(fail); }
+    on('pool-on', function () { send({ enabled: true }, 'Đã bật tài nguyên chung'); });
+    on('pool-off', function () { if (ask('Tắt tài nguyên chung? Mỗi bot sẽ quay lại giới hạn RAM/CPU riêng.')) send({ enabled: false }, 'Đã tắt tài nguyên chung'); });
+    on('pool-s', function () { send({ reserveMb: Number(document.getElementById('pool-r').value) }, 'Đã lưu'); });
   }
 
   function botCard(b, r) {
@@ -168,8 +194,9 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     h += '<h4 style="margin:10px 0 6px">Thông tin</h4><div class="row">';
     if (b.main) h += '<input type="password" id="agt-' + k + '" placeholder="Đổi token bot (từ @BotFather)" autocomplete="off" class="grow" style="min-width:240px"><button class="b p" data-ag="' + k + '" data-do="token">Lưu token</button>';
     else h += '<label>Tên <input type="text" id="agn-' + k + '" value="' + esc(b.name) + '" style="width:170px"></label>' +
-      '<label>RAM (MB) <input type="number" id="agr-' + k + '" value="' + b.ramMb + '" min="' + r.limits.ramMb[0] + '" max="' + r.limits.ramMb[1] + '" style="width:90px"></label>' +
-      '<label>CPU (%) <input type="number" id="agc2-' + k + '" value="' + b.cpuPct + '" min="' + r.limits.cpuPct[0] + '" max="' + r.limits.cpuPct[1] + '" style="width:80px"></label>' +
+      (r.pool && r.pool.enabled ? '<span class="mute">RAM/CPU: dùng chung với các bot khác</span>' :
+        '<label>RAM (MB) <input type="number" id="agr-' + k + '" value="' + b.ramMb + '" min="' + r.limits.ramMb[0] + '" max="' + r.limits.ramMb[1] + '" style="width:90px"></label>' +
+        '<label>CPU (%) <input type="number" id="agc2-' + k + '" value="' + b.cpuPct + '" min="' + r.limits.cpuPct[0] + '" max="' + r.limits.cpuPct[1] + '" style="width:80px"></label>') +
       '<button class="b p" data-ag="' + k + '" data-do="info">Lưu</button>';
     h += '</div>';
     h += '<h4 style="margin:12px 0 6px">Người được phép điều khiển bot này (ID Telegram)</h4><p class="mute" style="margin:0 0 6px">Nhắn <b>/id</b> cho bot để biết ID. Nhiều ID ngăn cách bằng dấu phẩy. Muốn bot quản lý giao việc được thì ID của anh phải có ở đây.</p>' +
@@ -226,7 +253,9 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         } else if (what === 'token') {
           api('POST', 'bot/token', { token: document.getElementById('agt-' + k).value }).then(function (j) { toast('Đã lưu bot @' + j.bot.username); renderAgents(); }).catch(fail);
         } else if (what === 'info') {
-          api('POST', 'bots/agent/update', { id: b.id, name: document.getElementById('agn-' + k).value, ramMb: document.getElementById('agr-' + k).value, cpuPct: document.getElementById('agc2-' + k).value })
+          var inf = { id: b.id, name: document.getElementById('agn-' + k).value }, er = document.getElementById('agr-' + k), ec = document.getElementById('agc2-' + k);
+          if (er) inf.ramMb = er.value; if (ec) inf.cpuPct = ec.value;
+          api('POST', 'bots/agent/update', inf)
             .then(function () { toast('Đã lưu, bot đã khởi động lại'); renderAgents(); }).catch(fail);
         } else if (what === 'owners') {
           var ids = document.getElementById('ago-' + k).value;

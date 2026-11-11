@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.3",
-  "file": "agentos-update-2026.11.11.3.tar.gz",
-  "size": 546219,
-  "sha256": "f053d28add22530f0ec29bee27134480f67512e00e6d6756b293f046f4bd1491",
+  "version": "2026.11.11.4",
+  "file": "agentos-update-2026.11.11.4.tar.gz",
+  "size": 549655,
+  "sha256": "bc3c298b29504059361b8a8dc2dc5f8484528adb53c46d5694d8e3a66db5e8d3",
   "date": "2026-11-11",
-  "notes": "Hiện đủ AI mặc định (Codex/Gemini/DeepSeek); AI tự điều tra và sửa lỗi máy rồi báo kết quả; ô chọn thay ô điền chữ ở bot Telegram"
+  "notes": "Tài nguyên chung: mọi bot dùng chung kho RAM/CPU, chạy một mình dùng hết, nhiều bot chia đều"
 }

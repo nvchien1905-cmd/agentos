@@ -716,6 +716,8 @@ async function main() {
   // Giao việc giữa các bot (mail.js): bot quản lý giao + đọc kết quả; bot thường nhận việc, làm, trả kết quả (mailLoop.js)
   const agentsReg = cfg.agentId ? null : createAgents({ file: path.join(dataDir, 'agents.json'), mainToken: cfg.token, owners: () => [...cfg.adminUserIds], log });
   const mail = cfg.agentId ? (cfg.mailRoot ? createMail({ root: cfg.mailRoot }) : null) : createMail({});
+  // Tài nguyên chung: bot nào chạy/dừng thì chia lại RAM bảo đảm cho các bot đang chạy (agentctl 'balance'); đặt lại 5 phút/lần phòng bot tự khởi động lại
+  if (agentsReg) { const bal = () => agentsReg.call({ action: 'balance' }).catch(() => {}); const t1 = setTimeout(bal, 90 * 1000), t2 = setInterval(bal, 5 * 60 * 1000); if (t1.unref) t1.unref(); if (t2.unref) t2.unref(); }
   const bot = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
     fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage: (c, m) => tg.deleteMessage(c, m),

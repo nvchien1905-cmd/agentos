@@ -16,10 +16,12 @@ const TOKEN2 = '987654321:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
 const MAIN_TOKEN = '555555555:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC';
 const RID = 'a1b2c3d4e5f60718';
 
-function world() {
+function world(poolOn) {
   const d = tmp();
   const paths = { ctl: path.join(d, 'ctl'), homes: path.join(d, 'homes'), mail: path.join(d, 'homes', '.mail'), bin: path.join(d, 'homes', '.bin'), etc: path.join(d, 'etc'), units: path.join(d, 'units'), mainEnv: path.join(d, 'etc', 'orchestrator.env'), mainHome: path.join(d, 'mainhome'), appDir: '/opt/agentos/orchestrator', node: '/usr/bin/node' };
   fs.mkdirSync(paths.etc, { recursive: true }); fs.mkdirSync(paths.units, { recursive: true });
+  paths.poolFile = path.join(d, 'etc', 'pool.json'); paths.meminfo = path.join(d, 'meminfo'); fs.writeFileSync(paths.meminfo, 'MemTotal:       8388608 kB\n');
+  if (!poolOn) fs.writeFileSync(paths.poolFile, JSON.stringify({ enabled: false }));
   fs.mkdirSync(paths.mainHome + '/.local/bin', { recursive: true });
   fs.writeFileSync(paths.mainHome + '/.local/bin/claude', 'ELF-claude');
   fs.writeFileSync(paths.mainEnv, ['TELEGRAM_TOKEN=' + MAIN_TOKEN, 'ALLOWED_USER_IDS=1', 'CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-abcdefghijklmnopqrstu', 'KIOTVIET_CLIENT_SECRET=kv-secret', 'CLAUDE_BIN=' + paths.mainHome + '/.local/bin/claude', ''].join('\n'));
@@ -376,4 +378,36 @@ test('các mục cài đặt bot mới: đúng đơn vị khi ghi vào tệp c�
   assert.throws(() => validateSettings({ subPerJob: 99 }), /từ 1 đến 8/);
   assert.deepEqual(validateSettings({ backupKeep: 10, minFreeMb: 0 }), { backupKeep: 10, minFreeMb: 0 });
   assert.ok(Object.keys(SETTINGS).length >= 24);
+});
+
+test('tài nguyên chung: bot không có trần riêng, nằm trong nhóm chung; chia đều MemoryLow cho bot đang chạy; tắt thì về giới hạn riêng', async () => {
+  const w = world(true);                                   // 8 GB RAM, mặc định BẬT
+  assert.equal((await create(w)).ok, true);
+  const unit = fs.readFileSync(path.join(w.paths.units, 'agentos-agent-a1.service'), 'utf8');
+  assert.match(unit, /^Slice=agentos-bots\.slice$/m); assert.match(unit, /^CPUWeight=100$/m);
+  assert.doesNotMatch(unit, /MemoryMax|MemoryHigh|CPUQuota/);
+  // 8192 - max(1024, 15%=1229) = 6963 MB cho cả nhóm
+  const r = await w.ctl.handle({ rid: RID, action: 'balance' });
+  assert.equal(r.ok, true); assert.equal(r.maxMb, 6963);
+  w.cmds.length = 0;
+  const st = await w.ctl.poolStatus(); assert.equal(st.enabled, true); assert.equal(st.maxMb, 6963);
+  // chỉ bot đang chạy được chia: giả lập a1 chạy, bot quản lý chạy -> 2 bot -> 3481 MB mỗi bot
+  const r2 = await w.ctl.handle({ rid: RID, action: 'balance' }); assert.equal(r2.active, 2); assert.equal(r2.perMb, 3481);
+  assert.ok(w.cmds.some((c) => c === 'systemctl set-property --runtime agentos-agent-a1 MemoryLow=3481M'));
+  // bật xong: nhóm + cấu hình bot quản lý
+  const slice = fs.readFileSync(path.join(w.paths.units, 'agentos-bots.slice'), 'utf8');
+  assert.match(slice, /^MemoryMax=6963M$/m);
+  // đặt phần để lại cho hệ thống 2 GB -> trần 6144 MB
+  const r3 = await w.ctl.handle({ rid: RID, action: 'pool', reserveMb: 2048 }); assert.equal(r3.ok, true);
+  assert.match(fs.readFileSync(path.join(w.paths.units, 'agentos-bots.slice'), 'utf8'), /^MemoryMax=6144M$/m);
+  const drop = path.join(w.paths.units, 'agentos-orchestrator.service.d', '20-pool.conf');
+  assert.match(fs.readFileSync(drop, 'utf8'), /^Slice=agentos-bots\.slice$/m);
+  // tắt: về giới hạn riêng, gỡ nhóm + cấu hình bot quản lý, bot được khởi động lại với tệp mới
+  w.cmds.length = 0;
+  const off = await w.ctl.handle({ rid: RID, action: 'pool', enabled: false }); assert.equal(off.ok, true);
+  assert.equal(fs.existsSync(path.join(w.paths.units, 'agentos-bots.slice')), false); assert.equal(fs.existsSync(drop), false);
+  const unit2 = fs.readFileSync(path.join(w.paths.units, 'agentos-agent-a1.service'), 'utf8');
+  assert.match(unit2, /^MemoryMax=1024M$/m); assert.doesNotMatch(unit2, /^Slice=/m);
+  assert.ok(w.cmds.includes('systemctl restart agentos-agent-a1'));
+  assert.throws(() => validate({ rid: RID, action: 'pool', reserveMb: -5 }), /reserveMb/);
 });

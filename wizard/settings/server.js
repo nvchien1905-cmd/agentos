@@ -580,6 +580,8 @@ function createSettings(o) {
       saveEnv(t); await restart('agentos-orchestrator');
       return { settings: mainSettings(t) };
     },
+    async 'GET /api/pool'() { return botsLib().pool(); },
+    async 'POST /api/pool'(b) { return botsLib().setPool(b || {}); },
     async 'POST /api/bots/agent/add'(b) { return botsLib().add(b || {}); },
     async 'POST /api/bots/agent/control'(b) { return botsLib().control(b || {}); },
     async 'POST /api/bots/agent/update'(b) { return botsLib().update(b || {}); },

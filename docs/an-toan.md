@@ -629,3 +629,11 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - **Rủi ro**: ở Toàn quyền, AI có thể sửa hệ thống mà không hỏi; sửa sai có thể làm lỗi nặng hơn. Muốn chắc ăn thì để máy ở Bảo vệ (AI vẫn đề xuất và hỏi duyệt) hoặc tắt công tắc.
 - Test: `aifix.test.js`.
 - **Ô chọn thay ô điền chữ** (Cài đặt → Bot Telegram): "Công cụ AI được dùng" và "Cổng mạng mở thêm" giờ là danh sách chọn có mô tả bằng tiếng thường (vd "Chỉ xem — an toàn nhất", "SSH (22)"); chỉ còn ô điền cho số (RAM, CPU, thời gian...), ID Telegram, token và tên. Giá trị đặt tay từ trước vẫn hiện thành dòng "Đang đặt riêng: …".
+
+## 2026.11.11.4 — Tài nguyên chung cho mọi bot (RAM/CPU)
+- **Cài đặt → Bot Telegram → "Tài nguyên chung cho mọi bot"** (mặc định BẬT): mọi bot, kể cả bot quản lý, nằm trong một nhóm systemd `agentos-bots.slice`. Trần RAM của nhóm = tổng RAM trừ phần để lại cho hệ thống (tự động = lớn hơn của 1 GB và 15%, hoặc chọn 1–4 GB). Bot không còn trần RAM/CPU riêng: chạy một mình thì dùng được cả nhóm.
+- Nhiều bot cùng chạy: `agentos-agentctl balance` đặt `MemoryLow` = trần ÷ số bot đang chạy cho từng bot (gọi mỗi khi bot chạy/dừng/tạo/xóa và 5 phút/lần từ bộ điều phối). Chỉ có tác dụng khi hết RAM: phần vượt mức của bot đó bị thu hồi trước, nên mỗi bot luôn giữ được phần của mình; bot dùng ít thì phần dư người khác dùng. CPU: `CPUWeight` bằng nhau, chia đều giữa các bot đang bận.
+- Bot quản lý được thêm vào nhóm bằng tệp phụ `agentos-orchestrator.service.d/20-pool.conf` (gỡ trần 5–6 GB cố định cũ); có hiệu lực sau khi bộ điều phối khởi động lại. Tắt chế độ này thì về lại giới hạn RAM/CPU riêng từng bot (ô nhập hiện lại ở thẻ bot).
+- Ổ đĩa: vốn đã dùng chung một ổ, không có hạn mức riêng từng bot nên không đổi gì.
+- **Rủi ro**: trần chung nghĩa là một bot lỗi ngốn RAM có thể làm các bot khác chậm (nhưng không vượt trần nhóm, hệ thống vẫn có phần riêng). Muốn cô lập chặt hơn thì tắt chế độ này.
+- Test: `agents.test.js` (nhóm, chia đều, bật/tắt), `bots-main.test.js`.

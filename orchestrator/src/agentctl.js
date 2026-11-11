@@ -62,7 +62,7 @@ function validateSettings(s) {
 }
 const settingEnv = (k, v) => { const d = SETTINGS[k]; const val = d.kind === 'bool' ? (d.env === 'MEMORY_ENABLED' || d.tf ? String(!!v) : (v ? '1' : '0')) : d.kind === 'int' ? String(v * (d.mul || 1)) : String(v); return d.env + '=' + val; };
 
-const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update', 'logs'];
+const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update', 'logs', 'pool', 'balance'];
 
 const PATHS = {
   ctl: '/var/lib/agentos-agentctl',            // gốc do root sở hữu; req/ và res/ nằm trong (agentos không đổi được thư mục cha)
@@ -71,6 +71,9 @@ const PATHS = {
   bin: '/var/lib/agentos-agents/.bin',            // bản Claude dùng chung cho agent (KHÔNG để trong thư mục agentctl: dịch vụ agent bị cấm vào đó)
   etc: '/etc/agentos',
   units: '/etc/systemd/system',
+  poolFile: '/etc/agentos/pool.json',            // {enabled, reserveMb}: tài nguyên chung cho mọi bot (reserveMb 0 = tự động)
+  mainUnit: 'agentos-orchestrator',
+  meminfo: '/proc/meminfo',
   sudoers: '/etc/sudoers.d',                     // tệp sudo riêng cho từng bot được chủ máy cấp quyền (91-agentos-agent-<mã>)
   mainEnv: '/etc/agentos/orchestrator.env',
   mainHome: '/var/lib/agentos',
@@ -94,7 +97,12 @@ function validate(req) {
   if (!RID_RE.test(String(req.rid || ''))) throw new Error('Mã yêu cầu sai');
   if (!ACTIONS.includes(req.action)) throw new Error('Việc không hợp lệ: ' + req.action);
   const out = { rid: req.rid, action: req.action };
-  if (req.action === 'init') return out;
+  if (req.action === 'init' || req.action === 'balance') return out;
+  if (req.action === 'pool') {                                        // tài nguyên chung: bật/tắt + phần RAM để lại cho hệ thống (0 = tự động)
+    if (req.enabled !== undefined) { if (typeof req.enabled !== 'boolean') throw new Error('enabled phải là true/false'); out.enabled = req.enabled; }
+    if (req.reserveMb !== undefined) { const n = Number(req.reserveMb); if (!Number.isInteger(n) || n < 0 || n > 65536) throw new Error('reserveMb phải từ 0 đến 65536'); out.reserveMb = n; }
+    return out;
+  }
   if (!ID_RE.test(String(req.id || ''))) throw new Error('Mã agent sai');
   out.id = req.id;
   if (req.action === 'create') {
@@ -122,7 +130,7 @@ function validate(req) {
   return out;
 }
 
-function unitText(id, meta) {
+function unitText(id, meta, pool) {
   const home = PATHS.homes + '/' + id;
   return [
     '# Tạo bởi agentos-agentctl. Sửa tay sẽ bị ghi đè khi đổi giới hạn.',
@@ -148,13 +156,20 @@ function unitText(id, meta) {
     'RestartSec=5',
     'TimeoutStopSec=30',
     'KillMode=control-group',
+  ].concat(pool && pool.enabled ? [
+    // TÀI NGUYÊN CHUNG: mọi bot nằm trong một nhóm (agentos-bots.slice) có trần RAM chung; không đặt trần riêng nên bot chạy một mình dùng được cả nhóm.
+    // Khi nhiều bot cùng chạy, agentctl 'balance' đặt MemoryLow = phần chia đều cho mỗi bot đang chạy (hết RAM thì phần vượt mức bị thu hồi trước); CPU chia theo trọng số bằng nhau.
+    'Slice=agentos-bots.slice',
+    'CPUWeight=100',
+  ] : [
     // Giới hạn tài nguyên RIÊNG của agent: chạy lỗi/ngốn máy chỉ làm chính nó chậm hoặc bị khởi động lại
     'MemoryHigh=' + Math.round(meta.ramMb * 0.85) + 'M',
     'MemoryMax=' + meta.ramMb + 'M',
     'CPUQuota=' + meta.cpuPct + '%',
+  ]).concat([
     'TasksMax=1024',
     'LimitNOFILE=16384',
-  ].concat(meta.sudo ? [
+  ]).concat(meta.sudo ? [
     // Bot được chủ máy cấp SUDO: gỡ cô lập để sudo chạy được (NoNewPrivileges chặn sudo, ProtectSystem chặn ghi hệ thống, InaccessiblePaths che dữ liệu bot khác). Vẫn giữ giới hạn RAM/CPU ở trên.
     '# SUDO: bot này có quyền quản trị cả máy (chủ máy cấp ở Cài đặt → Bot Telegram)',
   ] : [
@@ -285,6 +300,76 @@ function createAgentCtl(deps) {
     try { F.chmodSync(f, 0o440); } catch (e) { /* bỏ qua */ }
   }
 
+  // ===== TÀI NGUYÊN CHUNG (RAM/CPU): mọi bot, kể cả bot quản lý, nằm trong agentos-bots.slice =====
+  // Trần RAM = tổng RAM trừ phần để lại cho hệ thống. Bot chạy MỘT mình dùng được cả trần; N bot cùng chạy thì mỗi bot được bảo đảm trần/N
+  // (MemoryLow đặt lại mỗi khi bot chạy/dừng và 5 phút/lần; chỉ có tác dụng khi hết RAM, lúc đó phần vượt mức bị thu hồi trước). CPU: trọng số bằng nhau.
+  function readPool() {
+    let j = {}; try { j = JSON.parse(F.readFileSync(P.poolFile, 'utf8')); } catch (e) { /* chưa có: mặc định BẬT */ }
+    return { enabled: j.enabled !== false, reserveMb: Number.isInteger(j.reserveMb) && j.reserveMb >= 0 ? j.reserveMb : 0 };
+  }
+  function memTotalMb() {
+    if (deps.memTotalMb) return deps.memTotalMb;
+    try { const m = F.readFileSync(P.meminfo, 'utf8').match(/^MemTotal:\s+(\d+) kB/m); if (m) return Math.floor(Number(m[1]) / 1024); } catch (e) { /* bỏ qua */ }
+    return 4096;
+  }
+  function poolSizes(pool) {
+    const total = memTotalMb(), reserve = pool.reserveMb || Math.max(1024, Math.round(total * 0.15));
+    return { totalMb: total, reserveMb: reserve, maxMb: Math.max(512, total - reserve) };
+  }
+  const botUnits = () => {
+    const out = [{ unit: P.mainUnit, name: 'Bot quản lý' }];
+    let files = []; try { files = F.readdirSync(P.etc + '/agents'); } catch (e) { /* chưa có agent */ }
+    for (const f of files.sort()) { const m = f.match(/^(a\d{1,3})\.meta\.json$/); if (m) { const mt = readMeta(m[1]); out.push({ unit: unitName(m[1]), name: mt ? mt.name : m[1] }); } }
+    return out;
+  };
+  // Đặt MemoryLow cho từng bot ĐANG CHẠY = trần / số bot đang chạy
+  async function balance() {
+    const pool = readPool();
+    if (!pool.enabled) return ok('Tài nguyên chung đang tắt.');
+    const sz = poolSizes(pool), active = [];
+    for (const b of botUnits()) { const a = await sc('is-active', b.unit); if (a.code === 0) active.push(b); }
+    const per = Math.floor(sz.maxMb / Math.max(1, active.length));
+    for (const b of active) await sc('set-property', '--runtime', b.unit, 'MemoryLow=' + per + 'M');
+    return ok('Đã chia ' + sz.maxMb + ' MB cho ' + active.length + ' bot đang chạy (mỗi bot được bảo đảm ' + per + ' MB).', { maxMb: sz.maxMb, active: active.length, perMb: per });
+  }
+  // Ghi nhóm tài nguyên + cấu hình bot quản lý, viết lại tệp dịch vụ mọi bot, khởi động lại bot nào có tệp đổi (bot quản lý: khởi động lại không chặn)
+  async function applyPool(opts) {
+    opts = opts || {};
+    const pool = readPool(), sliceF = P.units + '/agentos-bots.slice', dropDir = P.units + '/' + P.mainUnit + '.service.d', dropF = dropDir + '/20-pool.conf';
+    let mainChanged = false;
+    if (pool.enabled) {
+      const sz = poolSizes(pool);
+      F.writeFileSync(sliceF, ['# Tạo bởi agentos-agentctl: tài nguyên chung cho mọi bot (Cài đặt → Bot Telegram → Tài nguyên chung)', '[Unit]', 'Description=AgentOS - tài nguyên chung cho mọi bot', '[Slice]',
+        'MemoryHigh=' + sz.maxMb + 'M', 'MemoryMax=' + sz.maxMb + 'M', 'MemoryLow=' + sz.maxMb + 'M', 'CPUWeight=100', ''].join('\n'), { mode: 0o644 });
+      const want = ['# Tạo bởi agentos-agentctl: bot quản lý dùng chung nhóm tài nguyên với các bot khác', '[Service]', 'Slice=agentos-bots.slice', 'MemoryHigh=infinity', 'MemoryMax=infinity', 'CPUWeight=100', ''].join('\n');
+      let cur = ''; try { cur = F.readFileSync(dropF, 'utf8'); } catch (e) { /* chưa có */ }
+      if (cur !== want) { F.mkdirSync(dropDir, { recursive: true }); F.writeFileSync(dropF, want, { mode: 0o644 }); mainChanged = true; }
+    } else {
+      try { F.rmSync(sliceF, { force: true }); } catch (e) { /* bỏ qua */ }
+      if (F.existsSync(dropF)) { F.rmSync(dropF, { force: true }); mainChanged = true; }
+    }
+    await sc('daemon-reload');
+    let moved = 0;
+    for (const b of botUnits().slice(1)) {
+      const id = b.unit.replace(/^agentos-agent-/, ''), meta = readMeta(id); if (!meta) continue;
+      const uf = P.units + '/' + b.unit + '.service', text = withPaths(() => unitText(id, meta, pool));
+      let old = ''; try { old = F.readFileSync(uf, 'utf8'); } catch (e) { /* chưa có */ }
+      if (old !== text) { F.writeFileSync(uf, text, { mode: 0o644 }); moved++; }
+    }
+    if (moved) await sc('daemon-reload');
+    for (const b of botUnits().slice(1)) { const a = await sc('is-active', b.unit); if (moved && a.code === 0) await sc('restart', b.unit); }
+    if (mainChanged && opts.restartMain !== false) await sc('restart', '--no-block', P.mainUnit);
+    await balance();
+    return ok(pool.enabled ? 'Đã bật tài nguyên chung.' : 'Đã tắt tài nguyên chung (mỗi bot dùng giới hạn riêng).', { moved, mainChanged });
+  }
+  async function poolStatus() {
+    const pool = readPool(), sz = poolSizes(pool), active = [];
+    for (const b of botUnits()) { const a = await sc('is-active', b.unit); if (a.code === 0) active.push(b.name); }
+    let usedMb = null;
+    if (pool.enabled) { const r = await sc('show', 'agentos-bots.slice', '-p', 'MemoryCurrent'); const m = String(r.out || '').match(/MemoryCurrent=(\d+)/); if (m && Number(m[1]) < 1e15) usedMb = Math.round(Number(m[1]) / 1048576); }
+    return Object.assign({ enabled: pool.enabled, autoReserve: !pool.reserveMb, active, perMb: Math.floor(sz.maxMb / Math.max(1, active.length)), usedMb }, sz);
+  }
+
   async function init() {
     for (const [d, mode] of [[P.ctl, 0o755], [P.ctl + '/req', 0o730], [P.ctl + '/res', 0o750], [P.homes, 0o755], [P.etc + '/agents', 0o700]]) {
       F.mkdirSync(d, { recursive: true });
@@ -308,10 +393,11 @@ function createAgentCtl(deps) {
       if (/^CLAUDE_BIN=/m.test(envNew) && !envNew.includes('CLAUDE_BIN=' + P.bin + '/claude\n')) envNew = envNew.replace(/^CLAUDE_BIN=.*$/m, 'CLAUDE_BIN=' + P.bin + '/claude');
       const envChanged = envNew !== envOld;
       if (envChanged) F.writeFileSync(envFile, envNew, { mode: 0o600 });
-      const uf = P.units + '/' + unitName(id) + '.service', text = withPaths(() => unitText(id, meta));
+      const uf = P.units + '/' + unitName(id) + '.service', text = withPaths(() => unitText(id, meta, readPool()));
       let old = ''; try { old = F.readFileSync(uf, 'utf8'); } catch (e) { /* chưa có */ }
       if (old !== text || envChanged) { F.writeFileSync(uf, text, { mode: 0o644 }); moved++; await sc('daemon-reload'); await sc('restart', unitName(id)); }
     }
+    await applyPool({ restartMain: false });
     return ok('Đã chuẩn bị thư mục cho agent.' + (moved ? ' Đã nâng cấp ' + moved + ' agent (thêm hộp thư giao việc).' : ''));
   }
 
@@ -347,10 +433,12 @@ function createAgentCtl(deps) {
     await ensureMail(id);
     writeSecure(P.etc + '/agents/' + id + '.env', env.text, 0o600);
     writeMeta(id, meta);
-    F.writeFileSync(P.units + '/' + unitName(id) + '.service', withPaths(() => unitText(id, meta)), { mode: 0o644 });
+    F.writeFileSync(P.units + '/' + unitName(id) + '.service', withPaths(() => unitText(id, meta, readPool())), { mode: 0o644 });
+    if (readPool().enabled && !F.existsSync(P.units + '/agentos-bots.slice')) await applyPool({ restartMain: false });   // máy chưa có nhóm tài nguyên chung: tạo trước khi bật bot
     await sc('daemon-reload');
     const en = await sc('enable', '--now', unitName(id));
     if (en.code !== 0) return fail('Đã tạo nhưng không bật được dịch vụ: ' + maskTokens(en.out).slice(0, 300));
+    await balance().catch(() => {});
     return ok('Đã tạo agent ' + id + ' và bật dịch vụ.', { warn });
   }
 
@@ -372,6 +460,7 @@ function createAgentCtl(deps) {
       F.renameSync(home, kept); try { F.chmodSync(kept, 0o700); } catch (e) { /* bỏ qua */ }
       await sh('chown', ['-R', 'root:root', kept]);
     }
+    await balance().catch(() => {});
     return ok('Đã xóa agent ' + id + '.', { kept });
   }
 
@@ -394,16 +483,18 @@ function createAgentCtl(deps) {
     const keep = env.shared ? '' : oldEnv.split(/\r?\n/).filter((l) => SHARED_KEYS.test(l)).join('\n');
     writeSecure(envFile, env.text + (keep ? keep + '\n' : ''), 0o600);
     writeMeta(id, meta);
-    F.writeFileSync(P.units + '/' + unitName(id) + '.service', withPaths(() => unitText(id, meta)), { mode: 0o644 });
+    F.writeFileSync(P.units + '/' + unitName(id) + '.service', withPaths(() => unitText(id, meta, readPool())), { mode: 0o644 });
     await sc('daemon-reload');
     const rs = await sc('restart', unitName(id));
     if (rs.code !== 0) return fail('Đã lưu nhưng không khởi động lại được: ' + maskTokens(rs.out).slice(0, 300));
+    await balance().catch(() => {});
     return ok('Đã cập nhật agent ' + id + ' và khởi động lại.');
   }
 
   async function ctl(verb, r) {
     if (!readMeta(r.id)) return fail('Không có agent ' + r.id + '.');
     const x = await sc(verb, unitName(r.id));
+    if (x.code === 0) await balance().catch(() => {});
     return x.code === 0 ? ok('Đã ' + ({ start: 'chạy', stop: 'dừng', restart: 'khởi động lại' }[verb]) + ' agent ' + r.id + '.') : fail('Lỗi: ' + maskTokens(x.out).slice(0, 300));
   }
 
@@ -424,6 +515,12 @@ function createAgentCtl(deps) {
         case 'update': return await update(r);
         case 'start': case 'stop': case 'restart': return await ctl(r.action, r);
         case 'logs': return await logs(r);
+        case 'balance': return await balance();
+        case 'pool': {
+          const cur = readPool(), next = { enabled: r.enabled === undefined ? cur.enabled : r.enabled, reserveMb: r.reserveMb === undefined ? cur.reserveMb : r.reserveMb };
+          F.mkdirSync(P.etc, { recursive: true }); writeSecure(P.poolFile, JSON.stringify(next), 0o644);
+          return await applyPool();
+        }
         default: return fail('Việc không hợp lệ');
       }
     } catch (e) { return fail('Lỗi: ' + maskTokens(e && e.message)); }
@@ -462,7 +559,7 @@ function createAgentCtl(deps) {
     return n;
   }
 
-  return { handle, drain, init, validate, unitText: (id, meta) => withPaths(() => unitText(id, meta)) };
+  return { handle, drain, init, validate, unitText: (id, meta, pool) => withPaths(() => unitText(id, meta, pool)), poolStatus, balance, applyPool, readPool };
 }
 
 function realRun(bin, args) {

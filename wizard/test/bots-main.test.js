@@ -65,3 +65,13 @@ test('giao diện: mọi bot cùng một kiểu thẻ, bot quản lý có dấu 
   const js = html.split('<script>')[1].split('</script>')[0];
   assert.doesNotThrow(() => new Function(js));
 });
+
+test('Cài đặt → Bot Telegram: API tài nguyên chung đọc trạng thái, bật/tắt và đặt phần để lại cho hệ thống; trang có thẻ + chọn', async () => {
+  const S = await boot();
+  try {
+    const r0 = await S.call('GET', 'pool'); assert.equal(r0.status, 200); assert.equal(r0.body.unsupported, true);   // bản giả lập chỉ có handle
+    const html = fs.readFileSync(path.join(__dirname, '..', 'settings', 'index.html'), 'utf8');
+    for (const key of ['poolCard', 'bindPool', 'pool-on', 'pool-off', 'pool-r']) assert.ok(html.includes(key), key);
+    assert.doesNotMatch(html, /placeholder="\(mặc định\)"/, 'không còn ô điền chữ có chữ mặc định');
+  } finally { await S.s.close(); }
+});

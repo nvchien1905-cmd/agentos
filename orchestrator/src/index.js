@@ -494,7 +494,7 @@ async function main() {
     } catch (e) { return reject(e); }
     h.done.then((r) => (r && r.ok && r.text ? resolve(r.text) : reject(new Error((r && r.error) || 'Claude không trả kết quả'))), reject);
   });
-  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: codexSummarize, claude: claudeSummarize, log });
+  const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: cfg.engineOrder.includes('codex') ? codexSummarize : null, claude: cfg.engineOrder.includes('claude') ? claudeSummarize : null, engineOrder: cfg.engineOrder, log });
   // Bài học chủ máy dạy bot (lessons.js) + AI độc lập đánh giá lệnh (jobreview.js): đánh giá bằng AI KHÁC với AI đã làm việc đó nếu máy có nhiều AI
   const lessons = createLessons({ file: path.join(dataDir, 'lessons.json'), log });
   const reviewAsk = async (system, user, avoid) => {

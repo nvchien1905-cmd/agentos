@@ -645,3 +645,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - **Dạy bot**: bài học (≤ 600 ký tự, tối đa 30 bài mỗi bot) ghi vào `lessons.json` trong thư mục dữ liệu của đúng bot; mỗi lệnh mới bot đọc lại và đưa vào ĐẦU lời nhắc ("Chủ máy đã dạy bạn…"). Xóa được ở tab "Bot đã được dạy". Bài học là lời của CHỦ MÁY (chỉ chủ máy ghi được qua trang Cài đặt): không tự động lấy từ nội dung bên ngoài.
 - Đã thử thật trên máy ảo với Codex: tạm dừng (tiến trình `sleep` ở trạng thái T, quá thời gian lệnh vẫn không bị cắt), tiếp tục chạy nốt, đánh giá 10/10, dạy bot và bot làm theo bài học.
 - Test: `orchestrator/test/board.test.js`, `wizard/test/botboard.test.js`.
+
+## 2026.11.11.9 — Sửa nén ngữ cảnh của bot chỉ có Claude
+- Rà soát bộ nhớ từng bot: mỗi bot có cơ sở dữ liệu, tóm tắt cuộn, tìm lại FTS5 và SỔ TAY riêng (mục lục + chương như cuốn sách; bot quản lý ở `/srv/onedrive/AgentOS/SO-TAY`, bot thường ở `<thư mục riêng>/onedrive/AgentOS/SO-TAY`). Bot quản lý đã nén thật (15 việc → tóm tắt + ghi vào sổ tay); bot thường chưa đủ 15 việc nên chưa nén lần nào.
+- **Lỗi phát hiện** (từ 2026.11.11.3, khi bỏ mặc định "chỉ dùng Claude"): chế độ `auto` luôn chọn Codex để nén, kể cả bot chỉ có Claude → nén lỗi, bộ nhớ chỉ biết cắt gọn. Sửa (`summarizer.js`): nén bằng khóa Gemini/DeepSeek nếu có, rồi bằng CHÍNH các AI mà bot đó có theo thứ tự ưu tiên của nó; cách đầu lỗi (hết hạn mức, mất đăng nhập) thì thử cách kế tiếp thay vì bỏ nén.
+- Test: `summarizer-pick.test.js`.

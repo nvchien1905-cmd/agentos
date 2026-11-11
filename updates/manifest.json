@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.8",
-  "file": "agentos-update-2026.11.11.8.tar.gz",
-  "size": 564261,
-  "sha256": "43dea1598094ae7903d4f2594a61c6352ab1782622cb7de001f972247e82525c",
+  "version": "2026.11.11.9",
+  "file": "agentos-update-2026.11.11.9.tar.gz",
+  "size": 564593,
+  "sha256": "0c0141db315faad44f94c9030fbd0a6ce4d45be09ca05ddeb15ede1973e4519e",
   "date": "2026-11-11",
-  "notes": "Bảng điều khiển bot: nút Yêu cầu AI đánh giá (chỉ đánh giá khi bấm)"
+  "notes": "Sửa nén ngữ cảnh: bot chỉ có Claude không còn nén bằng Codex, tự thử cách khác khi lỗi"
 }

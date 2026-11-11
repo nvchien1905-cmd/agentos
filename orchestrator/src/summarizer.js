@@ -18,14 +18,22 @@ function createSummarizer(o) {
   const deepseekModel = o.deepseekModel || 'deepseek-flash';
   let geminiModel = geminiModelCfg || null, discoveredAt = 0;
 
-  const pick = () => {
-    if (provider === 'none') return null;
-    if ((provider === 'auto' || provider === 'gemini') && keys.gemini) return 'gemini';
-    if ((provider === 'auto' || provider === 'deepseek') && keys.deepseekapi) return 'deepseek';
-    if (provider === 'claude' && typeof o.claude === 'function') return 'claude';
-    if ((provider === 'auto' || provider === 'codex') && typeof o.codex === 'function') return 'codex';
-    return null;
+  // Danh sách cách nén theo thứ tự thử: khóa Gemini/DeepSeek (rẻ nhất), rồi CHÍNH các AI mà bot này có (theo thứ tự ưu tiên của bot: engineOrder). Bot chỉ có Claude thì không bao giờ thử Codex.
+  const engineOrder = Array.isArray(o.engineOrder) && o.engineOrder.length ? o.engineOrder : ['codex', 'claude'];
+  const candidates = () => {
+    if (provider === 'none') return [];
+    const c = [];
+    if ((provider === 'auto' || provider === 'gemini') && keys.gemini) c.push('gemini');
+    if ((provider === 'auto' || provider === 'deepseek') && keys.deepseekapi) c.push('deepseek');
+    for (const e of engineOrder) {
+      if (e === 'claude' && (provider === 'auto' || provider === 'claude') && typeof o.claude === 'function') c.push('claude');
+      if (e === 'codex' && (provider === 'auto' || provider === 'codex') && typeof o.codex === 'function') c.push('codex');
+    }
+    if (provider === 'claude' && typeof o.claude === 'function' && !c.includes('claude')) c.push('claude');
+    if (provider === 'codex' && typeof o.codex === 'function' && !c.includes('codex')) c.push('codex');
+    return c;
   };
+  const pick = () => candidates()[0] || null;
 
   // Chọn mô hình Gemini "flash" còn dùng được (tên mô hình đổi theo thời gian): hỏi danh sách rồi nhớ 24 giờ.
   async function discoverGemini() {
@@ -83,11 +91,14 @@ function createSummarizer(o) {
 
   // Trả { text, via } hoặc null khi không có khóa/lỗi.
   async function run(system, user) {
-    const via = pick();
-    if (!via) return null;
+    const cands = candidates();
+    if (!cands.length) return null;
     const input = String(user).length > MAX_IN ? String(user).slice(-MAX_IN) : String(user);
-    try { return { text: await (via === 'gemini' ? viaGemini : via === 'codex' ? viaCodex : via === 'claude' ? viaClaude : viaDeepseek)(system, input), via }; }
-    catch (e) { log('tóm tắt bằng ' + via + ' lỗi: ' + e.message); return null; }
+    for (const via of cands) {                                    // lỗi ở cách này (hết hạn mức, mất đăng nhập...) thì thử cách kế tiếp thay vì bỏ nén
+      try { return { text: await (via === 'gemini' ? viaGemini : via === 'codex' ? viaCodex : via === 'claude' ? viaClaude : viaDeepseek)(system, input), via }; }
+      catch (e) { log('tóm tắt bằng ' + via + ' lỗi: ' + e.message); }
+    }
+    return null;
   }
   return { run, available: () => !!pick(), provider: () => pick() };
 }

@@ -83,6 +83,10 @@ const { createMail } = require('./mail');
 const { startMailWorker, startMailCollector } = require('./mailLoop');
 const { createRemote } = require('./remote');
 const { createOffice } = require('./office');
+const { createDocgen } = require('./docgen');
+const { createResearch } = require('./research');
+const { createCreative } = require('./creative');
+const { createImages } = require('./images');
 const { createRoles } = require('./roles');
 const { createSelfTest } = require('./selftest');
 const { createHwCheck } = require('./hwcheck');
@@ -520,7 +524,15 @@ async function main() {
   // Hàng đợi chính: mỗi ID Telegram làm tuần tự nhưng các ID khác nhau chạy SONG SONG (mainParallel worker dùng chung hàng đợi, db.claimNext perChat).
   // Bộ công cụ có trình duyệt (/web) dùng chung MỘT hồ sơ Chrome đã đăng nhập nên chỉ một việc /web chạy tại một thời điểm.
   const exclusiveProfiles = [];                              // trước đây chỉ một việc dùng trình duyệt một lúc (chung hồ sơ); nay mỗi AI một tab trong Chrome dùng chung (browser-mcp.js) nên chạy song song được
+  // Xử lý sau cho việc đặc biệt: nghiên cứu sâu (kiểm trích dẫn, xuất báo cáo), /ve và /taodoc (dựng ảnh, tài liệu thật)
+  const docgen = createDocgen({ outDir });
+  const research = createResearch({ db, docgen, log, outDirFor: (job) => convDir(outDir, job) });
+  const studioDir = path.join(path.dirname(cfg.dbPath), 'studio');
+  const creative = createCreative({ docgen, log, studioDir, outDirFor: (job) => convDir(outDir, job) });
+  const postProcess = async (job, res) => (await research.postProcess(job, res)) || (await creative.postProcess(job, res));
+  const images = createImages({ keys: cfg.apiKeys, dir: studioDir, log });
   const makeMain = () => createWorker({
+    postProcess,
     db, log, notify, engines, ui: live, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     outbox: createOutbox(outDir, null, (chatId, job) => convDir(outDir, job)), outboxPrepare: renderer.prepare, sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
@@ -746,7 +758,7 @@ async function main() {
       return { bad: nbad || (bad.length ? bad.length : 0), report, prompt };
     },
     pairing: createPairing({ db, roles, adminIds: [...cfg.adminUserIds], log, send: (chat, r) => (r && typeof r === 'object' && r.buttons ? tg.sendButtons(chat, r.text, r.buttons) : tg.sendMessage(chat, r && typeof r === 'object' ? r.text : r)) }),
-    voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), quietAck: true, roles,
+    voice, media, memory, projects, access, auditlog: createAuditLog({ db, projects, roles }), hoidap: createHoiDap({ kiotviet, projects, db, log }), images, quietAck: true, roles,
     googleStatus: () => createGoogleAuth({ dir: path.join(dataDir, 'google') }).status(),
     agentMode: !!cfg.agentId, agentsUi: cfg.agentId ? null : createAgentsUi({ agents: agentsReg, mail, isAdmin, send: botSend, deleteMessage: (c, m) => tg.deleteMessage(c, m) }),
     send: botSend, connectorsUi, pluginsUi, skillsUi: createSkillsUi({ projects, isAdmin, send: botSend, layers: skillLayers }),

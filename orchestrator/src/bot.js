@@ -5,18 +5,21 @@ const { createProjectFlow } = require('./projectFlow');
 const { capsText } = require('./engineCaps');
 const { createSessions } = require('./sessions');
 const { createMenuUi } = require('./menuUi');
+const searchLib = require('./search');
 
 // Lệnh agent (bot phụ) được dùng. Các lệnh còn lại (cập nhật, toàn quyền, kết nối máy, Google, màn hình...) chỉ ở bot quản lý.
-const AGENT_CMDS = new Set(['help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai']);
+const AGENT_CMDS = new Set(['tim', 'anh', 'nghiencuu', 've', 'taodoc', 'help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai']);
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
     '/claude, /codex, /gemini hoặc /deepseekapi <việc> - ép dùng một AI (khóa API hoặc tài khoản) (mặc định tự chọn, hết hạn mức thì tự chuyển)\n' +
     profiles.map((p) => '/' + p.name + ' <việc> - ' + (p.description || 'dùng bộ công cụ ' + p.name) + '\n').join('') +
-    '/viec - xem 5 việc gần nhất\n' +
+    '/viec [số] - xem 5 việc gần nhất, hoặc đầy đủ một việc\n' +
     '📷 /camera <tên> [câu hỏi] - chụp ảnh camera cửa hàng (có câu hỏi thì AI nhìn ảnh trả lời) · 🔌 /dien <tên> bat|tat|xem - bật/tắt ổ cắm, đèn thông minh\n' +
     '🖥️ /may - ĐỘI MÁY: xem/giao việc/cập nhật các máy AgentOS khác của cửa hàng (qua Tailscale) · /may <tên> <việc> · /may them <tên> <địa chỉ> <khóa>\n' +
     '🔑 /ketnoi <tên máy> - chép khóa SSH của máy này sang máy trong Đội máy (có nút duyệt) để chạy lệnh/chép tệp trên máy đó không cần mật khẩu\n' +
+    '🔎 /tim <từ khóa> [homnay|tuan|thang] - TÌM LẠI hội thoại cũ (cả câu hỏi lẫn câu trả lời, không cần gõ đúng dấu) · /viec <số> - xem đầy đủ một việc\n' +
+    '🎨 /anh <mô tả> - tạo ảnh bằng AI (cần khóa Gemini hoặc OpenAI, chỉ quản trị viên) · /anh sua <chỉnh gì> - sửa ảnh vừa tạo. Không có khóa: /ve <mô tả> để AI vẽ bằng mã. Tài liệu Word/Excel/PDF: /taodoc; nghiên cứu có trích dẫn: /nghiencuu; điều khiển màn hình máy: /dieukhien\n' +
     '🩺 /bacsi - nhờ AI phân tích các lỗi máy đang gặp và đề xuất cách sửa (máy cũng tự sửa lỗi quen thuộc như dịch vụ chết, ổ đầy, rồi báo)\n' +
     '🏛️ /hoidong <việc> - HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu và kết luận (cho việc quan trọng, tốn gấp ~3 lần hạn mức)\n' +
     '📁 /duan - DỰ ÁN: mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án (Claude hết hạn mức thì Codex làm tiếp). /duan moi <tên> · /duan <tên> · /duan thoat · #<tên-dự-án> <việc>\n' +
@@ -68,7 +71,7 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
 const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien', 'vao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -373,7 +376,50 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           if (!fullAccess.os) return 'Chế độ: ⚡ TOÀN QUYỀN (không hỏi, có sudo)\n' + rest;
           return fullAccess.os().then((st) => (st.ok ? 'Chế độ: ⚡ TOÀN QUYỀN (không hỏi, ĐÃ có sudo)\n' : 'Chế độ: ⚠️ TOÀN QUYỀN trong bot nhưng hệ điều hành CHƯA cấp sudo (' + st.why + '). Gõ /toanquyen co để cấp đủ.\n') + rest);
         }
+        case 'tim': {                                       // ô tìm chung: mọi việc đã làm (câu hỏi + câu trả lời) + sổ tay
+          let q = String(cmd[3] || '').trim();
+          if (!q) return 'Cách dùng: /tim <từ khóa> [homnay|tuan|thang]. Tìm trong câu hỏi và câu trả lời của mọi việc đã làm' + (isAdmin(uid) ? ' (mọi cuộc trò chuyện) và trong sổ tay' : ' của bạn') + '. Ví dụ: /tim nồi chiên khuyến mại tuần';
+          const adm = isAdmin(uid);
+          const span = /\s+(homnay|hom nay|tuan|thang)\s*$/i.exec(q);
+          let from = 0;
+          if (span) {
+            q = q.slice(0, span.index).trim();
+            const vn = new Date(now() + 7 * 3600 * 1000); const mid = Date.UTC(vn.getUTCFullYear(), vn.getUTCMonth(), vn.getUTCDate()) - 7 * 3600 * 1000;
+            from = /^hom/i.test(span[1]) ? mid : /^tuan/i.test(span[1]) ? now() - 7 * 86400000 : now() - 30 * 86400000;
+          }
+          if (!q) return 'Gõ từ khóa cần tìm, ví dụ /tim nồi chiên tuan';
+          const r = searchLib.searchJobs(db.raw, q, { chatId: adm ? undefined : chatId, from, limit: 6 });
+          let mem = [];
+          try { if (adm && memory && memory.book) mem = searchLib.searchMemory(memory.book.list(), [], q, 4); } catch (e) { mem = []; }
+          return searchLib.format(q, r, mem, { scope: (adm ? 'mọi cuộc trò chuyện' : 'hội thoại của bạn') + (span ? ' · ' + span[1].toLowerCase() : ''), now: now() });
+        }
+        case 'anh': {                                       // tạo ảnh bằng API (Gemini/OpenAI); /anh sua <chỉnh gì> sửa ảnh vừa tạo
+          if (!images) return 'Máy này chưa có tính năng tạo ảnh.';
+          if (!isAdmin(uid)) return 'Lệnh /anh chỉ dành cho quản trị viên (tạo ảnh tốn tiền theo khóa API của chủ máy).';
+          let a = String(cmd[3] || '').trim();
+          if (!a) return 'Cách dùng: /anh <mô tả ảnh> (thêm ngang hoặc doc ở đầu để đổi khung: /anh ngang poster khuyến mại) · /anh sua <chỉnh gì> (sửa ảnh vừa tạo, cần khóa Gemini). Chưa có khóa API: dùng /ve để AI vẽ bằng mã.';
+          const day = new Date(now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+          const ck = 'imgday:' + chatId + ':' + day, used = Number(db.kvGet(ck)) || 0;
+          if (used >= 30) return 'Hôm nay đã tạo 30 ảnh (giới hạn mỗi ngày để tránh tốn tiền API). Mai tạo tiếp nhé.';
+          let editOf = null, size = 'vuong';
+          const sm = /^(sua|chinh|edit)\s+/i.exec(noAcc(a));
+          if (sm) { editOf = db.kvGet('lastimg:' + chatId); if (!editOf) return 'Chưa có ảnh nào để sửa. Tạo ảnh trước bằng /anh <mô tả>.'; a = a.slice(sm[0].length).trim(); }
+          const zm = /^(ngang|doc|vuong)\s+/i.exec(noAcc(a));
+          if (zm) { size = zm[1].toLowerCase(); a = a.slice(zm[0].length).trim(); }
+          return images.generate({ prompt: a, size, editOf }).then((r) => {
+            if (!r.ok) return '⚠️ ' + r.error;
+            db.kvSet(ck, used + 1); db.kvSet('lastimg:' + chatId, r.file);
+            return { text: '🎨 Ảnh ' + (r.edited ? '(đã sửa) ' : '') + 'bằng ' + r.provider + '. Gõ /anh sua <chỉnh gì> để chỉnh tiếp.', files: [{ path: r.file, name: require('path').basename(r.file), kind: 'photo' }] };
+          });
+        }
         case 'viec': {
+          const want = Number(String(cmd[3] || '').replace(/\D/g, '')) || 0;
+          if (want) {                                       // /viec <số>: xem đầy đủ một việc (người thường chỉ xem việc của mình)
+            const j = db.getJob(want);
+            if (!j || (!isAdmin(uid) && String(j.chat_id) !== String(chatId))) return 'Không thấy việc #' + want + '.';
+            const cut = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '… (còn ' + (s.length - n) + ' ký tự)' : s; };
+            return '#' + j.id + ' [' + (ICON[j.status] || j.status) + (j.engine ? ', ' + j.engine : '') + (j.profile ? ', /' + j.profile : '') + (j.project ? ', dự án ' + j.project : '') + ']\n❓ ' + cut(j.prompt, 900) + (j.result ? '\n\n💬 ' + cut(j.result, 2800) : '') + (j.error ? '\n\n⚠️ ' + cut(j.error, 500) : '');
+          }
           const rows = db.recentJobs(chatId, 5);
           if (!rows.length) return 'Chưa có việc nào.';
           return rows.map((j) => '#' + j.id + ' [' + (ICON[j.status] || j.status) + (j.engine ? ', ' + j.engine : '') + (j.profile ? ', /' + j.profile : '') + '] ' + j.prompt.slice(0, 60).replace(/\s+/g, ' ')).join('\n');

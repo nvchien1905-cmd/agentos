@@ -45,7 +45,9 @@ test('config: bắt buộc token/ID, kiểm tra ENGINE_ORDER', () => {
   assert.equal(config.validate(config.load(ok)).length, 0);
   assert.deepEqual(config.load(ok).engineOrder, ['claude']);
   const co = config.load(Object.assign({ ENGINE_ORDER: 'codex,gemini' }, ok));
-  assert.deepEqual(co.engineOrder, ['claude'], 'mặc định CHỈ Claude dù .env còn ghi AI khác'); assert.equal(co.summaryProvider, 'claude'); assert.deepEqual(co.lightEngines, []);
+  assert.deepEqual(co.engineOrder, ['codex', 'gemini'], 'mặc định dùng đủ AI theo ENGINE_ORDER (config.js)'); assert.equal(co.summaryProvider, 'auto'); assert.deepEqual(co.lightEngines, ['deepseekapi', 'gemini']);
+  const only = config.load(Object.assign({ ENGINE_ORDER: 'codex,gemini', CLAUDE_ONLY: '1' }, ok));
+  assert.deepEqual(only.engineOrder, ['claude'], 'CLAUDE_ONLY=1 ép chỉ dùng Claude'); assert.equal(only.summaryProvider, 'claude'); assert.deepEqual(only.lightEngines, []);
   assert.deepEqual(config.load(Object.assign({ ENGINE_ORDER: 'Claude, codex', CLAUDE_ONLY: '0' }, ok)).engineOrder, ['claude', 'codex']);
   assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'claude,gpt5', CLAUDE_ONLY: '0' }, ok))).length, 1);
   assert.equal(config.validate(config.load(Object.assign({ ENGINE_ORDER: 'codex,codex', CLAUDE_ONLY: '0' }, ok))).length, 1);

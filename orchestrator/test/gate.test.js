@@ -267,6 +267,31 @@ test('gate: nhiễm bẩn sau khi xem web; nhớ "cả việc này" chỉ cho th
   } finally { await G.gate.close(); }
 });
 
+test('gate: công cụ màn hình — XEM tự cho phép; thao tác hỏi với nhãn riêng; "cho phép cả việc" mở cả nhóm màn hình (không mở công cụ khác); nhật ký ghi từng thao tác', async () => {
+  const G = await gateSetup();
+  try {
+    const call = (tool, input) => G.call({ jobId: 9, tool: 'mcp__desk__' + tool, input: input || {} });
+    assert.equal((await call('screen_screenshot')).body.behavior, 'allow');
+    assert.equal((await call('screen_find', { text: 'Lưu' })).body.behavior, 'allow');
+    assert.equal(G.asked.length, 0);
+    assert.equal(G.gate.state(9).tainted, true);                                    // nội dung màn hình là dữ liệu không tin cậy
+
+    const p = call('screen_click', { x: 10, y: 20 }); await tick();
+    assert.equal(G.asked.length, 1); assert.match(G.asked[0].text, /Điều khiển màn hình máy/); assert.match(G.asked[0].text, /click: x=10 y=20/);
+    assert.equal(G.asked[0].buttons[0].length, 3);                                  // Cho phép · cho phép cả việc · Từ chối
+    await G.approvals.answer(G.asked[0].buttons[0][1].data, 1);
+    assert.equal((await p).body.behavior, 'allow');
+    for (const [t, i] of [['screen_type', { text: 'abc' }], ['screen_key', { key: 'Tab' }], ['screen_scroll', { direction: 'down' }], ['screen_open', { app: 'chrome' }]]) assert.equal((await call(t, i)).body.behavior, 'allow', t);
+    assert.equal(G.asked.length, 1);                                                // cả nhóm không hỏi lại
+
+    const web = G.call({ jobId: 9, tool: 'mcp__browser__browser_click', input: { element: 'x' } }); await tick();
+    assert.equal(G.asked.length, 2);                                                // thao tác trình duyệt vẫn hỏi riêng
+    await G.approvals.answer(G.asked[1].buttons[0][2].data, 1); assert.equal((await web).body.behavior, 'deny');
+    const sh = G.call({ jobId: 9, tool: 'Bash', input: { command: 'echo' } }); await tick(); assert.equal(G.asked.length, 3);
+    await G.approvals.answer(G.asked[2].buttons[0][1].data, 1); assert.equal((await sh).body.behavior, 'deny');
+  } finally { await G.gate.close(); }
+});
+
 // ---------- gate-mcp / gate-hook (tiến trình thật) ----------
 
 function runScript(file, env, lines) {

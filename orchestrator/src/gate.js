@@ -58,7 +58,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     }
     if (d.taint) entry.state.tainted = true;
     noteVisit();
-    if (r.remember && d.canRemember) entry.state.allowed.add(tool);
+    if (r.remember && d.canRemember) { entry.state.allowed.add(tool); if (/^mcp__desk__/.test(tool)) entry.state.allowed.add('mcp__desk__*'); }
     return { behavior: 'allow', updatedInput: input };
   }
 

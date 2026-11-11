@@ -13,10 +13,10 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat,
   const pending = new Map();
   let seq = 0;
   // Ảnh chụp các yêu cầu đang chờ → trang Cài đặt (màn hình Việc AI) hiện và cho bấm duyệt ngay trên máy (qua control.js 'approval.answer')
-  const list = () => [...pending.entries()].map(([id, p]) => ({ id, jobId: p.job.id, cls: p.d.cls, label: LABEL[p.d.cls] || 'Dùng công cụ', summary: String(p.d.summary || '').slice(0, 600), warn: p.d.warn || '', canRemember: !!p.d.canRemember, since: p.since }));
+  const list = () => [...pending.entries()].map(([id, p]) => ({ id, jobId: p.job.id, cls: p.d.cls, label: p.d.label || LABEL[p.d.cls] || 'Dùng công cụ', summary: String(p.d.summary || '').slice(0, 600), warn: p.d.warn || '', canRemember: !!p.d.canRemember, since: p.since }));
   const persist = () => { if (!snapshotFile) return; try { const f = require('fs'); const t = snapshotFile + '.tmp'; f.writeFileSync(t, JSON.stringify(list())); f.renameSync(t, snapshotFile); } catch (e) { /* bỏ qua */ } };
 
-  const header = (job, d) => '🔐 Việc #' + job.id + (job.lane === 'hook' ? ' (từ webhook)' : '') + ' xin quyền: ' + (LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
+  const header = (job, d) => '🔐 Việc #' + job.id + (job.lane === 'hook' ? ' (từ webhook)' : '') + ' xin quyền: ' + (d.label || LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
     (d.warn ? '\n\n⚠️ ' + d.warn : '');
 
   async function finish(id, allowed, remember, source, by, label) {

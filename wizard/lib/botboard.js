@@ -5,6 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { createTrace } = require('../../orchestrator/src/trace');
 const { createWatch } = require('./watch');
+const searchLib = require('../../orchestrator/src/search');
 
 // BẢNG ĐIỀU KHIỂN TỪNG BOT (Cài đặt → Bảng điều khiển bot). Chạy bằng root nên đọc được dữ liệu của MỌI bot (bot quản lý và bot thường), nhưng chỉ ĐỌC cơ sở dữ liệu:
 //  - danh sách lệnh bot đã nhận (jobs) + trạng thái + kết quả; chi tiết từng lệnh: các bước (trace), thành quả (tệp bot tạo ra), nhật ký quyền (audit)
@@ -253,11 +254,31 @@ function createBotBoard(o) {
     return Object.assign({ bot: key, rules: { keepRecent: KEEP_RECENT, compressAt: COMPRESS_AT }, book, lessons: lessonsOf(t) }, out);
   }
 
+  // ---- Ô TÌM CHUNG: tìm trong câu hỏi + câu trả lời của mọi việc (và sổ tay, bài học) của một bot, hoặc của TẤT CẢ bot (key = 'all') ----
+  function search(key, text, q) {
+    q = q || {};
+    const t = target(key);
+    return withDb(t, (db) => {
+      if (!db) return { bot: t.key, exists: false, hits: [], total: 0, terms: [], memory: [] };
+      const r = searchLib.searchJobs(db, text, { status: q.status || undefined, from: Number(q.from) || 0, to: Number(q.to) || 0, limit: q.limit, offset: q.offset, chatId: q.chat || undefined });
+      let mem = [];
+      if (!Number(q.offset)) { try { mem = searchLib.searchMemory(bookOf(t).chapters, lessonsOf(t), text, 8); } catch (e) { mem = []; } }
+      return { bot: t.key, exists: true, hits: r.hits, total: r.total, terms: r.terms, mode: r.mode, memory: mem };
+    });
+  }
+  function searchAll(text, q, agents) {
+    const keys = bots(agents).map((b) => b.key), names = new Map(bots(agents).map((b) => [b.key, b.name]));
+    const parts = keys.map((k) => { try { return search(k, text, Object.assign({}, q, { offset: 0, limit: 50 })); } catch (e) { return { bot: k, hits: [], total: 0, memory: [], error: e.message }; } });
+    const hits = [].concat(...parts.map((p) => p.hits.map((h) => Object.assign({}, h, { bot: p.bot, botName: names.get(p.bot) })))).sort((a, b) => b.at - a.at);
+    const off = Math.max(0, Number(q && q.offset) || 0), lim = Math.max(1, Math.min(50, Number(q && q.limit) || 20));
+    return { bot: 'all', exists: true, hits: hits.slice(off, off + lim), total: parts.reduce((s, p) => s + p.total, 0), terms: searchLib.terms(text), memory: [].concat(...parts.map((p) => (p.memory || []).map((m) => Object.assign({}, m, { bot: p.bot, botName: names.get(p.bot) })))).slice(0, 12) };
+  }
+
   function bots(agents) {
     return [{ key: 'main', name: 'Bot quản lý' }].concat((agents || []).map((a) => ({ key: a.id, name: a.name })));
   }
 
-  return { list, detail, requestReview, teach, forget, control, trace, traceSig, changes, archive, fileView, memory, bots, target, lessonsOf, ID_RE };
+  return { search, searchAll, list, detail, requestReview, teach, forget, control, trace, traceSig, changes, archive, fileView, memory, bots, target, lessonsOf, ID_RE };
 }
 
 module.exports = { createBotBoard, ID_RE };

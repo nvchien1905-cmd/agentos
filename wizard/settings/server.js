@@ -178,6 +178,13 @@ function createSettings(o) {
     chown: (p, user) => { try { cp.execFileSync('chown', [user + ':' + (user === 'agentos' ? 'agentos' : user), p]); } catch (e) { /* bỏ qua */ } },
   }));
   const botKey = (ctx) => String(ctx.query.get('bot') || 'main');
+  // Xưởng sáng tạo: tạo ảnh bằng AI + soạn Word/Excel/PDF/PowerPoint chỉnh bằng giao diện (wizard/lib/studio.js). Khóa API lấy từ tệp cấu hình ở mỗi lần gọi.
+  let studioInst = null;
+  const studioLib = () => studioInst || (studioInst = require('../lib/studio').createStudio({
+    dir: o.studioDir || path.join(o.boardMainDir || '/var/lib/agentos/data', 'studio'),
+    keys: () => { const text = readEnv() || ''; return apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, envVal(text, v)]))); },
+    fetch: (...a) => fetchImpl(...a), officeBin: o.officeBin, exec: o.officeExec, chown: (p) => chownAgentos(p),
+  }));
   let watchInst = null;
   const watchLib = () => watchInst || (watchInst = createWatch({ traceDir: o.traceDir || '/var/lib/agentos/data/trace', journalDir: o.journalDir || '/var/lib/agentos/data/journal', projects: projectsLib() }));
   // Trang Cài đặt chạy bằng root: dự án vừa tạo/sửa phải thuộc người dùng agentos để bộ điều phối ghi được
@@ -843,6 +850,24 @@ function createSettings(o) {
     async 'GET /api/board/trace'(b, ctx) { return boardLib().trace(botKey(ctx), ctx.query.get('id'), ctx.query.get('from')); },
     async 'GET /api/board/changes'(b, ctx) { return boardLib().changes(botKey(ctx), ctx.query.get('id')); },
     async 'GET /api/board/memory'(b, ctx) { return boardLib().memory(botKey(ctx)); },
+    // Ô tìm chung trong mọi hội thoại cũ: bot=all tìm ở tất cả bot, hoặc một bot. Tham số: q, status, days (chỉ trong N ngày gần đây), limit, offset
+    async 'GET /api/board/search'(b, ctx) {
+      const q = String(ctx.query.get('q') || '').trim(); if (!q) throw new Error('Gõ từ khóa cần tìm.'); if (q.length > 120) throw new Error('Từ khóa dài quá.');
+      const days = Number(ctx.query.get('days')) || 0; const opt = { status: ctx.query.get('status') || undefined, from: days > 0 ? Date.now() - days * 86400000 : 0, limit: ctx.query.get('limit'), offset: ctx.query.get('offset') };
+      const key = String(ctx.query.get('bot') || 'all');
+      if (key === 'all') { const l = await botsLib().list().catch(() => ({ agents: [] })); return boardLib().searchAll(q, opt, l.agents); }
+      return boardLib().search(key, q, opt);
+    },
+    async 'GET /api/studio'() { return studioLib().list(); },
+    async 'POST /api/studio/image'(b) { return studioLib().image(b || {}); },
+    async 'GET /api/studio/file'(b, ctx) { return studioLib().fileData(ctx.query.get('name') || '', ctx.query.get('download') === '1'); },
+    async 'POST /api/studio/delete'(b) { return studioLib().remove(String((b || {}).name || '')); },
+    async 'GET /api/studio/template'(b, ctx) { return { doc: studioLib().template(ctx.query.get('id') || '') }; },
+    async 'GET /api/studio/draft'(b, ctx) { return { doc: studioLib().getDraft(ctx.query.get('name') || '') }; },
+    async 'POST /api/studio/draft'(b) { return studioLib().saveDraft((b || {}).name, (b || {}).doc); },
+    async 'POST /api/studio/preview'(b) { return { html: studioLib().preview((b || {}).doc) }; },
+    async 'POST /api/studio/build'(b) { return studioLib().build((b || {}).doc, (b || {}).draft); },
+    async 'POST /api/studio/from-md'(b) { return { doc: studioLib().fromMarkdown((b || {}).md, (b || {}).type) }; },
     async 'GET /api/board/archive'(b, ctx) { return boardLib().archive(botKey(ctx), ctx.query.get('path') || ''); },
     async 'GET /api/board/file'(b, ctx) { return boardLib().fileView(botKey(ctx), ctx.query.get('path') || '', ctx.query.get('download') === '1'); },
     // ---- Màn hình "Việc AI" (xem như màn hình Claude Code): từng bước đang chạy, tệp đã đổi + khác biệt từng dòng, duyệt tệp dự án (chỉ đọc) — wizard/lib/watch.js
@@ -1042,7 +1067,8 @@ function createSettings(o) {
       let body = {};
       if (req.method === 'POST') {
         const chunks = []; let n = 0;
-        for await (const c of req) { n += c.length; if (n > 64 * 1024) return json(res, 413, { error: 'Dữ liệu quá lớn' }); chunks.push(c); }
+        const lim = /^\/api\/studio\//.test(url.pathname) ? 2 * 1024 * 1024 : 64 * 1024;       // tài liệu soạn trong Xưởng sáng tạo có thể dài
+        for await (const c of req) { n += c.length; if (n > lim) return json(res, 413, { error: 'Dữ liệu quá lớn' }); chunks.push(c); }
         try { body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}; } catch (e) { return json(res, 400, { error: 'JSON không hợp lệ' }); }
       }
       json(res, 200, await handler(body, { uid, query: url.searchParams }));

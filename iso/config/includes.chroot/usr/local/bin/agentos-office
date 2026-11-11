@@ -9,6 +9,8 @@ Dùng cho bot Telegram (/doc, /doi) và cho AI.
                                                 thay chữ trong .docx/.pptx/.xlsx giữ nguyên bố cục (mặc định lưu bản sao *-moi.*, KHÔNG ghi đè tệp gốc)
   agentos-office convert <tệp> <định dạng> [--outdir <thư mục>]
                                                 đổi định dạng bằng LibreOffice: pdf, docx, xlsx, pptx, odt, ods, odp, csv, txt, html
+  agentos-office create <docx|xlsx|pptx|pdf> <mô-tả.json> --out <tệp ra>
+                                                tạo tệp MỚI từ mô tả có cấu trúc (xem orchestrator/src/docgen.js)
   agentos-office info <tệp>                     loại tệp, kích thước, số trang tính/slide
 Tạo mới: dùng python-docx / openpyxl (có sẵn) hoặc python-pptx trong /opt/agentos/office-venv/bin/python (nếu cài được), rồi `convert` nếu cần PDF.
 """
@@ -203,6 +205,221 @@ def do_replace(path, old, new, out):
     return out, total
 
 
+# ---------- TẠO TÀI LIỆU MỚI từ mô tả JSON (orchestrator/src/docgen.js dựng mô tả) ----------
+INLINE_RE = re.compile(r'(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`|\[[^\]]+\]\(https?://[^\s)]+\))')
+IMG_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.bmp')
+
+
+def _hyperlink(par, url, text):
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    rid = par.part.relate_to(url, RT.HYPERLINK, is_external=True)
+    h = OxmlElement('w:hyperlink')
+    h.set(qn('r:id'), rid)
+    r = OxmlElement('w:r')
+    rpr = OxmlElement('w:rPr')
+    u = OxmlElement('w:u')
+    u.set(qn('w:val'), 'single')
+    c = OxmlElement('w:color')
+    c.set(qn('w:val'), '1D4ED8')
+    rpr.append(u)
+    rpr.append(c)
+    r.append(rpr)
+    t = OxmlElement('w:t')
+    t.text = text
+    r.append(t)
+    h.append(r)
+    par._p.append(h)
+
+
+def _runs(par, text):
+    for t in INLINE_RE.split(text or ''):
+        if not t:
+            continue
+        if t.startswith('**') and t.endswith('**') and len(t) > 4:
+            par.add_run(t[2:-2]).bold = True
+        elif t.startswith('`') and t.endswith('`') and len(t) > 2:
+            run = par.add_run(t[1:-1])
+            run.font.name = 'DejaVu Sans Mono'
+        elif t.startswith('*') and t.endswith('*') and len(t) > 2:
+            par.add_run(t[1:-1]).italic = True
+        elif t.startswith('['):
+            m = re.match(r'\[([^\]]+)\]\((https?://[^\s)]+)\)', t)
+            if m:
+                _hyperlink(par, m.group(2), m.group(1))
+            else:
+                par.add_run(t)
+        else:
+            par.add_run(t)
+
+
+def _shade(cell, color):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    tcpr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), color)
+    tcpr.append(shd)
+
+
+def create_docx(spec, out):
+    try:
+        import docx
+        from docx.shared import Pt, Inches, Mm, RGBColor
+    except ImportError:
+        die('Máy chưa có python-docx (gói python3-docx).')
+    d = docx.Document()
+    theme = spec.get('theme') or 'bao-cao'
+    st = d.styles['Normal']
+    st.font.name = 'Caladea' if theme == 'thu' else 'Carlito'
+    st.font.size = Pt(12 if theme == 'thu' else 11)
+    for s in d.sections:
+        s.page_width = Mm(210)
+        s.page_height = Mm(297)
+        s.left_margin = s.right_margin = Mm(22)
+        s.top_margin = s.bottom_margin = Mm(20)
+    d.add_heading(spec.get('title') or 'Tài liệu', 0)
+    meta = ' · '.join([x for x in (spec.get('subtitle'), spec.get('author'), spec.get('date')) if x])
+    if meta:
+        p = d.add_paragraph()
+        r = p.add_run(meta)
+        r.italic = True
+        r.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+    for b in spec.get('blocks') or []:
+        t = b.get('t')
+        if t in ('h1', 'h2', 'h3'):
+            d.add_heading(b.get('text') or '', int(t[1]))
+        elif t == 'p':
+            for chunk in (b.get('text') or '').split('\n'):
+                _runs(d.add_paragraph(), chunk)
+        elif t == 'quote':
+            p = d.add_paragraph(style='Intense Quote')
+            _runs(p, b.get('text') or '')
+        elif t == 'code':
+            p = d.add_paragraph()
+            run = p.add_run(b.get('text') or '')
+            run.font.name = 'DejaVu Sans Mono'
+            run.font.size = Pt(9.5)
+        elif t in ('ul', 'ol'):
+            for it in b.get('items') or []:
+                _runs(d.add_paragraph(style='List Bullet' if t == 'ul' else 'List Number'), it)
+        elif t == 'table':
+            rows = b.get('rows') or []
+            tb = d.add_table(rows=len(rows), cols=len(rows[0]))
+            tb.style = 'Table Grid'
+            for i, row in enumerate(rows):
+                for j, val in enumerate(row):
+                    cell = tb.cell(i, j)
+                    cell.text = ''
+                    _runs(cell.paragraphs[0], str(val))
+                    if i == 0 and b.get('header', True):
+                        _shade(cell, '2563EB')
+                        for r in cell.paragraphs[0].runs:
+                            r.bold = True
+                            r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+            d.add_paragraph()
+        elif t == 'img':
+            pth = b.get('path') or ''
+            if os.path.isfile(pth) and pth.lower().endswith(IMG_EXT):
+                d.add_picture(pth, width=Inches(6))
+                if b.get('caption'):
+                    c = d.add_paragraph(b['caption'])
+                    c.runs[0].italic = True
+        elif t == 'pagebreak':
+            d.add_page_break()
+    d.save(out)
+
+
+def create_xlsx(spec, out):
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        die('Máy chưa có openpyxl (gói python3-openpyxl).')
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for sh in spec.get('sheets') or []:
+        ws = wb.create_sheet((sh.get('name') or 'Trang')[:31])
+        rows = sh.get('rows') or []
+        for row in rows:
+            ws.append(row)
+        widths = {}
+        for r in ws.iter_rows():
+            for c in r:
+                if c.value is not None:
+                    widths[c.column] = max(widths.get(c.column, 0), min(60, len(str(c.value))))
+                    c.alignment = Alignment(vertical='top', wrap_text=True)
+        for col, w in widths.items():
+            ws.column_dimensions[get_column_letter(col)].width = max(8, w + 2)
+        if rows and sh.get('header', True):
+            for c in ws[1]:
+                c.font = Font(bold=True, color='FFFFFF')
+                c.fill = PatternFill('solid', fgColor='2563EB')
+            ws.freeze_panes = 'A2'
+            if ws.max_column and ws.max_row > 1:
+                ws.auto_filter.ref = ws.dimensions
+    if not wb.sheetnames:
+        wb.create_sheet('Trang 1')
+    wb.save(out)
+
+
+def create_pptx(spec, out):
+    try:
+        from pptx import Presentation
+    except ImportError:
+        venv = '/opt/agentos/office-venv/bin/python'
+        if os.path.exists(venv) and os.environ.get('AGENTOS_OFFICE_REEXEC') != '1':
+            os.environ['AGENTOS_OFFICE_REEXEC'] = '1'
+            os.execv(venv, [venv] + sys.argv)
+        die('Máy chưa có python-pptx nên chưa tạo được PowerPoint. Tạo Word hoặc PDF thay, hoặc cài: pip install python-pptx.')
+    prs = Presentation()
+    s0 = prs.slides.add_slide(prs.slide_layouts[0])
+    s0.shapes.title.text = spec.get('title') or 'Bài trình bày'
+    if len(s0.placeholders) > 1:
+        s0.placeholders[1].text = ' · '.join([x for x in (spec.get('subtitle'), spec.get('author'), spec.get('date')) if x])
+    for sl in spec.get('slides') or []:
+        s = prs.slides.add_slide(prs.slide_layouts[1])
+        s.shapes.title.text = sl.get('title') or ''
+        body = s.placeholders[1].text_frame
+        body.clear()
+        for i, b in enumerate(sl.get('bullets') or []):
+            para = body.paragraphs[0] if i == 0 else body.add_paragraph()
+            para.text = b
+        if sl.get('notes'):
+            s.notes_slide.notes_text_frame.text = sl['notes']
+    prs.save(out)
+
+
+def create_any(kind, spec_path, out):
+    import json
+    with open(spec_path, encoding='utf-8') as f:
+        spec = json.load(f)
+    out = os.path.abspath(out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    if kind == 'docx':
+        create_docx(spec, out)
+    elif kind == 'xlsx':
+        create_xlsx(spec, out)
+    elif kind == 'pptx':
+        create_pptx(spec, out)
+    elif kind == 'pdf':
+        tmpd = tempfile.mkdtemp(prefix='mk-pdf-')
+        try:
+            tmp = os.path.join(tmpd, 'tai-lieu.docx')
+            create_docx(spec, tmp)
+            made = soffice_convert(tmp, 'pdf', tmpd)
+            shutil.move(made, out)
+        finally:
+            shutil.rmtree(tmpd, ignore_errors=True)
+    else:
+        die('Loại tạo mới: docx, xlsx, pptx, pdf (không phải %s).' % kind)
+    print(out)
+
+
 def main(argv):
     if len(argv) < 2 or argv[1] in ('-h', '--help', 'help'):
         sys.stdout.write(__doc__)
@@ -219,6 +436,11 @@ def main(argv):
         else:
             pos.append(args[i])
             i += 1
+    if cmd == 'create':
+        if len(pos) < 2 or '--out' not in opt:
+            die('Cách dùng: create <docx|xlsx|pptx|pdf> <mô-tả.json> --out <tệp ra>')
+        create_any(pos[0], pos[1], opt['--out'])
+        return 0
     if not pos:
         die('Thiếu đường dẫn tệp.')
     path = os.path.abspath(pos[0])

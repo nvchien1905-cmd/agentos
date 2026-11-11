@@ -11,6 +11,10 @@ const BROWSE_WEB = new Set(['WebFetch', 'WebSearch']);
 // Thao tác chỉ xem của Playwright MCP; mọi thao tác khác của trình duyệt (bấm, gõ, chạy script, tải file lên...) là "interact".
 const BROWSE_ACTIONS = /^browser_(navigate|navigate_back|snapshot|take_screenshot|tabs|wait_for|console_messages|network_requests|resize|close)$/;
 
+// Điều khiển màn hình máy (desk-mcp.js): chỉ XEM (chụp, đọc chữ, liệt kê cửa sổ) thì tự cho phép; mọi thao tác (bấm, gõ, phím, cuộn, kéo, mở ứng dụng) hỏi chủ máy, bấm "cho phép cả việc này" thì cho cả nhóm công cụ màn hình trong việc đó.
+const DESK_OBSERVE = /^screen_(screenshot|info|windows|find|clipboard_get|wait)$/;
+const DESK_ALL = 'mcp__desk__*';
+const isDesk = (tool) => /^mcp__desk__/.test(tool);
 const LABEL = { exec: 'Chạy lệnh', write: 'Ghi/sửa file', interact: 'Thao tác trên trang web', browse: 'Xem web', other: 'Dùng công cụ', read: 'Đọc file' };
 
 // File chứa khóa/token/dữ liệu hệ thống: AI không bao giờ được đọc hay ghi, kể cả khi người dùng bấm cho phép.
@@ -45,6 +49,7 @@ function classify(tool, input) {
   const mcp = parseMcp(tool);
   if (mcp && mcp.server === 'agentos_todo') return 'read';                  // chỉ ghi danh sách việc cần làm, không đụng gì khác
   if (mcp && /^browser/.test(mcp.server)) return BROWSE_ACTIONS.test(mcp.name) ? 'browse' : 'interact';
+  if (mcp && mcp.server === 'desk') return DESK_OBSERVE.test(mcp.name) ? 'browse' : 'interact';
   return 'other';
 }
 
@@ -52,6 +57,7 @@ function summarize(tool, input, cls) {
   input = input || {};
   if (cls === 'exec') return trunc(input.command, 400);
   if (cls === 'write') return trunc(input.file_path || input.notebook_path || '', 300);
+  if (isDesk(tool)) return trunc(tool.replace(/^mcp__desk__screen_/, '') + ': ' + Object.keys(input).filter((k) => k !== 'screenshot').map((k) => k + '=' + JSON.stringify(input[k])).join(' '), 400);
   const url = input.url || input.query;
   const bits = [url, input.element, input.text, input.ref, input.function, input.key].filter(Boolean);
   const name = (parseMcp(tool) || {}).name || tool;
@@ -102,6 +108,7 @@ function decide(ctx) {
   const tool = ctx.tool, input = ctx.input || {}, pol = ctx.policy || {}, state = ctx.state || { tainted: false, allowed: new Set() };
   const cls = classify(tool, input);
   const out = { action: 'ask', cls, summary: summarize(tool, input, cls), reason: '', warn: '', taint: false, canRemember: false };
+  if (isDesk(tool)) out.label = 'Điều khiển màn hình máy';
   const deny = (reason) => Object.assign(out, { action: 'deny', reason });
 
   // 1. Cấm cứng
@@ -141,7 +148,7 @@ function decide(ctx) {
   }
   if (matches(pol.ask, tool)) return finishAsk(out, cls, tainted);
   // "Cho phép cả việc này" chỉ có hiệu lực với thao tác trình duyệt; lệnh và ghi file luôn hỏi từng lần.
-  if (cls === 'interact' && state.allowed && state.allowed.has(tool)) return Object.assign(out, { action: 'allow', taint: true });
+  if (cls === 'interact' && state.allowed && (state.allowed.has(tool) || (isDesk(tool) && state.allowed.has(DESK_ALL)))) return Object.assign(out, { action: 'allow', taint: true });
   if (cls === 'exec') {
     const cmd = String(input.command || '').trim();
     const safe = !tainted && !SHELL_META.test(cmd) && (pol.allowExec || []).some((r) => { try { return new RegExp(r).test(cmd); } catch (e) { return false; } });
@@ -205,4 +212,4 @@ function finishAsk(out, cls, tainted) {
   return out;
 }
 
-module.exports = { decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };
+module.exports = { DESK_OBSERVE, DESK_ALL, isDesk, decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };

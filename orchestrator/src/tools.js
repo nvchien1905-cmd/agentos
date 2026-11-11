@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { withBuiltins } = require('./builtins');
 
 // Lệnh Telegram đã dùng, không được đặt tên profile trùng.
 const RESERVED = new Set(['claude', 'codex', 'gemini', 'deepseekapi', 'start', 'help', 'id', 'moi', 'trangthai', 'viec', 'huy', 'nhatky', 'toanquyen', 'baove', 'manhinh', 'cuaso', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'deepseek', 'doanhso', 'ton', 'onedrive', 'baocao', 'hen', 'tailscale', 'in', 'capnhat', 'nho', 'quen', 'trinho', 'hoantac', 'khoiphuc', 'dichvu', 'kynang', 'skill', 'cho', 'plugin']);
@@ -26,7 +27,7 @@ function loadTools({ file, vars, fallbackAllow }) {
   let raw = null;
   if (file) raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!raw) raw = { servers: {}, profiles: { chung: { description: 'Chỉ đọc', allow: splitList(fallbackAllow) } }, default: 'chung' };
-  raw = subst(raw, vars || {});
+  raw = subst(withBuiltins(raw), vars || {});
 
   const servers = raw.servers || {};
   const profiles = {};

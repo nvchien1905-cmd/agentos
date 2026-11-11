@@ -23,7 +23,7 @@ function fmtTime(ms) {
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
 // `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, outboxPrepare, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget, perChat, exclusiveProfiles, lessons }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, outboxPrepare, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget, perChat, exclusiveProfiles, lessons, postProcess }) {
   lanes = lanes && lanes.length ? lanes : ['main'];
   const isMain = lanes.length === 1 && lanes[0] === 'main';
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
@@ -239,8 +239,11 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
 
     const tag = 'Việc #' + job.id + (used !== order[0] ? ' (' + name(used) + ')' : '');
     if (res.ok) {
+      // Xử lý sau cho việc đặc biệt (nghiên cứu sâu: kiểm trích dẫn + xuất tệp; /ve, /taodoc: dựng ảnh/tài liệu). Lỗi ở đây không làm hỏng việc: gửi nguyên câu trả lời của AI.
+      let shown = res.text;
+      if (postProcess) { try { const pp = await postProcess(job, res); if (pp && pp.text) shown = pp.text; } catch (e) { log('xử lý sau việc #' + job.id + ' lỗi: ' + e.message); } }
       db.finishJob(job.id, 'done', { result: res.text, sessionId: res.sessionId, costUsd: res.costUsd });
-      const body = (res.text || '(không có nội dung trả về)') + loginNote(res.text);
+      const body = (shown || '(không có nội dung trả về)') + loginNote(res.text);
       if (answer) {
         try { await answer(job, body, { engine: used, primary: order[0], name: name(used), secs: meta.secs, steps: meta.steps }); }
         catch (e) { log('gửi câu trả lời đẹp lỗi: ' + e.message); await safeNotify(job.chat_id, tag + ' xong:\n' + body); }

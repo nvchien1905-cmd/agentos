@@ -26,7 +26,7 @@ input,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-r
 #toast{position:fixed;right:18px;bottom:18px;background:#17202b;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:10;max-width:60vw}
 table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px solid var(--line)}
 .wg{display:grid;grid-template-columns:290px 1fr;gap:14px;align-items:start}.wl{max-height:82vh;overflow:auto}.wm{min-width:0}
-.wi{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer}.wi:hover{background:#f4f8fb}.wi.on{border-color:var(--pri);background:#eef6fc}
+mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}.wi{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer}.wi:hover{background:#f4f8fb}.wi.on{border-color:var(--pri);background:#eef6fc}
 .wp{font-size:12.5px;color:var(--mute);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wrun{color:#1fa34a;font-weight:600}
 .wtabs{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}.wtabs button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
 .wtodo{background:#f3f7fb;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:10px}.wtodo div{padding:2px 0}.wtodo .completed{color:var(--mute);text-decoration:line-through}.wtodo .in_progress{font-weight:600}
@@ -46,7 +46,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['studio', '🎨', 'Xưởng sáng tạo'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -694,6 +694,167 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       }).catch(function (e) { if (alive()) el('cn-body').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
     },
     // ----- Màn hình AI: xem AI đang làm gì từng bước, tệp đã đổi (khác biệt từng dòng) và tệp dự án — như màn hình Claude Code -----
+    // ===== Xưởng sáng tạo: tạo ảnh bằng AI + soạn Word / Excel / PDF / PowerPoint chỉnh bằng giao diện =====
+    studio: function () {
+      var S = null, sub = 'img', doc = null, draft = null, sel = null, thumbs = {}, busy = false;
+      var BT = { h1: 'Tiêu đề lớn', h2: 'Tiêu đề vừa', h3: 'Tiêu đề nhỏ', p: 'Đoạn văn', ul: 'Danh sách chấm', ol: 'Danh sách số', table: 'Bảng', quote: 'Trích dẫn', code: 'Mã / chữ đều', img: 'Ảnh', pagebreak: 'Ngắt trang' };
+      function alive() { return cur === 'studio' && document.getElementById('sb-root'); }
+      function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+      function when(ms) { return ms ? new Date(Number(ms)).toLocaleString('vi-VN') : ''; }
+      function size(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B'; }
+      function download(name) {
+        api('GET', 'studio/file?name=' + encodeURIComponent(name) + '&download=1').then(function (r) {
+          var bin = atob(r.base64), u8 = new Uint8Array(bin.length), i; for (i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+          var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([u8])); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        }).catch(fail);
+      }
+      function load() { return api('GET', 'studio').then(function (r) { S = r; if (alive()) draw(); }).catch(fail); }
+      function refresh() { return api('GET', 'studio').then(function (r) { S = r; }).catch(fail); }          // cập nhật danh sách mà KHÔNG vẽ lại màn hình đang soạn (giữ bản xem trước / kết quả tạo tệp)
+      function frame() {
+        set('<div id="sb-root"><h2>🎨 Xưởng sáng tạo</h2><div class="row" style="margin-bottom:10px"><button class="b" data-sub="img">🖼 Tạo ảnh</button><button class="b" data-sub="doc">📄 Soạn tài liệu</button></div><div id="sb-body"><p class="mute">Đang tải...</p></div></div>');
+        [].forEach.call(main.querySelectorAll('button[data-sub]'), function (b) { b.onclick = function () { if (sub === 'doc') collect(); sub = b.getAttribute('data-sub'); draw(); }; });
+        load();
+      }
+      function draw() {
+        [].forEach.call(main.querySelectorAll('button[data-sub]'), function (b) { b.disabled = false; b.className = 'b' + (b.getAttribute('data-sub') === sub ? ' p' : ''); });
+        if (sub === 'img') drawImg(); else drawDoc();
+      }
+
+      // ---------- ẢNH ----------
+      function drawImg() {
+        var b = document.getElementById('sb-body'); if (!b || !S) return;
+        var ready = S.providers.filter(function (p) { return p.ready; });
+        var h = '<div class="card"><h3 style="margin:0 0 6px">Tạo ảnh mới</h3>';
+        if (!ready.length) h += '<p class="warn">Chưa có khóa API tạo ảnh. Thêm khóa <b>Google Gemini</b> hoặc <b>OpenAI</b> ở mục 🤖 AI và khóa API. Chưa có khóa thì nhắn bot <b>/ve &lt;mô tả&gt;</b> để AI vẽ bằng mã (poster, sơ đồ, biểu đồ) — không cần khóa.</p>';
+        h += '<textarea id="sb-prompt" rows="3" style="width:100%" placeholder="Mô tả ảnh cần tạo. Ví dụ: Poster khuyến mại nồi chiên không dầu, nền đỏ cam, chữ GIẢM 30% thật to"></textarea>' +
+          '<div class="row" style="margin-top:8px"><label>Khung <select id="sb-size">' + S.sizes.map(function (z) { return '<option value="' + esc(z.id) + '">' + esc(z.label) + '</option>'; }).join('') + '</select></label>' +
+          '<label>Dùng <select id="sb-prov"><option value="auto">Tự chọn</option>' + ready.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.label) + '</option>'; }).join('') + '</select></label>' +
+          '<button class="b p" id="sb-gen"' + (ready.length ? '' : ' disabled') + '>🎨 Tạo ảnh</button><span class="mute" id="sb-st"></span></div></div>';
+        if (sel) h += '<div class="card"><h3 style="margin:0 0 6px">' + esc(sel) + '</h3><div id="sb-big"><p class="mute">Đang tải ảnh...</p></div><div class="row" style="margin-top:8px"><button class="b" id="sb-dl">⬇ Tải về</button><button class="b" id="sb-ins">📄 Chèn vào tài liệu đang soạn</button><button class="b d" id="sb-del">🗑 Xóa</button><button class="b" id="sb-close">Đóng</button></div>' +
+          '<h4 style="margin:12px 0 4px">Chỉnh ảnh này</h4><p class="mute" style="margin:0 0 6px">' + (S.providers.some(function (p) { return p.ready && p.edit; }) ? 'Nói điều cần đổi, AI sẽ sửa trên chính ảnh này (giữ phần còn lại).' : 'Sửa ảnh theo lời nhắn cần khóa Google Gemini.') + '</p>' +
+          '<div class="row"><input type="text" id="sb-edit" class="grow" placeholder="Ví dụ: đổi nền sang màu xanh, bỏ chữ ở góc phải"><button class="b p" id="sb-editgo">Sửa</button></div></div>';
+        h += '<div class="card"><h3 style="margin:0 0 6px">Ảnh đã tạo (' + S.images.length + ')</h3>' + (S.images.length ? '<div style="display:flex;flex-wrap:wrap;gap:8px" id="sb-gal">' + S.images.slice(0, 24).map(function (f) { return '<div class="wi' + (f.name === sel ? ' on' : '') + '" data-img="' + esc(f.name) + '" style="width:150px;text-align:center"><div style="height:110px;display:flex;align-items:center;justify-content:center;overflow:hidden"><img data-th="' + esc(f.name) + '" style="max-width:100%;max-height:110px" alt=""></div><small class="mute">' + esc(when(f.at)) + '</small></div>'; }).join('') + '</div>' : '<p class="mute">Chưa có ảnh nào. Ảnh tạo bằng lệnh /anh trên Telegram cũng hiện ở đây.</p>') + '</div>';
+        b.innerHTML = h;
+        on('sb-gen', genImage);
+        [].forEach.call(b.querySelectorAll('[data-img]'), function (d) { d.onclick = function () { sel = d.getAttribute('data-img'); drawImg(); }; });
+        [].forEach.call(b.querySelectorAll('img[data-th]'), function (im) { loadThumb(im); });
+        if (sel) {
+          loadThumb(null, sel, function (u) { var e = document.getElementById('sb-big'); if (e) e.innerHTML = '<img src="' + u + '" style="max-width:100%;max-height:520px" alt="">'; });
+          on('sb-dl', function () { download(sel); }); on('sb-close', function () { sel = null; drawImg(); });
+          on('sb-del', function () { if (!ask('Xóa ảnh này?')) return; api('POST', 'studio/delete', { name: sel }).then(function () { sel = null; return load(); }).catch(fail); });
+          on('sb-ins', function () { if (!doc) doc = newDoc(); doc.blocks.push({ t: 'img', path: sel, caption: '' }); sub = 'doc'; toast('Đã chèn vào tài liệu đang soạn'); draw(); });
+          on('sb-editgo', function () { var t = val('sb-edit').trim(); if (!t) return toast('Gõ điều cần đổi', true); run({ prompt: t, editOf: sel, size: 'vuong', provider: 'auto' }); });
+        }
+      }
+      function loadThumb(im, name, cb) {
+        name = name || im.getAttribute('data-th');
+        function put(u) { if (cb) cb(u); else if (im) im.src = u; }
+        if (thumbs[name]) return put(thumbs[name]);
+        api('GET', 'studio/file?name=' + encodeURIComponent(name)).then(function (r) { thumbs[name] = r.dataUrl; put(r.dataUrl); }).catch(function () { /* bỏ qua ảnh hỏng */ });
+      }
+      function genImage() { var t = val('sb-prompt').trim(); if (!t) return toast('Gõ mô tả ảnh trước', true); run({ prompt: t, size: val('sb-size'), provider: val('sb-prov') }); }
+      function run(body) {
+        if (busy) return; busy = true; var st = document.getElementById('sb-st'); if (st) st.textContent = ' Đang tạo ảnh (10-40 giây)...';
+        [].forEach.call(main.querySelectorAll('button'), function (x) { x.disabled = true; });
+        api('POST', 'studio/image', body).then(function (r) { busy = false; sel = r.name; toast('Đã ' + (r.edited ? 'sửa' : 'tạo') + ' ảnh bằng ' + r.provider); return load(); }).catch(function (e) { busy = false; fail(e); if (alive()) draw(); });
+      }
+
+      // ---------- TÀI LIỆU ----------
+      function newDoc() { return { type: 'docx', theme: 'bao-cao', title: 'Tài liệu mới', subtitle: '', author: '', date: '', blocks: [{ t: 'h2', text: 'Mục 1' }, { t: 'p', text: '' }], sheets: [], slides: [] }; }
+      function fix(d) { d.blocks = d.blocks || []; d.sheets = d.sheets || []; d.slides = d.slides || []; d.theme = d.theme || 'bao-cao'; d.subtitle = d.subtitle || ''; d.author = d.author || ''; d.date = d.date || ''; return d; }
+      function lines(a) { return (a || []).join('\n'); }
+      function unlines(s) { return String(s || '').split('\n').map(function (x) { return x.replace(/\s+$/, ''); }).filter(function (x) { return x.trim() !== ''; }); }
+      function rowsToText(rows) { return (rows || []).map(function (r) { return r.join(' | '); }).join('\n'); }
+      function textToRows(s) { return String(s || '').split('\n').filter(function (x) { return x.trim() !== ''; }).map(function (l) { return l.split('|').map(function (c) { c = c.trim(); return /^-?\d+(\.\d+)?$/.test(c) ? Number(c) : c; }); }); }
+      // Đọc lại mọi ô nhập trên màn hình vào doc
+      function collect() {
+        if (!doc || !document.getElementById('sb-meta')) return;
+        doc.type = val('sb-type') || doc.type; doc.theme = val('sb-theme') || doc.theme; doc.title = val('sb-title'); doc.subtitle = val('sb-sub'); doc.author = val('sb-author'); doc.date = val('sb-date');
+        [].forEach.call(document.querySelectorAll('.sb-blk'), function (d) {
+          var i = Number(d.getAttribute('data-i')), b = doc.blocks[i]; if (!b) return;
+          var t = d.querySelector('.sb-txt'), c = d.querySelector('.sb-cap'), hd = d.querySelector('.sb-hdr');
+          if (b.t === 'ul' || b.t === 'ol') b.items = unlines(t.value);
+          else if (b.t === 'table') { b.rows = textToRows(t.value).map(function (r) { return r.map(String); }); b.header = hd ? hd.checked : true; }
+          else if (b.t === 'img') { b.path = t.value.trim(); b.caption = c ? c.value : ''; }
+          else if (b.t !== 'pagebreak') b.text = t.value;
+        });
+        [].forEach.call(document.querySelectorAll('.sb-sheet'), function (d) {
+          var i = Number(d.getAttribute('data-i')), s = doc.sheets[i]; if (!s) return;
+          s.name = d.querySelector('.sb-sname').value; s.rows = textToRows(d.querySelector('.sb-srows').value); s.header = d.querySelector('.sb-shdr').checked;
+        });
+        [].forEach.call(document.querySelectorAll('.sb-slide'), function (d) {
+          var i = Number(d.getAttribute('data-i')), s = doc.slides[i]; if (!s) return;
+          s.title = d.querySelector('.sb-ltitle').value; s.bullets = unlines(d.querySelector('.sb-lbul').value); s.notes = d.querySelector('.sb-lnote').value;
+        });
+      }
+      function blockHtml(b, i, n) {
+        var h = '<div class="sb-blk wi" data-i="' + i + '" style="cursor:default"><div class="row" style="margin-bottom:4px"><b class="grow">' + esc(BT[b.t] || b.t) + '</b>' +
+          '<button class="b" data-mv="' + i + ':-1"' + (i === 0 ? ' disabled' : '') + '>↑</button><button class="b" data-mv="' + i + ':1"' + (i === n - 1 ? ' disabled' : '') + '>↓</button><button class="b d" data-rm="' + i + '">✕</button></div>';
+        if (b.t === 'pagebreak') return h + '<small class="mute">Từ đây sang trang mới.</small></div>';
+        if (b.t === 'ul' || b.t === 'ol') return h + '<textarea class="sb-txt" rows="4" style="width:100%" placeholder="Mỗi dòng một ý">' + esc(lines(b.items)) + '</textarea></div>';
+        if (b.t === 'table') return h + '<textarea class="sb-txt" rows="5" style="width:100%;font-family:monospace" placeholder="Mỗi dòng một hàng, các ô cách nhau dấu |">' + esc(rowsToText(b.rows)) + '</textarea><label><input type="checkbox" class="sb-hdr"' + (b.header !== false ? ' checked' : '') + '> Hàng đầu là tiêu đề cột</label></div>';
+        if (b.t === 'img') return h + '<div class="row"><select class="sb-txt grow"><option value="">— chọn ảnh trong xưởng —</option>' + (S ? S.images : []).map(function (f) { return '<option value="' + esc(f.name) + '"' + (f.name === b.path ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join('') + '</select></div><input type="text" class="sb-cap" style="width:100%;margin-top:6px" placeholder="Chú thích (không bắt buộc)" value="' + esc(b.caption || '') + '"></div>';
+        return h + '<textarea class="sb-txt" rows="' + (b.t === 'p' || b.t === 'quote' || b.t === 'code' ? 4 : 1) + '" style="width:100%' + (b.t === 'code' ? ';font-family:monospace' : '') + '">' + esc(b.text || '') + '</textarea></div>';
+      }
+      function drawDoc() {
+        var b = document.getElementById('sb-body'); if (!b || !S) return;
+        if (!doc) {
+          b.innerHTML = '<div class="card"><h3 style="margin:0 0 6px">Bắt đầu</h3><div class="row"><button class="b p" id="sb-new">＋ Tài liệu trống</button></div>' +
+            '<p class="mute" style="margin:10px 0 4px">Hoặc chọn mẫu có sẵn:</p><div class="row">' + S.templates.map(function (t) { return '<button class="b" data-tpl="' + esc(t.id) + '">' + esc(t.label) + '</button>'; }).join('') + '</div></div>' +
+            '<div class="card"><h3 style="margin:0 0 6px">Bản nháp đã lưu (' + S.drafts.length + ')</h3>' + (S.drafts.length ? S.drafts.map(function (d) { return '<div class="wi" data-draft="' + esc(d.name) + '"><b>' + esc(d.title) + '</b> <small class="mute">' + esc(d.type) + ' · ' + esc(when(d.at)) + '</small> <button class="b d" data-deldraft="' + esc(d.name) + '" style="float:right">Xóa</button></div>'; }).join('') : '<p class="mute">Chưa có bản nháp. Nhắn bot <b>/taodoc &lt;mô tả&gt;</b> để AI soạn, bản nháp sẽ hiện ở đây để anh chỉnh tiếp.</p>') + '</div>' +
+            filesCard();
+          on('sb-new', function () { doc = newDoc(); draft = null; drawDoc(); });
+          [].forEach.call(b.querySelectorAll('[data-tpl]'), function (x) { x.onclick = function () { api('GET', 'studio/template?id=' + x.getAttribute('data-tpl')).then(function (r) { doc = fix(r.doc); draft = null; drawDoc(); }).catch(fail); }; });
+          [].forEach.call(b.querySelectorAll('[data-draft]'), function (x) { x.onclick = function () { api('GET', 'studio/draft?name=' + encodeURIComponent(x.getAttribute('data-draft'))).then(function (r) { doc = fix(r.doc); draft = x.getAttribute('data-draft'); drawDoc(); }).catch(fail); }; });
+          [].forEach.call(b.querySelectorAll('[data-deldraft]'), function (x) { x.onclick = function (ev) { ev.stopPropagation(); if (!ask('Xóa bản nháp này?')) return; api('POST', 'studio/delete', { name: x.getAttribute('data-deldraft') }).then(load).catch(fail); }; });
+          bindFiles(b); return;
+        }
+        var d = doc, isX = d.type === 'xlsx', isP = d.type === 'pptx';
+        var h = '<div class="card" id="sb-meta"><div class="row"><label>Loại <select id="sb-type">' + S.types.map(function (t) { return '<option value="' + t[0] + '"' + (t[0] === d.type ? ' selected' : '') + '>' + esc(t[1]) + '</option>'; }).join('') + '</select></label>' +
+          '<label>Giao diện <select id="sb-theme"><option value="bao-cao"' + (d.theme === 'bao-cao' ? ' selected' : '') + '>Báo cáo (xanh)</option><option value="thu"' + (d.theme === 'thu' ? ' selected' : '') + '>Thư / công văn (chữ có chân)</option><option value="toi-gian"' + (d.theme === 'toi-gian' ? ' selected' : '') + '>Tối giản</option></select></label></div>' +
+          '<div class="row" style="margin-top:8px"><input type="text" id="sb-title" class="grow" placeholder="Tiêu đề" value="' + esc(d.title) + '"></div>' +
+          '<div class="row" style="margin-top:6px"><input type="text" id="sb-sub" placeholder="Phụ đề" value="' + esc(d.subtitle) + '" class="grow"><input type="text" id="sb-author" placeholder="Tác giả" value="' + esc(d.author) + '"><input type="text" id="sb-date" placeholder="Ngày" value="' + esc(d.date) + '" style="width:130px"></div></div>';
+        if (isX) {
+          d.sheets.forEach(function (s, i) { h += '<div class="card sb-sheet" data-i="' + i + '"><div class="row"><b>Trang tính ' + (i + 1) + '</b><input type="text" class="sb-sname grow" value="' + esc(s.name) + '"><label><input type="checkbox" class="sb-shdr"' + (s.header !== false ? ' checked' : '') + '> Hàng đầu là tiêu đề</label><button class="b d" data-rms="' + i + '">✕</button></div><textarea class="sb-srows" rows="9" style="width:100%;font-family:monospace;margin-top:6px" placeholder="Mỗi dòng một hàng, các ô cách nhau dấu |. Công thức bắt đầu bằng =">' + esc(rowsToText(s.rows)) + '</textarea></div>'; });
+          h += '<div class="row"><button class="b" id="sb-addsheet">＋ Thêm trang tính</button></div>';
+        } else if (isP) {
+          d.slides.forEach(function (s, i) { h += '<div class="card sb-slide" data-i="' + i + '"><div class="row"><b>Slide ' + (i + 1) + '</b><input type="text" class="sb-ltitle grow" value="' + esc(s.title) + '" placeholder="Tiêu đề slide"><button class="b d" data-rml="' + i + '">✕</button></div><textarea class="sb-lbul" rows="5" style="width:100%;margin-top:6px" placeholder="Mỗi dòng một ý">' + esc(lines(s.bullets)) + '</textarea><input type="text" class="sb-lnote" style="width:100%;margin-top:6px" placeholder="Ghi chú cho người trình bày" value="' + esc(s.notes || '') + '"></div>'; });
+          h += '<div class="row"><button class="b" id="sb-addslide">＋ Thêm slide</button></div>';
+        } else {
+          h += '<div id="sb-blocks">' + d.blocks.map(function (x, i) { return blockHtml(x, i, d.blocks.length); }).join('') + '</div><div class="row"><select id="sb-addtype">' + Object.keys(BT).map(function (k) { return '<option value="' + k + '">' + esc(BT[k]) + '</option>'; }).join('') + '</select><button class="b" id="sb-add">＋ Thêm khối</button></div>' +
+            '<details style="margin-top:10px"><summary class="mute">Dán văn bản Markdown (từ AI hoặc nơi khác) để chuyển thành các khối</summary><textarea id="sb-md" rows="6" style="width:100%;margin-top:6px" placeholder="# Tiêu đề&#10;## Mục&#10;Đoạn văn&#10;- ý 1&#10;- ý 2"></textarea><div class="row"><button class="b" id="sb-mdgo">Chuyển thành khối (thay nội dung hiện tại)</button></div></details>';
+        }
+        h += '<div class="row" style="margin-top:12px"><button class="b" id="sb-prev">👁 Xem trước</button><button class="b" id="sb-save">💾 Lưu bản nháp</button><button class="b p" id="sb-build">📄 Tạo tệp ' + esc(d.type.toUpperCase()) + '</button><button class="b" id="sb-back">← Danh sách</button></div><div id="sb-out"></div>';
+        b.innerHTML = h;
+        [].forEach.call(b.querySelectorAll('[data-mv]'), function (x) { x.onclick = function () { collect(); var p = x.getAttribute('data-mv').split(':'), i = Number(p[0]), j = i + Number(p[1]), t = doc.blocks[i]; doc.blocks[i] = doc.blocks[j]; doc.blocks[j] = t; drawDoc(); }; });
+        [].forEach.call(b.querySelectorAll('[data-rm]'), function (x) { x.onclick = function () { collect(); doc.blocks.splice(Number(x.getAttribute('data-rm')), 1); drawDoc(); }; });
+        [].forEach.call(b.querySelectorAll('[data-rms]'), function (x) { x.onclick = function () { collect(); doc.sheets.splice(Number(x.getAttribute('data-rms')), 1); drawDoc(); }; });
+        [].forEach.call(b.querySelectorAll('[data-rml]'), function (x) { x.onclick = function () { collect(); doc.slides.splice(Number(x.getAttribute('data-rml')), 1); drawDoc(); }; });
+        on('sb-add', function () { collect(); var t = val('sb-addtype'); doc.blocks.push(t === 'ul' || t === 'ol' ? { t: t, items: [''] } : t === 'table' ? { t: 'table', header: true, rows: [['Cột 1', 'Cột 2'], ['', '']] } : t === 'img' ? { t: 'img', path: '', caption: '' } : t === 'pagebreak' ? { t: 'pagebreak' } : { t: t, text: '' }); drawDoc(); });
+        on('sb-addsheet', function () { collect(); doc.sheets.push({ name: 'Trang ' + (doc.sheets.length + 1), header: true, rows: [['Cột A', 'Cột B'], ['', '']] }); drawDoc(); });
+        on('sb-addslide', function () { collect(); doc.slides.push({ title: 'Slide mới', bullets: [''], notes: '' }); drawDoc(); });
+        var ty = document.getElementById('sb-type'); if (ty) ty.onchange = function () { collect(); if (doc.type === 'xlsx' && !doc.sheets.length) doc.sheets.push({ name: 'Trang 1', header: true, rows: [['Cột A', 'Cột B'], ['', '']] }); if (doc.type === 'pptx' && !doc.slides.length) doc.slides.push({ title: 'Slide 1', bullets: [''], notes: '' }); drawDoc(); };
+        on('sb-mdgo', function () { var md = val('sb-md'); if (!md.trim()) return toast('Dán văn bản trước', true); collect(); api('POST', 'studio/from-md', { md: md, type: doc.type }).then(function (r) { var keep = { author: doc.author, date: doc.date, theme: doc.theme }; doc = fix(r.doc); doc.author = keep.author; doc.date = keep.date; doc.theme = keep.theme; drawDoc(); }).catch(fail); });
+        on('sb-back', function () { collect(); doc = null; draft = null; load(); });
+        on('sb-save', function () { collect(); api('POST', 'studio/draft', { name: draft, doc: doc }).then(function (r) { draft = r.name; toast('Đã lưu bản nháp'); return refresh(); }).catch(fail); });
+        on('sb-prev', function () {
+          collect(); var o = document.getElementById('sb-out'); o.innerHTML = '<p class="mute">Đang dựng bản xem trước...</p>';
+          api('POST', 'studio/preview', { doc: doc }).then(function (r) { o.innerHTML = '<div class="card"><h3 style="margin:0 0 6px">Xem trước</h3><iframe id="sb-frame" sandbox style="width:100%;height:520px;border:1px solid var(--line);background:#fff"></iframe><p class="mute">Bản xem trước dạng trang web; tệp Word/PDF thật dùng cùng nội dung và giao diện tương tự.</p></div>'; document.getElementById('sb-frame').srcdoc = r.html; }).catch(fail);
+        });
+        on('sb-build', function () {
+          collect(); var o = document.getElementById('sb-out'); o.innerHTML = '<p class="mute">Đang tạo tệp (có thể mất tới nửa phút với PDF)...</p>';
+          api('POST', 'studio/build', { doc: doc, draft: draft }).then(function (r) { o.innerHTML = '<div class="card"><b class="ok">✔ Đã tạo ' + esc(r.name) + '</b>' + (r.notes && r.notes.length ? '<p class="mute">Đã chỉnh: ' + esc(r.notes.slice(0, 3).join(' ')) + '</p>' : '') + '<div class="row" style="margin-top:6px"><button class="b p" id="sb-dlnew">⬇ Tải về</button></div></div>'; on('sb-dlnew', function () { download(r.name); }); refresh(); }).catch(function (e) { o.innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+        });
+      }
+      function filesCard() {
+        return '<div class="card"><h3 style="margin:0 0 6px">Tệp đã tạo (' + S.files.length + ')</h3>' + (S.files.length ? S.files.slice(0, 30).map(function (f) { return '<div class="row" style="margin:4px 0"><span class="grow">' + esc(f.name) + ' <small class="mute">' + esc(size(f.size)) + ' · ' + esc(when(f.at)) + '</small></span><button class="b" data-dlf="' + esc(f.name) + '">⬇ Tải</button><button class="b d" data-rmf="' + esc(f.name) + '">Xóa</button></div>'; }).join('') : '<p class="mute">Chưa có tệp nào.</p>') + '</div>';
+      }
+      function bindFiles(b) {
+        [].forEach.call(b.querySelectorAll('[data-dlf]'), function (x) { x.onclick = function () { download(x.getAttribute('data-dlf')); }; });
+        [].forEach.call(b.querySelectorAll('[data-rmf]'), function (x) { x.onclick = function () { if (!ask('Xóa tệp này?')) return; api('POST', 'studio/delete', { name: x.getAttribute('data-rmf') }).then(load).catch(fail); }; });
+      }
+      frame();
+    },
     // ===== Bảng điều khiển từng bot: lệnh đã nhận, diễn biến trực tiếp, kết quả, thành quả, AI đánh giá, dạy bot, tài liệu lưu trữ =====
     board: function () {
       var bot = 'main', filter = 'all', sel = null, tab = 'jobs', bots = [], es = null, lastSig = '', teachDraft = '', arch = '';
@@ -708,7 +869,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 
       function frame() {
         var h = '<div id="bd-root"><h2>🎛 Bảng điều khiển bot</h2><div class="row" style="margin-bottom:10px" id="bd-bots"></div>' +
-          '<div class="row" style="margin-bottom:10px"><button class="b" data-tab="jobs">📋 Lệnh đã nhận</button><button class="b" data-tab="files">🗂 Tài liệu lưu trữ</button><button class="b" data-tab="les">🎓 Bot đã được dạy</button><button class="b" data-tab="mem">🧠 Bộ nhớ</button>' +
+          '<div class="row" style="margin-bottom:10px"><button class="b" data-tab="jobs">📋 Lệnh đã nhận</button><button class="b" data-tab="files">🗂 Tài liệu lưu trữ</button><button class="b" data-tab="les">🎓 Bot đã được dạy</button><button class="b" data-tab="mem">🧠 Bộ nhớ</button><button class="b" data-tab="find">🔎 Tìm kiếm</button>' +
           '</div><div id="bd-body"></div></div>';
         set(h);
         [].forEach.call(main.querySelectorAll('button[data-tab]'), function (b) { b.onclick = function () { tab = b.getAttribute('data-tab'); closeLive(); body(); }; });
@@ -725,6 +886,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         if (tab === 'files') return files();
         if (tab === 'les') return lessonsTab();
         if (tab === 'mem') return memTab();
+        if (tab === 'find') return findTab();
         var b = document.getElementById('bd-body'); if (!b) return;
         b.innerHTML = '<div class="wg"><div><div class="row" style="margin-bottom:8px"><select id="bd-f"><option value="all">Tất cả lệnh</option><option value="active">Đang chạy / xếp hàng</option><option value="done">Đã xong</option><option value="error">Bị lỗi</option></select></div><div class="wl" id="bd-list"><p class="mute">Đang tải...</p></div></div><div class="wm" id="bd-detail"><p class="mute">Chọn một lệnh bên trái để xem.</p></div></div>';
         var f = document.getElementById('bd-f'); f.value = filter; f.onchange = function () { filter = f.value; loadList(); };
@@ -885,6 +1047,43 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 
       // ---- Bộ nhớ: mọi thứ bot đang nhớ ----
       var PART = { 1: 'Chủ máy và cách làm việc', 2: 'Cửa hàng và kinh doanh', 3: 'Khách hàng và đối tác', 4: 'Hàng hóa và giá', 5: 'Máy móc và hệ thống', 6: 'Quy trình và quy định', 7: 'Dự án và quyết định', 9: 'Khác' };
+      // ----- Ô tìm chung: câu hỏi + câu trả lời của mọi việc cũ (một bot hoặc tất cả bot), kèm sổ tay và bài học; không cần gõ đúng dấu -----
+      var fq = '', fbot = 'all', fdays = '0', fstat = '';
+      function mk(s) { return esc(s).split('【').join('<mark>').split('】').join('</mark>'); }
+      function findTab() {
+        var b = document.getElementById('bd-body'); if (!b) return;
+        var opt = function (arr, cur) { return arr.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (x[0] === cur ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join(''); };
+        b.innerHTML = '<div class="card"><h3 style="margin:0 0 8px">🔎 Tìm lại hội thoại cũ</h3><div class="row"><input type="text" id="fd-q" class="grow" placeholder="Gõ từ khóa, ví dụ: nồi chiên giá, doanh số tuần, khuyến mại 20/10" value="' + esc(fq) + '"><button class="b p" id="fd-go">🔎 Tìm</button></div>' +
+          '<div class="row" style="margin-top:8px"><label>Ở <select id="fd-bot"><option value="all">Tất cả bot</option>' + opt(bots.map(function (x) { return [x.key, x.name]; }), fbot) + '</select></label>' +
+          '<label>Thời gian <select id="fd-days">' + opt([['0', 'Mọi lúc'], ['1', '24 giờ qua'], ['7', '7 ngày qua'], ['30', '30 ngày qua'], ['365', '1 năm qua']], fdays) + '</select></label>' +
+          '<label>Kết quả <select id="fd-st">' + opt([['', 'Tất cả'], ['done', 'Đã xong'], ['error', 'Bị lỗi']], fstat) + '</select></label></div>' +
+          '<p class="mute" style="margin:8px 0 0">Tìm trong cả câu hỏi lẫn câu trả lời, không phân biệt hoa thường và dấu. Chữ <mark>tô vàng</mark> là chỗ khớp. Bấm một kết quả để xem đầy đủ.</p></div><div id="fd-res"></div>';
+        var q = document.getElementById('fd-q'); q.focus();
+        document.getElementById('fd-bot').value = fbot; document.getElementById('fd-bot').onchange = function () { fbot = this.value; };
+        document.getElementById('fd-days').onchange = function () { fdays = this.value; }; document.getElementById('fd-st').onchange = function () { fstat = this.value; };
+        document.getElementById('fd-go').onclick = function () { fq = q.value; runFind(0); };
+        q.onkeydown = function (e) { if (e.key === 'Enter') { fq = q.value; runFind(0); } };
+        if (fq) runFind(0);
+      }
+      function runFind(off) {
+        var res = document.getElementById('fd-res'); if (!res) return;
+        var text = (document.getElementById('fd-q') || { value: fq }).value.trim(); fq = text;
+        if (!text) { res.innerHTML = '<p class="mute">Gõ từ khóa cần tìm.</p>'; return; }
+        if (!off) res.innerHTML = '<p class="mute">Đang tìm...</p>';
+        api('GET', 'board/search?bot=' + encodeURIComponent(fbot) + '&q=' + encodeURIComponent(text) + '&days=' + fdays + (fstat ? '&status=' + fstat : '') + '&limit=20&offset=' + off).then(function (r) {
+          var el = document.getElementById('fd-res'); if (!el) return;
+          var h = off ? el.innerHTML.replace(/<div id="fd-more">[\s\S]*$/, '') : '<p class="mute">' + r.total + ' việc khớp' + (r.mode === 'fts-any' ? ' (khớp một phần từ khóa)' : '') + '</p>';
+          if (!off && !r.hits.length && !(r.memory && r.memory.length)) h += '<p class="mute">Không thấy. Thử từ khóa ngắn hơn hoặc khác đi.</p>';
+          if (!off && r.memory && r.memory.length) h += '<div class="card"><b>🧠 Trong sổ tay và bài học</b>' + r.memory.map(function (m) { return '<p style="margin:6px 0"><small class="mute">' + esc((m.botName ? m.botName + ' · ' : '') + m.where + (m.date ? ' · ' + m.date : '')) + '</small><br>' + mk(m.text) + '</p>'; }).join('') + '</div>';
+          r.hits.forEach(function (j) {
+            h += '<div class="wi" data-bot="' + esc(j.bot || r.bot) + '" data-j="' + j.id + '"><div><b>#' + j.id + '</b> ' + chip(j.status) + (j.botName ? ' <small>' + esc(j.botName) + '</small>' : '') + ' <small>' + esc(when(j.at)) + '</small></div><div class="wp">❓ ' + mk(j.prompt) + '</div>' + (j.result ? '<div class="wp mute">💬 ' + mk(j.result) + '</div>' : '') + '</div>';
+          });
+          if (off + r.hits.length < r.total) h += '<div id="fd-more"><button class="b" id="fd-next">Xem thêm</button></div>';
+          el.innerHTML = h;
+          [].forEach.call(el.querySelectorAll('.wi'), function (d) { d.onclick = function () { bot = d.getAttribute('data-bot') || bot; sel = Number(d.getAttribute('data-j')); tab = 'jobs'; filter = 'all'; lastSig = ''; teachDraft = ''; closeLive(); drawBots(); body(); setTimeout(function () { openDetail(true); }, 80); }; });
+          var nx = document.getElementById('fd-next'); if (nx) nx.onclick = function () { runFind(off + r.hits.length); };
+        }).catch(fail);
+      }
       function memTab() {
         var b = document.getElementById('bd-body'); if (!b) return;
         b.innerHTML = '<p class="mute">Đang đọc bộ nhớ của bot...</p>';

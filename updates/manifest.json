@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.12.1",
-  "file": "agentos-update-2026.11.12.1.tar.gz",
-  "size": 568268,
-  "sha256": "a53aa17dfeb51695c4418666dbc9875bbbefcf07ce1358ee5a94b83335391f31",
+  "version": "2026.11.12.2",
+  "file": "agentos-update-2026.11.12.2.tar.gz",
+  "size": 609630,
+  "sha256": "bca3932ac64297801da1f366e7134874be2783b26a2f3220a7b32a50ef0a4dc7",
   "date": "2026-11-11",
-  "notes": "Thêm 10 mục cấu hình vào Cài đặt: quyền Codex, thử lại khi lỗi, ngưỡng bộ nhớ, giờ báo cáo, mô hình AI"
+  "notes": "Nghiên cứu sâu có trích dẫn (/nghiencuu), tạo ảnh (/anh, /ve) và tài liệu Word/Excel/PDF/PowerPoint (/taodoc + Xưởng sáng tạo), điều khiển màn hình máy (/dieukhien), tìm lại hội thoại cũ (/tim + ô tìm trong Bảng điều khiển)"
 }

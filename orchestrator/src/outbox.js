@@ -5,7 +5,7 @@ const path = require('path');
 // Thư mục "hộp thư ra": AI lưu ảnh chụp màn hình / file kết quả vào đây, bộ điều phối gửi về Telegram.
 // Chỉ gửi loại file trong danh sách cho phép, không đi theo liên kết tượng trưng, không gửi file ẩn.
 const IMAGE = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
-const DOC = new Set(['.pdf', '.csv', '.txt', '.md', '.xlsx', '.docx', '.html']);
+const DOC = new Set(['.pdf', '.csv', '.txt', '.md', '.xlsx', '.docx', '.pptx', '.html']);
 const LIMITS = { maxFiles: 5, maxPhotoBytes: 10 * 1024 * 1024, maxDocBytes: 20 * 1024 * 1024, maxDepth: 3 };
 
 function scan(dir, since, opts) {

@@ -29,7 +29,7 @@ test('tools: nạp tools.example.json và tools.linux.json không lỗi, profile
     const t = loadTools({ file: path.join(ROOT, name), vars: VARS });
     assert.deepEqual(t.errors, [], name);
     assert.equal(t.defaultName, 'chung');
-    assert.deepEqual(t.selectable().map((p) => p.name), ['web', 'lam']);
+    assert.deepEqual(t.selectable().map((p) => p.name), ['web', 'lam', 'nghiencuu', 've', 'taodoc', 'dieukhien']);          // + bộ có sẵn trong mã (builtins.js)
     const web = t.profile('web');
     assert.deepEqual(web.mcp, ['browser']);
     // Có cổng duyệt: không cho phép sẵn công cụ nào, mọi thứ đi qua chính sách
@@ -83,7 +83,7 @@ test('tools: không có file -> một profile mặc định chỉ đọc theo .e
   const t = loadTools({ file: '', fallbackAllow: 'Read,Grep' });
   assert.deepEqual(t.errors, []);
   assert.deepEqual(t.profile().policy.allow, ['Read', 'Grep']);
-  assert.deepEqual(t.selectable(), []);
+  assert.deepEqual(t.selectable().map((p) => p.name), ['nghiencuu', 've', 'taodoc', 'dieukhien']);          // chỉ các bộ có sẵn trong mã (builtins.js)
 });
 
 test('tools: bộ không qua cổng (gate:false) cho phép sẵn công cụ; Codex không được ghi file; engine lạ bị báo', () => {

@@ -612,3 +612,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Cách làm (`agentctl.js`, chạy bằng root): ghi `/etc/sudoers.d/91-agentos-agent-<mã>` cho đúng người dùng `agentos-<mã>`, kiểm `visudo -cf` TRƯỚC khi vào chỗ (hỏng thì không cấp, không đổi gì); dịch vụ của bot gỡ `NoNewPrivileges`, `ProtectSystem`, `ProtectHome`, `InaccessiblePaths`, `PrivateTmp` (vẫn giữ giới hạn RAM/CPU). Xóa bot xóa luôn tệp sudo.
 - **Rủi ro (đã ghi rõ trên giao diện):** bot có sudo = quản trị cả máy, đọc được token và dữ liệu mọi bot khác; bị lừa (prompt injection) là mất cả máy. Chỉ cấp cho bot mà danh sách ID chỉ có chủ máy.
 - Test: `agents.test.js` (cấp, thu hồi, về Bảo vệ, xóa bot, visudo từ chối), `bots-main.test.js`.
+
+## 2026.11.11.1 — Mọi cài đặt bot đều chỉnh được trên trang Cài đặt
+- **Cài đặt → Bot Telegram → thẻ từng bot → "Chế độ và quyền hạn riêng"** có thêm 14 mục trước đây phải sửa tệp hoặc gõ lệnh: cổng mạng mở thêm cho AI, số trợ lý phụ mỗi việc / tối đa cùng lúc, số mốc khôi phục giữ lại, thời gian AI im lặng coi là kẹt, thời gian việc nền `/nen`, thời gian nghỉ khi hết hạn mức AI, tự chọn cách làm theo độ khó, báo khi bot khởi động, ngưỡng ổ đĩa đầy, số ngày giữ lịch sử việc / nhật ký kiểm tra / tệp kết quả, số bản sao lưu giữ lại.
+- Áp cho cả bot quản lý và bot thường (cùng một bảng `SETTINGS`); `/daily quyen` trong Telegram cũng thấy các mục mới. Mọi giá trị được kiểm kiểu và khoảng cho phép trước khi ghi; cổng mạng chỉ nhận số và dấu phẩy.
+- Test: `agents.test.js` (đơn vị giây/giờ, true/false, chặn ký tự lạ).

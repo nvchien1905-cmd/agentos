@@ -27,6 +27,20 @@ const SETTINGS = {
   checkpoints: { env: 'CHECKPOINTS', kind: 'bool', def: true, label: 'Chụp mốc khôi phục trước mỗi việc (/hoantac)' },
   memory:      { env: 'MEMORY_ENABLED', kind: 'bool', def: true, label: 'Bộ nhớ dài hạn' },
   netGuard:    { env: 'NET_GUARD', kind: 'bool', def: true, label: 'Giới hạn mạng của AI (chỉ cổng web)' },
+  netExtraPorts: { env: 'NET_EXTRA_PORTS', kind: 'text', re: /^[0-9,]{0,60}$/, label: 'Cổng mạng được mở thêm cho AI (vd 22,5432, cách nhau dấu phẩy)' },
+  subPerJob:   { env: 'SUB_PER_JOB', kind: 'int', lo: 1, hi: 8, def: 4, label: 'Số trợ lý phụ tối đa cho MỘT việc' },
+  subTotal:    { env: 'SUB_TOTAL', kind: 'int', lo: 1, hi: 20, def: 8, label: 'Số trợ lý phụ tối đa chạy cùng lúc trên bot' },
+  checkpointKeep: { env: 'CHECKPOINT_KEEP', kind: 'int', lo: 3, hi: 100, def: 20, label: 'Giữ bao nhiêu mốc khôi phục gần nhất' },
+  jobIdleMin:  { env: 'JOB_IDLE_SEC', kind: 'int', lo: 1, hi: 240, def: 15, mul: 60, label: 'AI im lặng quá bao nhiêu phút thì coi là kẹt và chạy lại (phút)' },
+  jobBgHours:  { env: 'JOB_TIMEOUT_BG_SEC', kind: 'int', lo: 1, hi: 48, def: 4, mul: 3600, label: 'Thời gian tối đa một việc chạy nền /nen (giờ)' },
+  limitCooldownMin: { env: 'LIMIT_COOLDOWN_MIN', kind: 'int', lo: 1, hi: 720, def: 60, label: 'Hết hạn mức AI thì nghỉ bao lâu rồi thử lại (phút)' },
+  routeByDifficulty: { env: 'ROUTE_BY_DIFFICULTY', kind: 'bool', def: true, tf: true, label: 'Tự chọn cách làm theo độ khó của câu hỏi' },
+  bootNotice:  { env: 'BOOT_NOTICE', kind: 'bool', def: true, tf: true, label: 'Báo vào Telegram mỗi lần bot khởi động' },
+  minFreeMb:   { env: 'MIN_FREE_MB', kind: 'int', lo: 0, hi: 100000, def: 300, label: 'Ổ đĩa còn dưới bao nhiêu MB thì cảnh báo và không nhận việc nặng (MB)' },
+  jobRetentionDays:   { env: 'JOB_RETENTION_DAYS', kind: 'int', lo: 1, hi: 3650, def: 90, label: 'Giữ lịch sử việc đã làm bao nhiêu ngày' },
+  auditRetentionDays: { env: 'AUDIT_RETENTION_DAYS', kind: 'int', lo: 1, hi: 3650, def: 180, label: 'Giữ nhật ký kiểm tra bao nhiêu ngày' },
+  outRetentionDays:   { env: 'OUT_RETENTION_DAYS', kind: 'int', lo: 1, hi: 3650, def: 14, label: 'Giữ tệp kết quả AI tạo ra bao nhiêu ngày' },
+  backupKeep:  { env: 'BACKUP_KEEP', kind: 'int', lo: 1, hi: 60, def: 7, label: 'Giữ bao nhiêu bản sao lưu dữ liệu bot' },
 };
 
 // Làm sạch cấu hình quyền hạn: chỉ khóa biết, đúng kiểu. Giá trị null = đưa về mặc định.
@@ -43,7 +57,7 @@ function validateSettings(s) {
   }
   return out;
 }
-const settingEnv = (k, v) => { const d = SETTINGS[k]; const val = d.kind === 'bool' ? (d.env === 'MEMORY_ENABLED' ? String(!!v) : (v ? '1' : '0')) : d.kind === 'int' ? String(v * (d.mul || 1)) : String(v); return d.env + '=' + val; };
+const settingEnv = (k, v) => { const d = SETTINGS[k]; const val = d.kind === 'bool' ? (d.env === 'MEMORY_ENABLED' || d.tf ? String(!!v) : (v ? '1' : '0')) : d.kind === 'int' ? String(v * (d.mul || 1)) : String(v); return d.env + '=' + val; };
 
 const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update', 'logs'];
 

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.09.9",
-  "file": "agentos-update-2026.11.09.9.tar.gz",
-  "size": 543374,
-  "sha256": "38fab31fb3ceaa1be32c17b27e0edad123d43700e3f7e39b063eb9e047659701",
+  "version": "2026.11.11.1",
+  "file": "agentos-update-2026.11.11.1.tar.gz",
+  "size": 544060,
+  "sha256": "180340db31be242fecf356bcb747a5016be515f4187af555ab1e59907db06f75",
   "date": "2026-11-11",
-  "notes": "Cấp sudo riêng cho từng bot thường (Cài đặt → Bot Telegram → thẻ bot)"
+  "notes": "Mọi cài đặt của bot đều chỉnh được trong Cài đặt: thêm 14 mục (trợ lý phụ, thời gian kẹt, việc nền, giữ lịch sử, cổng mạng...)"
 }

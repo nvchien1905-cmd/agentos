@@ -363,3 +363,17 @@ test('cấp sudo cho riêng một bot: tệp sudoers đúng người dùng (ki�
   assert.equal(r.ok, false); assert.match(r.msg, /sudo/); assert.ok(!fs.existsSync(path.join(w2.paths.sudoers, '91-agentos-agent-a1')));
   assert.match(fs.readFileSync(path.join(w2.paths.etc, 'agents/a1.env'), 'utf8'), /^FULL_ACCESS=0$/m);
 });
+
+test('các mục cài đặt bot mới: đúng đơn vị khi ghi vào tệp cấu hình, true/false cho mục đọc kiểu chữ', () => {
+  const { settingEnv, validateSettings, SETTINGS } = require('../src/agentctl');
+  assert.equal(settingEnv('jobIdleMin', 20), 'JOB_IDLE_SEC=1200');
+  assert.equal(settingEnv('jobBgHours', 6), 'JOB_TIMEOUT_BG_SEC=21600');
+  assert.equal(settingEnv('limitCooldownMin', 30), 'LIMIT_COOLDOWN_MIN=30');
+  assert.equal(settingEnv('bootNotice', false), 'BOOT_NOTICE=false');
+  assert.equal(settingEnv('routeByDifficulty', true), 'ROUTE_BY_DIFFICULTY=true');
+  assert.equal(settingEnv('netExtraPorts', '22,5432'), 'NET_EXTRA_PORTS=22,5432');
+  assert.throws(() => validateSettings({ netExtraPorts: '22; rm -rf' }), /ký tự/);
+  assert.throws(() => validateSettings({ subPerJob: 99 }), /từ 1 đến 8/);
+  assert.deepEqual(validateSettings({ backupKeep: 10, minFreeMb: 0 }), { backupKeep: 10, minFreeMb: 0 });
+  assert.ok(Object.keys(SETTINGS).length >= 24);
+});

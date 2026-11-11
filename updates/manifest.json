@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.1",
-  "file": "agentos-update-2026.11.11.1.tar.gz",
-  "size": 544060,
-  "sha256": "180340db31be242fecf356bcb747a5016be515f4187af555ab1e59907db06f75",
+  "version": "2026.11.11.2",
+  "file": "agentos-update-2026.11.11.2.tar.gz",
+  "size": 544230,
+  "sha256": "6c7a190754419fb32a862ea3a2218b112ba47757951e4cc794a5145693a3e2fe",
   "date": "2026-11-11",
-  "notes": "Mọi cài đặt của bot đều chỉnh được trong Cài đặt: thêm 14 mục (trợ lý phụ, thời gian kẹt, việc nền, giữ lịch sử, cổng mạng...)"
+  "notes": "Cài đặt → AI: nút bật/tắt Chỉ dùng Claude, hiện lại Codex/Gemini/DeepSeek khi tắt"
 }

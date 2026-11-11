@@ -468,6 +468,14 @@ function createSettings(o) {
       return { order };
     },
 
+    // Bật/tắt "chỉ dùng Claude": tắt thì hiện lại Codex, Gemini, DeepSeek (khóa API, đăng nhập, thứ tự ưu tiên)
+    async 'POST /api/ai/claude-only'(b) {
+      const on = !!(b && b.on);
+      saveEnv(setEnvLine(needEnv(), 'CLAUDE_ONLY', on ? '1' : '0'));
+      await restart('agentos-orchestrator');
+      return { claudeOnly: on };
+    },
+
     // ----- Bot Telegram -----
     // Tổng hợp MỌI tài khoản/khóa/thông tin đã lưu trên máy để khách biết cái gì đã có; bí mật được che bớt (mask.js), không bao giờ trả giá trị đầy đủ
     async 'GET /api/accounts'() {

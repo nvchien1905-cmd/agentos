@@ -617,3 +617,7 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - **Cài đặt → Bot Telegram → thẻ từng bot → "Chế độ và quyền hạn riêng"** có thêm 14 mục trước đây phải sửa tệp hoặc gõ lệnh: cổng mạng mở thêm cho AI, số trợ lý phụ mỗi việc / tối đa cùng lúc, số mốc khôi phục giữ lại, thời gian AI im lặng coi là kẹt, thời gian việc nền `/nen`, thời gian nghỉ khi hết hạn mức AI, tự chọn cách làm theo độ khó, báo khi bot khởi động, ngưỡng ổ đĩa đầy, số ngày giữ lịch sử việc / nhật ký kiểm tra / tệp kết quả, số bản sao lưu giữ lại.
 - Áp cho cả bot quản lý và bot thường (cùng một bảng `SETTINGS`); `/daily quyen` trong Telegram cũng thấy các mục mới. Mọi giá trị được kiểm kiểu và khoảng cho phép trước khi ghi; cổng mạng chỉ nhận số và dấu phẩy.
 - Test: `agents.test.js` (đơn vị giây/giờ, true/false, chặn ký tự lạ).
+
+## 2026.11.11.2 — Bật/tắt "Chỉ dùng Claude" ngay trên trang Cài đặt
+- **Cài đặt → AI và khóa API**: thay biểu ngữ "chỉ dùng Claude" bằng nút bật/tắt (`POST /api/ai/claude-only`, ghi `CLAUDE_ONLY` rồi khởi động lại bộ điều phối). Tắt thì hiện lại Codex, Gemini, DeepSeek (khóa API, đăng nhập, thứ tự ưu tiên). Không còn phải sửa tệp `orchestrator.env` bằng tay.
+- Test: `settings.test.js`.

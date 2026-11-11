@@ -253,3 +253,15 @@ test('settings: mặc định CHỈ DÙNG CLAUDE → trang AI ẩn Codex/Gemini/
     const r2 = await S.call('GET', 'ai'); assert.equal(r2.body.claudeOnly, false); assert.ok(r2.body.engines.length >= 3);
   } finally { await S.s.close(); }
 });
+
+test('settings: nút bật/tắt "chỉ dùng Claude" trên trang AI ghi CLAUDE_ONLY và hiện/ẩn các AI khác', async () => {
+  const S = await boot();
+  try {
+    const a = await S.call('POST', 'ai/claude-only', { on: true });
+    assert.equal(a.body.claudeOnly, true);
+    assert.deepEqual((await S.call('GET', 'ai')).body.engines.map((e) => e.id), ['claude']);
+    const b = await S.call('POST', 'ai/claude-only', { on: false });
+    assert.equal(b.body.claudeOnly, false);
+    assert.ok((await S.call('GET', 'ai')).body.engines.length >= 3);
+  } finally { await S.s.close(); }
+});

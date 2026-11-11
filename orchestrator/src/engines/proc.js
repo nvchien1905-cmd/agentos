@@ -58,9 +58,9 @@ function runProcess({ bin, args, cwd, input, timeoutMs, idleMs, env, wrap, onStd
     // Nếu còn tiến trình con cháu giữ đường ống mở thì 'close' không bao giờ tới → việc treo vĩnh viễn, không hủy được. Quá 8 giây thì bỏ ống và coi như đã xong.
     setTimeout(() => { if (finish) { for (const st of [child.stdout, child.stderr]) { try { st.destroy(); } catch (e) { /* đã đóng */ } } finish(null); } }, 8000).unref();
   };
-  const timer = timeoutMs ? setTimeout(() => kill('timeout'), timeoutMs) : null;
-  let idleTimer = null;
-  const bump = () => { if (!idleMs || killedBy) return; if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => kill('stalled'), idleMs); if (idleTimer.unref) idleTimer.unref(); };
+  let timer = timeoutMs ? setTimeout(() => kill('timeout'), timeoutMs) : null;
+  let idleTimer = null, paused = false, pausedAt = 0;
+  const bump = () => { if (!idleMs || killedBy || paused) return; if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => kill('stalled'), idleMs); if (idleTimer.unref) idleTimer.unref(); };
   bump();
 
   child.stdout.on('data', (d) => { bump(); if (onStdout) { try { onStdout(String(d)); } catch (e) { /* bỏ qua */ } } if (out.length < MAX_OUT) out += d; });
@@ -81,7 +81,22 @@ function runProcess({ bin, args, cwd, input, timeoutMs, idleMs, env, wrap, onStd
     };
     child.on('close', finish);
   });
-  return { done, kill };
+  // Tạm dừng/tiếp tục CẢ CÂY tiến trình (Linux). Đang tạm dừng thì không tính giờ (không bị cắt vì quá thời gian/im lặng); tiếp tục thì tính lại từ đầu.
+  const pause = () => {
+    if (IS_WIN || paused || killedBy || !child.pid) return false;
+    paused = true; pausedAt = Date.now();
+    if (timer) { clearTimeout(timer); timer = null; } if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    killTree(child, 'SIGSTOP'); return true;
+  };
+  const resume = () => {
+    if (!paused || killedBy) return false;
+    paused = false;
+    killTree(child, 'SIGCONT');
+    if (timeoutMs) { timer = setTimeout(() => kill('timeout'), timeoutMs); if (timer.unref) timer.unref(); }
+    bump(); return true;
+  };
+  const killAny = kill;
+  return { done, kill: (why) => { if (paused) { paused = false; try { killTree(child, 'SIGCONT'); } catch (e) { /* đã thoát */ } } killAny(why); }, pause, resume };
 }
 
 // Các kết quả chung cho mọi engine; trả null nếu tiến trình chạy bình thường.

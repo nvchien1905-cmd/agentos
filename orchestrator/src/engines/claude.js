@@ -66,7 +66,7 @@ function startClaude(opts) {
       error: isError ? (text || r.err.trim().slice(0, 1000) || 'Thoát với mã ' + r.code) : null,
     };
   });
-  return { done, kill: p.kill };
+  return { done, kill: p.kill, pause: p.pause, resume: p.resume };
 }
 
 module.exports = { startClaude, parseOutput };

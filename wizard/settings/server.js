@@ -171,6 +171,13 @@ function createSettings(o) {
   const googleOut = () => Object.assign(googleAuth.status(), { connector: (() => { try { const c = connLib().get('google'); return c ? { enabled: c.enabled } : null; } catch (e) { return null; } })() });
   const SKILL_DIR = 'KY-NANG';
   const skillSlug = (name) => String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  // Bảng điều khiển từng bot (wizard/lib/botboard.js): đọc dữ liệu mọi bot, điều khiển bằng tệp yêu cầu trong thư mục điều khiển của đúng bot
+  let boardInst = null;
+  const boardLib = () => boardInst || (boardInst = require('../lib/botboard').createBotBoard({
+    mainDataDir: o.boardMainDir, agentsHome: o.boardAgentsHome, mainWorkdir: () => envVal(readEnv() || '', 'WORKDIR') || '/var/lib/agentos/work',
+    chown: (p, user) => { try { cp.execFileSync('chown', [user + ':' + (user === 'agentos' ? 'agentos' : user), p]); } catch (e) { /* bỏ qua */ } },
+  }));
+  const botKey = (ctx) => String(ctx.query.get('bot') || 'main');
   let watchInst = null;
   const watchLib = () => watchInst || (watchInst = createWatch({ traceDir: o.traceDir || '/var/lib/agentos/data/trace', journalDir: o.journalDir || '/var/lib/agentos/data/journal', projects: projectsLib() }));
   // Trang Cài đặt chạy bằng root: dự án vừa tạo/sửa phải thuộc người dùng agentos để bộ điều phối ghi được
@@ -821,6 +828,22 @@ function createSettings(o) {
     async 'POST /api/google/client'(b) { const r = googleAuth.saveClient(b.json !== undefined ? b.json : { client_id: b.client_id, client_secret: b.client_secret }); fixGoogleOwner(); if (!r.ok) throw new Error(r.error); return googleOut(); },
     async 'POST /api/google/start'(b) { const r = googleAuth.start({ write: !!b.write, redirectUri: googleBase() + '/google/callback' }); if (!r.ok) throw new Error(r.error); return { url: r.url }; },
     async 'POST /api/google/disconnect'(b) { if (b.confirm !== true) throw new Error('Cần xác nhận'); await googleAuth.revoke(); if (b.removeClient === true) googleAuth.removeClient(); plugLib(); try { connLib().remove('google'); } catch (e) { /* chưa thêm */ } fixConnOwner(); return googleOut(); },
+    // ---- Bảng điều khiển bot: lệnh đã nhận, kết quả, thành quả, đánh giá AI, dạy bot, tài liệu lưu trữ ----
+    async 'GET /api/board/bots'() { const l = await botsLib().list().catch(() => ({ agents: [] })); return { bots: boardLib().bots(l.agents) }; },
+    async 'GET /api/board/jobs'(b, ctx) { return boardLib().list(botKey(ctx), { status: ctx.query.get('status'), before: ctx.query.get('before'), limit: ctx.query.get('limit') }); },
+    async 'GET /api/board/job'(b, ctx) { return boardLib().detail(botKey(ctx), ctx.query.get('id')); },
+    async 'POST /api/board/control'(b) {
+      const map = { pause: 'job.pause', resume: 'job.resume', cancel: 'job.cancel', rerun: 'job.rerun' }, action = map[String(b.what)];
+      if (!action) throw new Error('Việc không hợp lệ.'); const id = Number(b.id); if (!Number.isInteger(id) || id < 1) throw new Error('Mã lệnh sai.');
+      return boardLib().control(String(b.bot || 'main'), { action, id });
+    },
+    async 'POST /api/board/review'(b) { return boardLib().requestReview(String(b.bot || 'main'), b.id); },
+    async 'POST /api/board/teach'(b) { return boardLib().teach(String(b.bot || 'main'), b.text, b.job); },
+    async 'POST /api/board/forget'(b) { return boardLib().forget(String(b.bot || 'main'), b.id); },
+    async 'GET /api/board/trace'(b, ctx) { return boardLib().trace(botKey(ctx), ctx.query.get('id'), ctx.query.get('from')); },
+    async 'GET /api/board/changes'(b, ctx) { return boardLib().changes(botKey(ctx), ctx.query.get('id')); },
+    async 'GET /api/board/archive'(b, ctx) { return boardLib().archive(botKey(ctx), ctx.query.get('path') || ''); },
+    async 'GET /api/board/file'(b, ctx) { return boardLib().fileView(botKey(ctx), ctx.query.get('path') || '', ctx.query.get('download') === '1'); },
     // ---- Màn hình "Việc AI" (xem như màn hình Claude Code): từng bước đang chạy, tệp đã đổi + khác biệt từng dòng, duyệt tệp dự án (chỉ đọc) — wizard/lib/watch.js
     async 'GET /api/watch/trace'(b, ctx) { return watchLib().trace(ctx.query.get('id'), ctx.query.get('from')); },
     // Các yêu cầu xin quyền đang chờ (bot ghi ảnh chụp ra tệp mỗi khi có thay đổi) — duyệt bằng POST /api/control {action:'approval.answer', approval, decision}
@@ -993,7 +1016,8 @@ function createSettings(o) {
         const id = url.searchParams.get('id'); let from = Math.max(0, Number(url.searchParams.get('from')) || 0), lastSig = -2, closed = false, idle = 0;
         res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
         req.on('close', () => { closed = true; });
-        const w = watchLib();
+        const bk = url.searchParams.get('bot'), bl = bk ? boardLib() : null;
+        const w = bl ? { traceSig: (i2) => bl.traceSig(bk, i2), trace: (i2, f2) => bl.trace(bk, i2, f2) } : watchLib();
         for (let i = 0; i < (o.streamMaxTicks || 7200) && !closed; i++) {                       // tối đa ~30 phút một luồng
           const sig = w.traceSig(id);
           if (sig !== lastSig) {

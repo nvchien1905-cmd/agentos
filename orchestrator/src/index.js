@@ -46,6 +46,8 @@ const { createAuditLog } = require('./auditlog');
 const { createHoiDap } = require('./hoidap');
 const { createAlerts } = require('./alerts');
 const { createDoctor } = require('./doctor');
+const { createLessons } = require('./lessons');
+const { createJobReview } = require('./jobreview');
 const { createAiFix } = require('./aifix');
 const { createFleet } = require('./fleet');
 const { createKetNoi, createRemoteAccess } = require('./ketnoi');
@@ -320,7 +322,7 @@ async function main() {
           skipPermissions: true, mcpConfig, settings: hf ? hf.settings : undefined, appendSystemPrompt: fullHint(!!gf) + ' ' + TODO_HINT, timeoutMs: timeoutFor(job), idleMs: idleFor(job), env: Object.assign({}, kenv, hf ? hf.env : {}), onProgress, onDelta,   // không wrap: không sandbox
         });
         const cleanup = () => { fs.rmSync(mcpConfig, { force: true }); if (hf) { gate.end(job.id); fs.rmSync(hf.settings, { force: true }); } };
-        return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
+        return { kill: h.kill, pause: h.pause, resume: h.resume, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
       }
       const p = tools.profile(job.profile);
       gate.begin(job, p);
@@ -334,7 +336,7 @@ async function main() {
         appendSystemPrompt: [p.hint, BRAIN_HINT, STYLE_HINT, ONEDRIVE_HINT].filter(Boolean).join(' '), timeoutMs: timeoutFor(job), idleMs: idleFor(job), wrap: wrapFor(job), onProgress, onDelta,
       });
       const cleanup = () => { gate.end(job.id); for (const f of [files.mcpConfig, files.settings]) fs.rmSync(f, { force: true }); };
-      return { kill: h.kill, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
+      return { kill: h.kill, pause: h.pause, resume: h.resume, done: h.done.then((r) => { cleanup(); return r; }, (e) => { cleanup(); throw e; }) };
   };
   // Codex/Gemini ở chế độ TOÀN QUYỀN cũng được đọc KiotViet qua kvcli (cổng nội bộ chỉ đọc, như Claude): đăng ký việc với cổng, đặt biến môi trường, xong thì gỡ.
   // Trước đây chỉ Claude có cổng này nên Codex gặp câu hỏi doanh thu là bó tay rồi đi đăng nhập web.
@@ -345,7 +347,7 @@ async function main() {
     const kv = on ? { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(job.id) } : {};
     let h;
     try { h = run(Object.assign({}, env, kv), on); } catch (e) { if (on) gate.end(job.id); throw e; }
-    return on ? { kill: h.kill, done: h.done.then((r) => { gate.end(job.id); return r; }, (e) => { gate.end(job.id); throw e; }) } : h;
+    return on ? { kill: h.kill, pause: h.pause, resume: h.resume, done: h.done.then((r) => { gate.end(job.id); return r; }, (e) => { gate.end(job.id); throw e; }) } : h;
   };
   const factories = {
     claude: (a) => claudeRun('claude', a),
@@ -434,16 +436,16 @@ async function main() {
           h = callFactory(e, Object.assign({}, a, { prompt: pre + a.prompt }));
           return h.done;
         });
-        out = { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, done };
+        out = { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, pause: () => !!(h && h.pause && h.pause()), resume: () => !!(h && h.resume && h.resume()), done };
       }
     } catch (err) { unreg(); throw err; }
-    return { kill: out.kill, done: Promise.resolve(out.done).then(unreg, (err) => { unreg(); throw err; }) };
+    return { kill: out.kill, pause: out.pause, resume: out.resume, done: Promise.resolve(out.done).then(unreg, (err) => { unreg(); throw err; }) };
   };
   for (const e of cfg.engineOrder) engines[e] = { start: (a) => {
     if (!ckApplies(a.job)) return startRaw(e, a);
     let h = null, killed = false;
     const done = ckBefore(a.job).then(() => { if (killed) return { ok: false, cancelled: true, error: 'đã hủy' }; h = startRaw(e, a); return h.done; });
-    return { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, done };
+    return { kill: (...x) => { killed = true; if (h) return h.kill(...x); }, pause: () => !!(h && h.pause && h.pause()), resume: () => !!(h && h.resume && h.resume()), done };
   } };
   subRef.v = createSubagents({ engines, log, cfg: cfg.subagents,
     candidates: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
@@ -493,6 +495,18 @@ async function main() {
     h.done.then((r) => (r && r.ok && r.text ? resolve(r.text) : reject(new Error((r && r.error) || 'Claude không trả kết quả'))), reject);
   });
   const summarizer = createSummarizer({ keys: cfg.apiKeys, provider: cfg.summaryProvider, geminiModel: cfg.summaryModel, deepseekModel: cfg.deepseekModel, codex: codexSummarize, claude: claudeSummarize, log });
+  // Bài học chủ máy dạy bot (lessons.js) + AI độc lập đánh giá lệnh (jobreview.js): đánh giá bằng AI KHÁC với AI đã làm việc đó nếu máy có nhiều AI
+  const lessons = createLessons({ file: path.join(dataDir, 'lessons.json'), log });
+  const reviewAsk = async (system, user, avoid) => {
+    const cands = [];
+    if (cfg.engineOrder.includes('codex')) cands.push({ name: 'codex', fn: codexSummarize });
+    if (cfg.engineOrder.includes('claude')) cands.push({ name: 'claude', fn: claudeSummarize });
+    cands.sort((a, b) => (a.name === avoid ? 1 : 0) - (b.name === avoid ? 1 : 0));
+    let last = 'Máy chưa bật AI nào để đánh giá.';
+    for (const c of cands) { try { return { text: await c.fn(system, user), via: c.name }; } catch (e) { last = c.name + ': ' + e.message; } }
+    throw new Error(last);
+  };
+  const jobReview = cfg.agentId ? null : createJobReview({ dir: path.join(dataDir, 'board'), ask: reviewAsk, log });
   const memory = createMemory({ db, projects, isAdmin, dir: cfg.oneDriveDir, fallbackDir: path.join(dataDir, 'so-tay'), summarizer, cfg: cfg.memory, log });
   log('Bộ nhớ: ' + (cfg.memory.enabled ? 'BẬT' : 'tắt') + ' · nén ngữ cảnh bằng ' + (summarizer.provider() || 'cắt gọn (chưa có khóa Gemini/DeepSeek, Codex tắt)') + ' · tìm lại FTS5: ' + (db.ftsAvailable() ? 'có' : 'không') + ' · định tuyến theo độ khó: ' + (cfg.routeByDifficulty ? 'bật' : 'tắt'));
   setTimeout(() => memory.housekeeping().catch((e) => log('dọn sổ tay lỗi: ' + e.message)), 60000);                 // xếp hộp thư GHI-NHO.md vào chương, gộp chương quá dài
@@ -510,7 +524,7 @@ async function main() {
     db, log, notify, engines, ui: live, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
     outbox: createOutbox(outDir, null, (chatId, job) => convDir(outDir, job)), outboxPrepare: renderer.prepare, sendFile: (chatId, f) => tg.sendFile(chatId, f),
     engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)),
-    retryDelaysMs: cfg.retryDelaysMs, perChat: true, exclusiveProfiles,
+    retryDelaysMs: cfg.retryDelaysMs, perChat: true, exclusiveProfiles, lessons,
     // Ổ đĩa gần đầy thì không nhận việc (Chromium/AI ghi nhiều file tạm; đầy đĩa làm hỏng cả cơ sở dữ liệu).
     preflight: async (job) => { const mb = maint.diskFreeMb(cfg.workdir); if (mb < cfg.minFreeMb) return 'ổ đĩa gần đầy (còn ' + mb + ' MB, cần ít nhất ' + cfg.minFreeMb + ' MB). Hãy dọn bớt dữ liệu.'; try { await browserFor(job); } catch (e) { return '⚠️ ' + e.message; } return null; },
   });
@@ -519,7 +533,7 @@ async function main() {
   // Việc nền (/nen), sự kiện tự kích hoạt và webhook chạy SONG SONG với hàng đợi chính: 2 worker riêng cho các làn đó
   const bgWorkers = [1, 2].map(() => createWorker({
     db, log, notify, engines, answer, context: memory, projectEngine, overBudget: (e) => usage.overBudget(e), router: { order: (job, cands) => router.order(job, cands, { enabled: cfg.routeByDifficulty, lightEngines: cfg.lightEngines }) }, order: cfg.engineOrder, cooldownMs: cfg.limitCooldownMs,
-    engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)), retryDelaysMs: cfg.retryDelaysMs, lanes: ['bg', 'event', 'hook'],
+    engineFilter: (job) => (jobFull(job) ? cfg.engineOrder : tools.enginesFor(job.profile)), retryDelaysMs: cfg.retryDelaysMs, lanes: ['bg', 'event', 'hook'], lessons,
     preflight: async (job) => { const mb = maint.diskFreeMb(cfg.workdir); if (mb < cfg.minFreeMb) return 'ổ đĩa gần đầy (còn ' + mb + ' MB). Hãy dọn bớt dữ liệu.'; try { await browserFor(job); } catch (e) { return '⚠️ ' + e.message; } return null; },
   }));
   const allWorkers = [...mainWorkers, ...bgWorkers];
@@ -527,6 +541,8 @@ async function main() {
     wake() { for (const w of allWorkers) w.wake(); },
     cancelRunning(chatId, project) { let any = false; for (const w of allWorkers) if (w.cancelRunning(chatId, project)) any = true; return any; },
     cancelJob(id) { let any = false; for (const w of allWorkers) if (w.cancelJob(id)) any = true; return any; },
+    pauseJob(id) { let any = false; for (const w of allWorkers) if (w.pauseJob(id)) any = true; return any; },
+    resumeJob(id) { let any = false; for (const w of allWorkers) if (w.resumeJob(id)) any = true; return any; },
     currentJobId() { return allWorkers.map((w) => w.currentJobId()).find(Boolean) || null; },
     engineNames: () => worker.engineNames(),
     engineStatus: () => worker.engineStatus(),
@@ -755,7 +771,7 @@ async function main() {
   else startMailCollector({ mail, agents: agentsReg, send: (chat, text) => tg.sendMessage(chat, text), log });
   // Điều khiển từng việc từ trang Cài đặt (tệp yêu cầu trong thư mục control, xem control.js)
   const controlDir = path.join(dataDir, 'control'); try { fs.mkdirSync(controlDir, { recursive: true, mode: 0o700 }); } catch (e) { /* tick sẽ bỏ qua nếu không có thư mục */ }
-  const control = createControl({ dir: controlDir, db, worker: crew, schedule, projects, log, approvals, adminId: [...cfg.adminUserIds][0] });
+  const control = createControl({ dir: controlDir, db, worker: crew, schedule, projects, log, approvals, review: jobReview, adminId: [...cfg.adminUserIds][0] });
   setInterval(() => { try { control.tick(); } catch (e) { log('điều khiển lỗi: ' + e.message); } }, 2000).unref();
   // Đánh thức định kỳ: việc đang chờ hạn mức hồi sẽ tự chạy lại khi tới giờ.
   const tick = setInterval(() => { crew.wake(); schedule.tick().catch((e) => log('hẹn giờ lỗi: ' + e.message)); updates.tick().catch((e) => log('kiểm bản cập nhật lỗi: ' + e.message)); updates.autoTick().catch((e) => log('tự cập nhật lỗi: ' + e.message)); updates.announceResult().catch((e) => log('báo kết quả cập nhật lỗi: ' + e.message)); }, 30000);

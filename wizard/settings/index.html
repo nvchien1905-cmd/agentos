@@ -46,7 +46,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -694,6 +694,217 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       }).catch(function (e) { if (alive()) el('cn-body').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
     },
     // ----- Màn hình AI: xem AI đang làm gì từng bước, tệp đã đổi (khác biệt từng dòng) và tệp dự án — như màn hình Claude Code -----
+    // ===== Bảng điều khiển từng bot: lệnh đã nhận, diễn biến trực tiếp, kết quả, thành quả, AI đánh giá, dạy bot, tài liệu lưu trữ =====
+    board: function () {
+      var bot = 'main', filter = 'all', sel = null, tab = 'jobs', bots = [], es = null, lastSig = '', teachDraft = '', arch = '', autoRv = true;
+      try { autoRv = localStorage.getItem('bdAuto') !== '0'; } catch (e) { autoRv = true; }
+      var ST = { queued: 'Đang xếp hàng', running: 'Đang chạy', waiting: 'Tạm dừng / chờ', done: 'Xong', error: 'Lỗi', cancelled: 'Đã hủy', limit: 'Hết hạn mức', interrupted: 'Bị ngắt' };
+      var STC = { running: 'ok', done: 'ok', error: 'bad', limit: 'warn', cancelled: 'mute', interrupted: 'warn', queued: 'warn', waiting: 'warn' };
+      function alive() { return cur === 'board' && document.getElementById('bd-root'); }
+      function when(ms) { return ms ? new Date(Number(ms)).toLocaleString('vi-VN') : '—'; }
+      function dur(a, b) { if (!a) return ''; var s = Math.max(0, Math.round(((b || Date.now()) - a) / 1000)); return s >= 3600 ? Math.floor(s / 3600) + ' giờ ' + Math.floor(s % 3600 / 60) + ' phút' : s >= 60 ? Math.floor(s / 60) + ' phút ' + (s % 60) + ' giây' : s + ' giây'; }
+      function size(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : n + ' B'; }
+      function chip(st, paused) { return '<span class="' + (paused ? 'warn' : (STC[st] || 'mute')) + '"><b>' + esc(paused ? '⏸ Đang tạm dừng' : (ST[st] || st)) + '</b></span>'; }
+      function closeLive() { if (es) { try { es.close(); } catch (e) { /* bỏ qua */ } es = null; } }
+
+      function frame() {
+        var h = '<div id="bd-root"><h2>🎛 Bảng điều khiển bot</h2><div class="row" style="margin-bottom:10px" id="bd-bots"></div>' +
+          '<div class="row" style="margin-bottom:10px"><button class="b" data-tab="jobs">📋 Lệnh đã nhận</button><button class="b" data-tab="files">🗂 Tài liệu lưu trữ</button><button class="b" data-tab="les">🎓 Bot đã được dạy</button>' +
+          '<span class="grow"></span><label><input type="checkbox" id="bd-auto" ' + (autoRv ? 'checked' : '') + '> Tự nhờ AI đánh giá khi mở lệnh đã xong</label></div><div id="bd-body"></div></div>';
+        set(h);
+        var ab = document.getElementById('bd-auto'); if (ab) ab.onchange = function () { autoRv = ab.checked; try { localStorage.setItem('bdAuto', autoRv ? '1' : '0'); } catch (e) { /* bỏ qua */ } };
+        [].forEach.call(main.querySelectorAll('button[data-tab]'), function (b) { b.onclick = function () { tab = b.getAttribute('data-tab'); closeLive(); body(); }; });
+        api('GET', 'board/bots').then(function (r) { bots = r.bots; drawBots(); }).catch(fail);
+        body();
+      }
+      function drawBots() {
+        var e = document.getElementById('bd-bots'); if (!e) return;
+        e.innerHTML = bots.map(function (b) { return '<button class="b' + (b.key === bot ? ' p' : '') + '" data-bot="' + esc(b.key) + '">' + (b.key === 'main' ? '⭐ ' : '🤖 ') + esc(b.name) + '</button>'; }).join('');
+        [].forEach.call(e.querySelectorAll('button'), function (b) { b.onclick = function () { bot = b.getAttribute('data-bot'); sel = null; lastSig = ''; closeLive(); drawBots(); body(); }; });
+      }
+      function body() {
+        clearInterval(timer);
+        if (tab === 'files') return files();
+        if (tab === 'les') return lessonsTab();
+        var b = document.getElementById('bd-body'); if (!b) return;
+        b.innerHTML = '<div class="wg"><div><div class="row" style="margin-bottom:8px"><select id="bd-f"><option value="all">Tất cả lệnh</option><option value="active">Đang chạy / xếp hàng</option><option value="done">Đã xong</option><option value="error">Bị lỗi</option></select></div><div class="wl" id="bd-list"><p class="mute">Đang tải...</p></div></div><div class="wm" id="bd-detail"><p class="mute">Chọn một lệnh bên trái để xem.</p></div></div>';
+        var f = document.getElementById('bd-f'); f.value = filter; f.onchange = function () { filter = f.value; loadList(); };
+        loadList();
+        timer = setInterval(function () { if (!alive() || tab !== 'jobs') return; loadList(true); if (sel) refreshDetail(); }, 3000);
+      }
+      function loadList(quiet) {
+        api('GET', 'board/jobs?bot=' + encodeURIComponent(bot) + '&limit=60' + (filter === 'all' ? '' : '&status=' + filter)).then(function (r) {
+          var el = document.getElementById('bd-list'); if (!el) return;
+          if (!r.exists) { el.innerHTML = '<p class="mute">Bot này chưa nhận lệnh nào (chưa có dữ liệu).</p>'; return; }
+          var h = '<p class="mute" style="margin:0 0 6px">' + Object.keys(r.counts).map(function (k) { return esc(ST[k] || k) + ': ' + r.counts[k]; }).join(' · ') + '</p>';
+          if (!r.jobs.length) h += '<p class="mute">Không có lệnh nào.</p>';
+          r.jobs.forEach(function (j) {
+            h += '<div class="wi' + (sel === j.id ? ' on' : '') + '" data-j="' + j.id + '"><div><b>#' + j.id + '</b> ' + chip(j.status, j.paused) + (j.score != null ? ' <span class="' + (j.score >= 7 ? 'ok' : j.score >= 5 ? 'warn' : 'bad') + '">★ ' + j.score + '/10</span>' : '') + ' <small>' + esc(when(j.created_at)) + '</small></div><div class="wp">' + esc(j.prompt) + '</div></div>';
+          });
+          if (r.more) h += '<p class="mute">Còn lệnh cũ hơn (chỉ hiện 60 lệnh gần nhất).</p>';
+          el.innerHTML = h;
+          [].forEach.call(el.querySelectorAll('.wi'), function (d) { d.onclick = function () { sel = Number(d.getAttribute('data-j')); lastSig = ''; teachDraft = ''; closeLive(); loadList(true); openDetail(true); }; });
+        }).catch(function (e) { if (!quiet) fail(e); });
+      }
+      function control(what) {
+        if (what === 'cancel' && !ask('Hủy lệnh #' + sel + '? Việc đang làm dở sẽ bị dừng hẳn.')) return;
+        api('POST', 'board/control', { bot: bot, what: what, id: sel }).then(function () { toast(what === 'pause' ? 'Đã gửi lệnh tạm dừng' : what === 'resume' ? 'Đã gửi lệnh tiếp tục' : what === 'cancel' ? 'Đã gửi lệnh hủy' : 'Đã chạy lại (tạo lệnh mới)'); setTimeout(function () { loadList(true); refreshDetail(true); }, 2500); }).catch(fail);
+      }
+      function refreshDetail(force) { if (!sel) return; openDetail(false, force); }
+      function sigOf(d) { return [d.job.status, d.paused ? 1 : 0, (d.job.result || '').length, d.review ? d.review.at : 0, d.reviewPending ? 1 : 0, d.lessons.length, d.deliverables.outputs.length, d.deliverables.changed.length].join('|'); }
+      function openDetail(first, force) {
+        var id = sel;
+        api('GET', 'board/job?bot=' + encodeURIComponent(bot) + '&id=' + id).then(function (d) {
+          if (id !== sel || tab !== 'jobs') return;
+          var sg = sigOf(d); if (!first && !force && sg === lastSig) return;
+          var ta = document.getElementById('bd-teach'); if (ta) teachDraft = ta.value;
+          lastSig = sg; renderDetail(d);
+          var finished = ['done', 'error', 'cancelled', 'limit', 'interrupted'].indexOf(d.job.status) >= 0;
+          if (finished && autoRv && !d.review && !d.reviewPending && !renderDetail.asked[bot + ':' + id]) { renderDetail.asked[bot + ':' + id] = 1; api('POST', 'board/review', { bot: bot, id: id }).then(function () { lastSig = ''; }).catch(function () { /* để chủ máy bấm tay */ }); }
+        }).catch(function (e) { var el = document.getElementById('bd-detail'); if (el) el.innerHTML = '<div class="card"><p class="bad">' + esc(e.message) + '</p></div>'; });
+      }
+      renderDetail.asked = {};
+      function reviewHtml(d) {
+        var r = d.review;
+        if (d.reviewPending) return '<p class="mute">⏳ AI độc lập đang xem xét lệnh này (khoảng nửa phút)...</p>';
+        if (!r) return '<p class="mute">Chưa có đánh giá. AI độc lập (không phải AI đã làm việc này, nếu máy có nhiều AI) sẽ xem lệnh, các bước và kết quả rồi nhận xét có thông minh, có tối ưu chưa và cách làm tốt hơn.</p><div class="row"><button class="b p" id="bd-rv">🔍 Nhờ AI đánh giá</button></div>';
+        if (r.error) return '<p class="bad">' + esc(r.error) + '</p><div class="row"><button class="b p" id="bd-rv">Thử đánh giá lại</button></div>';
+        var li = function (a, cls) { return a && a.length ? '<ul style="margin:4px 0 8px 18px">' + a.map(function (x) { return '<li class="' + cls + '">' + esc(x) + '</li>'; }).join('') + '</ul>' : ''; };
+        var h = '<p><span class="' + (r.diem >= 7 ? 'ok' : r.diem >= 5 ? 'warn' : 'bad') + '" style="font-size:22px"><b>★ ' + esc(r.diem) + '/10</b></span> &nbsp; <b>' + esc(r.ketLuan) + '</b> <small>(đánh giá bởi ' + esc(r.by || 'AI') + ', ' + esc(when(r.at)) + ')</small></p>';
+        if (r.daLam && r.daLam.length) h += '<b>Làm tốt</b>' + li(r.daLam, 'ok');
+        if (r.vanDe && r.vanDe.length) h += '<b>Chưa tốt / lãng phí</b>' + li(r.vanDe, 'bad');
+        if (r.cachTotHon && r.cachTotHon.length) {
+          h += '<b>Cách tối ưu hơn</b><div>' + r.cachTotHon.map(function (x, i) { return '<div class="row" style="margin:4px 0"><span class="grow">• ' + esc(x) + '</span><button class="b" data-teach="' + i + '">🎓 Dạy bot làm theo</button></div>'; }).join('') + '</div>';
+        }
+        h += '<div style="margin-top:10px"><b>🎓 Dạy bot</b> <small>— bài học này sẽ được đưa vào đầu mọi lệnh về sau của bot</small><textarea id="bd-teach" rows="3" style="width:100%;margin:6px 0;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px">' + esc(teachDraft || r.baiHoc || '') + '</textarea>' +
+          '<div class="row"><button class="b p" id="bd-teach-go">Dạy bot điều này</button><button class="b" id="bd-rv">Đánh giá lại</button></div></div>';
+        return h;
+      }
+      function renderDetail(d) {
+        var el = document.getElementById('bd-detail'); if (!el) return;
+        var j = d.job, active = j.status === 'running', queued = j.status === 'queued' || j.status === 'waiting', fin = ['done', 'error', 'cancelled', 'limit', 'interrupted'].indexOf(j.status) >= 0;
+        var h = '<div class="card"><h3>Lệnh #' + j.id + ' ' + chip(j.status, d.paused) + '</h3><p class="mute" style="margin:0 0 8px">Nhận lúc ' + esc(when(j.created)) + (j.started ? ' · bắt đầu ' + esc(when(j.started)) : '') + (j.finished ? ' · xong ' + esc(when(j.finished)) + ' (' + esc(dur(j.started || j.created, j.finished)) + ')' : (j.started ? ' · đã chạy ' + esc(dur(j.started)) : '')) +
+          ' · nguồn: ' + esc(j.lane === 'bg' ? 'việc nền' : j.lane === 'event' ? 'sự kiện tự kích hoạt' : j.lane === 'hook' ? 'webhook' : 'Telegram') + (j.engine ? ' · AI: ' + esc(j.engine) : '') + (j.cost ? ' · chi phí $' + Number(j.cost).toFixed(3) : '') + '</p>' +
+          '<div class="keybox" style="white-space:pre-wrap">' + esc(j.prompt) + '</div><div class="row" style="margin-top:10px">' +
+          (active && !d.paused ? '<button class="b" data-c="pause">⏸ Tạm dừng</button>' : '') + (active && d.paused ? '<button class="b p" data-c="resume">▶ Tiếp tục</button>' : '') +
+          (active || queued ? '<button class="b d" data-c="cancel">⛔ Hủy lệnh</button>' : '') + (fin ? '<button class="b" data-c="rerun">🔁 Chạy lại lệnh này</button>' : '') + '</div></div>';
+        h += '<div class="card"><h3>Diễn biến' + (d.steps.count ? ' <small>' + d.steps.count + ' bước' + (d.steps.secs != null ? ' · ' + d.steps.secs + ' giây' : '') + '</small>' : '') + '</h3><div id="bd-live" class="keybox" style="max-height:340px;overflow:auto;font-size:13px"><span class="mute">' + (d.steps.hasTrace ? 'Đang tải...' : 'Lệnh này không ghi lại từng bước.') + '</span></div></div>';
+        h += '<div class="card"><h3>Kết quả</h3>' + (j.error ? '<p class="bad">' + esc(j.error) + '</p>' : '') + (j.result ? '<div class="keybox" style="white-space:pre-wrap;max-height:380px;overflow:auto">' + esc(j.result) + '</div>' : (active || queued ? '<p class="mute">Chưa có, bot đang làm...</p>' : '<p class="mute">Không có nội dung trả lời.</p>')) + '</div>';
+        var dl = d.deliverables, ch = dl.changed, os = dl.outputs;
+        h += '<div class="card"><h3>📦 Thành quả</h3>';
+        if (!ch.length && !os.length) h += '<p class="mute">Lệnh này chưa tạo hay sửa tệp nào.</p>';
+        if (os.length) { h += '<b>Tệp bot tạo ra</b><table>'; os.forEach(function (f, i) { h += '<tr><td>' + esc(f.rel) + ' <small>' + esc(size(f.size)) + '</small></td><td style="text-align:right"><button class="b" data-vf="' + i + '">Xem</button><button class="b" data-df="' + i + '">Tải</button></td></tr>'; }); h += '</table>'; }
+        if (ch.length) { h += '<b style="display:block;margin-top:8px">Tệp bot đã sửa / tạo / xóa' + (dl.changedTotal > ch.length ? ' (' + dl.changedTotal + ', hiện ' + ch.length + ')' : '') + '</b><table>'; ch.forEach(function (f, i) { h += '<tr><td>' + esc(f.status === 'created' ? '🆕' : f.status === 'deleted' ? '🗑' : '✏️') + ' ' + esc(f.p) + (f.add || f.del ? ' <small class="ok">+' + f.add + '</small> <small class="bad">−' + f.del + '</small>' : '') + (f.note ? ' <small>' + esc(f.note) + '</small>' : '') + '</td><td style="text-align:right"><button class="b" data-cf="' + i + '">Xem thay đổi</button></td></tr>'; }); h += '</table>'; }
+        h += '<div id="bd-prev"></div></div>';
+        h += '<div class="card"><h3>🧠 Đánh giá của AI độc lập</h3>' + (fin ? reviewHtml(d) : '<p class="mute">Đợi lệnh chạy xong rồi mới đánh giá được.</p>') + '</div>';
+        if (d.audit && d.audit.length) { h += '<div class="card"><h3>🔐 Quyền bot đã xin / được cấp</h3><table>'; d.audit.slice(0, 40).forEach(function (a) { h += '<tr><td>' + esc(a.tool) + ' <small>' + esc(a.summary || '') + '</small></td><td style="text-align:right"><small class="' + (a.decision === 'deny' ? 'bad' : 'mute') + '">' + esc(a.decision) + '</small></td></tr>'; }); h += '</table></div>'; }
+        el.innerHTML = h;
+        wireDetail(d);
+        loadLive(d);
+      }
+      function wireDetail(d) {
+        var el = document.getElementById('bd-detail');
+        [].forEach.call(el.querySelectorAll('button[data-c]'), function (b) { b.onclick = function () { control(b.getAttribute('data-c')); }; });
+        on('bd-rv', function () { api('POST', 'board/review', { bot: bot, id: sel }).then(function () { toast('Đã nhờ AI đánh giá, đợi khoảng nửa phút'); lastSig = ''; setTimeout(function () { refreshDetail(true); }, 4000); }).catch(fail); });
+        function teach(text) { api('POST', 'board/teach', { bot: bot, text: text, job: sel }).then(function (r) { toast(r.dup ? 'Bot đã được dạy điều này rồi' : 'Đã dạy bot. Từ lệnh sau bot sẽ làm theo.'); teachDraft = ''; refreshDetail(true); }).catch(fail); }
+        on('bd-teach-go', function () { teach(document.getElementById('bd-teach').value); });
+        [].forEach.call(el.querySelectorAll('button[data-teach]'), function (b) { b.onclick = function () { teach(d.review.cachTotHon[Number(b.getAttribute('data-teach'))]); }; });
+        [].forEach.call(el.querySelectorAll('button[data-vf]'), function (b) { b.onclick = function () { preview(d.deliverables.outputs[Number(b.getAttribute('data-vf'))].rel); }; });
+        [].forEach.call(el.querySelectorAll('button[data-df]'), function (b) { b.onclick = function () { download(d.deliverables.outputs[Number(b.getAttribute('data-df'))].rel); }; });
+        [].forEach.call(el.querySelectorAll('button[data-cf]'), function (b) { b.onclick = function () { showChange(d.deliverables.changed[Number(b.getAttribute('data-cf'))].p); }; });
+      }
+      function preview(rel, boxId) {
+        var box = document.getElementById(boxId || 'bd-prev'); if (!box) return; box.innerHTML = '<p class="mute">Đang mở...</p>';
+        api('GET', 'board/file?bot=' + encodeURIComponent(bot) + '&path=' + encodeURIComponent(rel)).then(function (f) {
+          var h = '<div class="row" style="margin-top:8px"><b class="grow">' + esc(f.name) + ' <small>' + esc(size(f.size)) + '</small></b><button class="b" id="bd-pdl">Tải về</button></div>';
+          if (f.kind === 'image') h += '<img src="' + f.dataUrl + '" style="max-width:100%;border:1px solid var(--line);border-radius:8px">';
+          else if (f.kind === 'text') h += '<pre class="keybox" style="white-space:pre-wrap;max-height:420px;overflow:auto">' + esc(f.text) + (f.cut ? '\n… (còn nữa, tải về để xem đủ)' : '') + '</pre>';
+          else h += '<p class="mute">Không xem trước được (' + esc(f.kind === 'big' ? 'ảnh quá lớn' : 'tệp nhị phân') + '). Bấm Tải về.</p>';
+          box.innerHTML = h; on('bd-pdl', function () { download(rel); });
+        }).catch(function (e) { box.innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+      }
+      function download(rel) {
+        api('GET', 'board/file?bot=' + encodeURIComponent(bot) + '&path=' + encodeURIComponent(rel) + '&download=1').then(function (f) {
+          var bin = atob(f.base64), arr = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([arr])); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+        }).catch(fail);
+      }
+      function showChange(p) {
+        var box = document.getElementById('bd-prev'); box.innerHTML = '<p class="mute">Đang tải...</p>';
+        api('GET', 'board/changes?bot=' + encodeURIComponent(bot) + '&id=' + sel).then(function (c) {
+          var f = null; (c.files || []).forEach(function (x) { if (x.p === p) f = x; });
+          if (!f || !f.rows) { box.innerHTML = '<p class="mute">' + esc(f && f.note ? f.note : 'Không có khác biệt từng dòng để hiện.') + '</p>'; return; }
+          box.innerHTML = '<b>' + esc(p) + '</b><pre class="keybox" style="max-height:420px;overflow:auto;font-size:12.5px">' + f.rows.map(function (r) { return '<span class="' + (r.t === 'add' ? 'ok' : r.t === 'del' ? 'bad' : 'mute') + '">' + esc((r.t === 'add' ? '+ ' : r.t === 'del' ? '− ' : r.t === 'skip' ? '… ' : '  ') + r.text) + '</span>'; }).join('\n') + '</pre>';
+        }).catch(function (e) { box.innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+      }
+      function evHtml(e) {
+        var t = new Date(e.t).toLocaleTimeString('vi-VN');
+        if (e.k === 'tool') return '<div>' + esc(t) + ' ' + esc(e.l || e.n) + '</div>';
+        if (e.k === 'text') return '<div style="color:#0b5c8f">' + esc(t) + ' 💬 ' + esc(e.text) + '</div>';
+        if (e.k === 'start') return '<div class="mute">' + esc(t) + ' ▶ bắt đầu</div>';
+        if (e.k === 'end') return '<div class="' + (e.ok ? 'ok' : 'bad') + '">' + esc(t) + ' ■ ' + (e.ok ? 'xong' : 'kết thúc có lỗi') + '</div>';
+        return '';
+      }
+      function loadLive(d) {
+        var box = document.getElementById('bd-live'); if (!box || !d.steps.hasTrace) return;
+        var id = sel, running = d.job.status === 'running' || d.job.status === 'queued', typing = '', typingEl = null;
+        function add(evs) {
+          var h = ''; evs.forEach(function (e) { if (e.k === 'delta') typing += e.text; else h += evHtml(e); });
+          if (h) box.insertAdjacentHTML('beforeend', h);
+          if (typingEl === null) { typingEl = document.createElement('div'); typingEl.style.color = '#157a3c'; box.appendChild(typingEl); }
+          typingEl.textContent = typing ? '✍ ' + typing.slice(-600) : ''; if (!running || true) box.scrollTop = box.scrollHeight;
+        }
+        box.innerHTML = '';
+        if (running && window.EventSource) {
+          closeLive();
+          es = new EventSource('api/watch/stream?bot=' + encodeURIComponent(bot) + '&id=' + id + '&from=0');
+          es.onmessage = function (m) { if (id !== sel || !document.getElementById('bd-live')) { closeLive(); return; } var r = JSON.parse(m.data); typing = ''; if (typingEl) typingEl.textContent = ''; add(r.events || []); if (r.done) { closeLive(); setTimeout(function () { refreshDetail(true); }, 1000); } };
+          es.onerror = function () { closeLive(); };
+        } else {
+          api('GET', 'board/trace?bot=' + encodeURIComponent(bot) + '&id=' + id + '&from=0').then(function (r) { if (id === sel) { add(r.events || []); if (!r.events || !r.events.length) box.innerHTML = '<span class="mute">Không có bước nào được ghi.</span>'; } }).catch(function () { /* bỏ qua */ });
+        }
+      }
+
+      // ---- Tài liệu lưu trữ ----
+      function files() {
+        var b = document.getElementById('bd-body'); if (!b) return;
+        b.innerHTML = '<div class="card"><h3>🗂 Tài liệu lưu trữ của bot</h3><p class="mute">Mọi tệp trong thư mục làm việc của bot này (tệp bot tạo ra nằm trong thư mục <b>out</b>). Chỉ xem và tải về, không sửa.</p><div class="row" id="bd-crumb" style="margin-bottom:8px"></div><div id="bd-tree"><p class="mute">Đang tải...</p></div><div id="bd-fprev"></div></div>';
+        openDir(arch);
+      }
+      function openDir(rel) {
+        arch = rel;
+        api('GET', 'board/archive?bot=' + encodeURIComponent(bot) + '&path=' + encodeURIComponent(rel)).then(function (t) {
+          var parts = rel ? rel.split('/') : [], crumb = '<button class="b" data-p="">📁 gốc</button>', acc = '';
+          parts.forEach(function (p) { acc += (acc ? '/' : '') + p; crumb += '<button class="b" data-p="' + esc(acc) + '">' + esc(p) + '</button>'; });
+          document.getElementById('bd-crumb').innerHTML = crumb;
+          var h = t.entries.length ? '<table>' : '<p class="mute">Thư mục trống.</p>';
+          t.entries.forEach(function (e) { var p = (rel ? rel + '/' : '') + e.name; h += '<tr><td>' + (e.dir ? '📁' : '📄') + ' <a href="#" data-' + (e.dir ? 'd' : 'f') + '="' + esc(p) + '">' + esc(e.name) + '</a> ' + (e.dir ? '' : '<small>' + esc(size(e.size)) + '</small>') + ' <small>' + esc(when(e.mtime)) + '</small></td><td style="text-align:right">' + (e.dir ? '' : '<button class="b" data-dl="' + esc(p) + '">Tải</button>') + '</td></tr>'; });
+          document.getElementById('bd-tree').innerHTML = h + (t.entries.length ? '</table>' : '');
+          [].forEach.call(document.querySelectorAll('#bd-crumb button'), function (x) { x.onclick = function () { openDir(x.getAttribute('data-p')); }; });
+          [].forEach.call(document.querySelectorAll('#bd-tree a[data-d]'), function (x) { x.onclick = function (ev) { ev.preventDefault(); openDir(x.getAttribute('data-d')); }; });
+          [].forEach.call(document.querySelectorAll('#bd-tree a[data-f]'), function (x) { x.onclick = function (ev) { ev.preventDefault(); preview(x.getAttribute('data-f'), 'bd-fprev'); }; });
+          [].forEach.call(document.querySelectorAll('#bd-tree button[data-dl]'), function (x) { x.onclick = function () { download(x.getAttribute('data-dl')); }; });
+        }).catch(function (e) { document.getElementById('bd-tree').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+      }
+
+      // ---- Bot đã được dạy ----
+      function lessonsTab() {
+        var b = document.getElementById('bd-body'); if (!b) return;
+        b.innerHTML = '<div class="card"><h3>🎓 Những điều bot này đã được dạy</h3><p class="mute">Các bài học này được đưa vào đầu mọi lệnh mới của bot (tối đa 30 bài). Xóa bài nào thì bot thôi làm theo bài đó từ lệnh sau.</p><div id="bd-les"><p class="mute">Đang tải...</p></div><div class="row" style="margin-top:10px"><input type="text" id="bd-new" class="grow" placeholder="Tự viết thêm một điều muốn dạy bot..."><button class="b p" id="bd-add">Dạy thêm</button></div></div>';
+        function draw() {
+          api('GET', 'board/jobs?bot=' + encodeURIComponent(bot) + '&limit=1').then(function (r) {
+            var el = document.getElementById('bd-les'); if (!el) return;
+            var l = r.lessons || [];
+            el.innerHTML = l.length ? '<table>' + l.map(function (x) { return '<tr><td>' + esc(x.text) + '<br><small>' + esc(when(x.at)) + (x.fromJob ? ' · từ lệnh #' + x.fromJob : '') + '</small></td><td style="text-align:right"><button class="b d" data-fg="' + esc(x.id) + '">Xóa</button></td></tr>'; }).join('') + '</table>' : '<p class="mute">Chưa dạy điều gì. Mở một lệnh đã xong, nhờ AI đánh giá rồi bấm "Dạy bot".</p>';
+            [].forEach.call(el.querySelectorAll('button[data-fg]'), function (x) { x.onclick = function () { api('POST', 'board/forget', { bot: bot, id: x.getAttribute('data-fg') }).then(function () { toast('Đã xóa bài học'); draw(); }).catch(fail); }; });
+          }).catch(fail);
+        }
+        draw();
+        on('bd-add', function () { var v = document.getElementById('bd-new').value; api('POST', 'board/teach', { bot: bot, text: v }).then(function () { document.getElementById('bd-new').value = ''; toast('Đã dạy bot'); draw(); }).catch(fail); });
+      }
+
+      frame();
+    },
     watch: function () {
       var sel = null, from = 0, tab = 'steps', events = [], todos = null, doneFlag = false, detail = null, changes = null, projects = [], proj = '', tpath = '', timer = null, openDiff = {}, liveText = '', es = null, newProj = '';
       set('<h2>Màn hình AI</h2><div id="w-appr"></div><div class="wg"><div class="card wl" id="w-list"><p class="mute">Đang tải...</p></div><div class="card wm" id="w-main"><p class="mute">Chọn một việc bên trái để xem AI đang làm gì, đã sửa tệp nào.</p></div></div>');

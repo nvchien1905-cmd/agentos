@@ -11,7 +11,7 @@ const path = require('path');
 //   sched.pause {scope, id} / sched.resume {scope, id} / sched.remove {scope, id}   việc định kỳ: tạm dừng / bật lại / xóa
 //   sched.project {id, project}  chuyển việc hẹn giờ chung vào một dự án
 //   sched.removeMatching {text}  xóa việc định kỳ có nội dung chứa đoạn chữ này và hủy các việc đang chờ/chạy cùng nội dung
-const ACTIONS = ['approval.answer', 'job.submit', 'job.cancel', 'job.hold', 'job.release', 'job.project', 'job.rerun', 'sched.pause', 'sched.resume', 'sched.remove', 'sched.project', 'sched.removeMatching'];
+const ACTIONS = ['approval.answer', 'job.submit', 'job.cancel', 'job.hold', 'job.release', 'job.pause', 'job.resume', 'review.run', 'job.project', 'job.rerun', 'sched.pause', 'sched.resume', 'sched.remove', 'sched.project', 'sched.removeMatching'];
 const MAX_BYTES = 10000;
 
 function createControl(o) {
@@ -40,6 +40,9 @@ function createControl(o) {
         return worker && worker.cancelJob ? worker.cancelJob(id) : false;
       }
       case 'job.hold': return Number.isInteger(id) && db.holdJob(id);
+      case 'job.pause': return Number.isInteger(id) && !!worker && !!worker.pauseJob && worker.pauseJob(id);
+      case 'job.resume': return Number.isInteger(id) && !!worker && !!worker.resumeJob && worker.resumeJob(id);
+      case 'review.run': { if (!o.review || !/^[a-z0-9]{1,12}$/.test(String(req.bot)) || !Number.isInteger(id)) return false; o.review.run(String(req.bot), id).catch((e) => log('đánh giá lệnh lỗi: ' + e.message)); return true; }
       case 'job.release': { if (!Number.isInteger(id)) return false; const ok = db.releaseJob(id); if (ok && worker) setImmediate(() => worker.wake()); return ok; }
       case 'job.rerun': {                      // chạy lại: tạo việc MỚI cùng nội dung/dự án/AI (chỉ việc đã kết thúc)
         if (!Number.isInteger(id)) return false;

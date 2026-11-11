@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.4",
-  "file": "agentos-update-2026.11.11.4.tar.gz",
-  "size": 549655,
-  "sha256": "bc3c298b29504059361b8a8dc2dc5f8484528adb53c46d5694d8e3a66db5e8d3",
+  "version": "2026.11.11.7",
+  "file": "agentos-update-2026.11.11.7.tar.gz",
+  "size": 564466,
+  "sha256": "90a65249edf2283633bff90e85b1575322f8e2c66530297295e392f4357561b1",
   "date": "2026-11-11",
-  "notes": "Tài nguyên chung: mọi bot dùng chung kho RAM/CPU, chạy một mình dùng hết, nhiều bot chia đều"
+  "notes": "Bảng điều khiển bot: lệnh đã nhận, trực tiếp, tạm dừng/tiếp tục/hủy, AI đánh giá, dạy bot, thành quả, tài liệu lưu trữ"
 }

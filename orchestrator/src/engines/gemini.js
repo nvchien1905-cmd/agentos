@@ -47,7 +47,7 @@ function startGemini(opts) {
       notLoggedIn: failed && (r.code === 41 || /Auth method|authorization is required|GEMINI_API_KEY|API key not valid|API_KEY_INVALID|not logged in/i.test(hay)),
     };
   });
-  return { done, kill: p.kill };
+  return { done, kill: p.kill, pause: p.pause, resume: p.resume };
 }
 
 module.exports = { startGemini, parseOutput };

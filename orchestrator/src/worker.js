@@ -23,7 +23,7 @@ function fmtTime(ms) {
 // `context` (tùy chọn, memory.js): ghép ghi nhớ lâu dài + tóm tắt + việc gần nhất vào đầu câu lệnh khi AI chưa có phiên; afterJob() quyết định xoay phiên.
 // `ui` (tùy chọn, live.js): begin/step/end — hiện "đang gõ" + tin trạng thái trực tiếp; `answer(job, text, meta)` (tùy chọn): gửi câu trả lời cuối (Markdown -> Telegram), meta = { engine, primary, name, secs, steps }.
 // `router` (tùy chọn, router.js): sắp xếp lại thứ tự AI theo độ khó của việc (câu hỏi nhẹ đi AI rẻ trước).
-function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, outboxPrepare, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget, perChat, exclusiveProfiles }) {
+function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox, outboxPrepare, sendFile, engineFilter, preflight, retryDelaysMs, context, router, ui, answer, lanes, projectEngine, overBudget, perChat, exclusiveProfiles, lessons }) {
   lanes = lanes && lanes.length ? lanes : ['main'];
   const isMain = lanes.length === 1 && lanes[0] === 'main';
   retryDelaysMs = retryDelaysMs || [15000, 60000, 180000];
@@ -57,6 +57,11 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
   // Khi engine mới chưa có phiên (vừa chuyển engine hoặc phiên mất), đưa kèm tóm tắt các việc trước
   // trong cuộc trò chuyện để nó nối tiếp được. /moi đặt mốc cắt nên không lòi ngữ cảnh cũ.
   function buildPrompt(job, hasSession, eng) {
+    const base = buildPrompt0(job, hasSession, eng);
+    const les = lessons ? lessons.text() : '';
+    return les ? les + '\n\n' + base : base;
+  }
+  function buildPrompt0(job, hasSession, eng) {
     if (context) return context.pack(job, hasSession, eng);
     if (hasSession) return job.prompt;
     const after = Number(db.kvGet('ctxfrom:' + db.scopeOf(job))) || 0;
@@ -82,8 +87,9 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
       try { h = engines[eng].start({ job, prompt: buildPrompt(job, !!resumeId, eng), resumeId, onProgress: ui ? (ev) => ui.step(job, ev) : undefined }); } catch (e) {
         return { ok: false, limit: false, error: 'Không khởi động được ' + name(eng) + ': ' + e.message };
       }
-      current = { jobId: job.id, chatId: job.chat_id, project: job.project || '', kill: h.kill };
+      current = { jobId: job.id, chatId: job.chat_id, project: job.project || '', kill: h.kill, pause: h.pause, resume: h.resume };
       const res = await h.done;
+      if (db.kvGet('paused_job') === String(job.id)) db.kvDel('paused_job');
       current = null;
       if (res.ok || !res.transient || n >= retryDelaysMs.length || stopped) return res;
       log(name(eng) + ' lỗi tạm thời (' + String(res.error || '').slice(0, 120) + '), thử lại lần ' + (n + 1) + ' sau ' + Math.round(retryDelaysMs[n] / 1000) + 's');
@@ -279,6 +285,9 @@ function createWorker({ db, engines, order, notify, log, cooldownMs, now, outbox
     },
     // Hủy ĐÚNG việc đang chạy có mã này (trang Cài đặt → Nhật ký)
     cancelJob(id) { if (current && Number(current.jobId) === Number(id)) { current.kill('cancelled'); return true; } return false; },
+    // Tạm dừng / tiếp tục ĐÚNG việc đang chạy (bảng điều khiển bot): đóng băng cả cây tiến trình AI, không mất tiến độ
+    pauseJob(id) { if (current && Number(current.jobId) === Number(id) && typeof current.pause === 'function' && current.pause()) { db.kvSet('paused_job', String(id)); return true; } return false; },
+    resumeJob(id) { if (current && Number(current.jobId) === Number(id) && typeof current.resume === 'function' && current.resume()) { db.kvDel('paused_job'); return true; } return false; },
     currentJobId() { return current ? current.jobId : null; },
     engineNames() { return Object.keys(engines); },
     // Tình trạng các engine: until > now nghĩa là đang nghỉ vì hết hạn mức.

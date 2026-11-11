@@ -24,6 +24,7 @@ function createBotBoard(o) {
   const mainWork = () => (typeof o.mainWorkdir === 'function' ? o.mainWorkdir() : o.mainWorkdir) || '/var/lib/agentos/work';
   const now = o.now || Date.now;
   const chown = o.chown || (() => {});                                   // (đường dẫn, tên người dùng) -> chuyển chủ cho bot đọc/ghi được
+  // (o.onedriveDir: thư mục OneDrive của bot quản lý, có sổ tay ở AgentOS/SO-TAY)
 
   function target(key) {
     key = String(key || 'main');
@@ -205,11 +206,58 @@ function createBotBoard(o) {
     return { name, kind: 'text', size: st.size, text: buf.subarray(0, TEXT_PREVIEW).toString('utf8'), cut: st.size > TEXT_PREVIEW };
   }
 
+  // ---- BỘ NHỚ của bot: tóm tắt cuộn từng cuộc trò chuyện, sổ tay (mục lục + chương), việc cũ tìm lại được, bài học ----
+  // Mặc định giống memory.js: giữ nguyên văn 4 việc gần nhất, nén khi có từ 15 việc cũ.
+  const KEEP_RECENT = 4, COMPRESS_AT = 15;
+  function bookDirOf(t) {
+    const candidates = t.key === 'main'
+      ? [path.join(o.onedriveDir || '/srv/onedrive', 'AgentOS', 'SO-TAY'), path.join(t.dataDir, 'so-tay')]
+      : [path.join(path.dirname(t.dataDir), 'onedrive', 'AgentOS', 'SO-TAY'), path.join(t.dataDir, 'so-tay')];
+    return candidates.find((d) => fs.existsSync(d)) || candidates[0];
+  }
+  function bookOf(t) {
+    const dir = bookDirOf(t), { createBook } = require('../../orchestrator/src/book');
+    const bk = createBook({ rootDir: dir });
+    const chapters = bk.list().map((c) => ({ slug: c.slug, no: c.part ? c.part + '.' + c.no : '', part: c.part || 9, title: c.title, summary: c.summary, updated: c.updated, entries: c.entries.map((e) => ({ id: e.id, date: e.date, text: e.text })) }));
+    let history = 0; try { for (const n of fs.readdirSync(path.join(dir, '.lichsu'))) history += (fs.readFileSync(path.join(dir, '.lichsu', n), 'utf8').match(/^- /gm) || []).length; } catch (e) { /* chưa có */ }
+    let inbox = 0; try { inbox = (fs.readFileSync(path.join(path.dirname(dir), 'GHI-NHO.md'), 'utf8').match(/^- /gm) || []).length; } catch (e) { /* chưa có */ }
+    return { dir, exists: fs.existsSync(dir), chapters, entries: chapters.reduce((s, c) => s + c.entries.length, 0), history, inbox };
+  }
+  function memory(key) {
+    const t = target(key), book = bookOf(t);
+    const out = withDb(t, (db) => {
+      if (!db) return { exists: false, scopes: [], jobs: { total: 0, done: 0, indexed: 0 } };
+      const num = (sql, ...a) => { try { return db.prepare(sql).get(...a).n; } catch (e) { return 0; } };
+      const sums = []; try { sums.push(...db.prepare("SELECT k, v FROM kv WHERE k LIKE 'sum:%'").all()); } catch (e) { /* chưa có */ }
+      const scopes = sums.map((r) => {
+        const scope = r.k.slice(4), i = scope.indexOf('#'), chat = i < 0 ? scope : scope.slice(0, i), proj = i < 0 ? '' : scope.slice(i + 1);
+        const upto = Number(kv(db, 'sumupto:' + scope)) || 0, from = Number(kv(db, 'ctxfrom:' + scope)) || 0, after = Math.max(upto, from);
+        const pending = num("SELECT COUNT(*) AS n FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ? AND status = 'done' AND id > ?", chat, proj, after);
+        const compressed = num("SELECT COUNT(*) AS n FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ? AND status = 'done' AND id <= ? AND id > ?", chat, proj, upto, from);
+        const toCompress = Math.max(0, pending - KEEP_RECENT);
+        return { scope, chat, project: proj, summary: r.v, summaryLen: r.v.length, upTo: upto, compressedJobs: compressed, pendingJobs: pending, untilNext: Math.max(0, COMPRESS_AT - toCompress), willCompress: toCompress >= COMPRESS_AT };
+      }).sort((a, b) => b.upTo - a.upTo);
+      // cuộc trò chuyện có việc nhưng CHƯA có tóm tắt (chưa tới ngưỡng nén lần đầu)
+      let fresh = []; try { fresh = db.prepare("SELECT chat_id, COALESCE(project,'') AS project, COUNT(*) AS n FROM jobs WHERE status = 'done' GROUP BY chat_id, COALESCE(project,'')").all(); } catch (e) { /* chưa có */ }
+      const have = new Set(scopes.map((s) => s.scope));
+      for (const f of fresh) {
+        const scope = f.chat_id + (f.project ? '#' + f.project : '');
+        if (have.has(scope)) continue;
+        const from = Number(kv(db, 'ctxfrom:' + scope)) || 0;
+        const pending = from ? num("SELECT COUNT(*) AS n FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ? AND status = 'done' AND id > ?", f.chat_id, f.project, from) : f.n;
+        scopes.push({ scope, chat: String(f.chat_id), project: f.project, summary: '', summaryLen: 0, upTo: 0, compressedJobs: 0, pendingJobs: pending, untilNext: Math.max(0, COMPRESS_AT - Math.max(0, pending - KEEP_RECENT)), willCompress: pending - KEEP_RECENT >= COMPRESS_AT });
+      }
+      const sessions = []; try { for (const r of db.prepare("SELECT k FROM kv WHERE k LIKE 'turns:%'").all()) sessions.push(r.k); } catch (e) { /* chưa có */ }
+      return { exists: true, scopes, jobs: { total: num('SELECT COUNT(*) AS n FROM jobs'), done: num("SELECT COUNT(*) AS n FROM jobs WHERE status = 'done'"), indexed: num('SELECT COUNT(*) AS n FROM jobs_fts') }, aiSessions: sessions.length };
+    });
+    return Object.assign({ bot: key, rules: { keepRecent: KEEP_RECENT, compressAt: COMPRESS_AT }, book, lessons: lessonsOf(t) }, out);
+  }
+
   function bots(agents) {
     return [{ key: 'main', name: 'Bot quản lý' }].concat((agents || []).map((a) => ({ key: a.id, name: a.name })));
   }
 
-  return { list, detail, requestReview, teach, forget, control, trace, traceSig, changes, archive, fileView, bots, target, lessonsOf, ID_RE };
+  return { list, detail, requestReview, teach, forget, control, trace, traceSig, changes, archive, fileView, memory, bots, target, lessonsOf, ID_RE };
 }
 
 module.exports = { createBotBoard, ID_RE };

@@ -708,7 +708,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
 
       function frame() {
         var h = '<div id="bd-root"><h2>🎛 Bảng điều khiển bot</h2><div class="row" style="margin-bottom:10px" id="bd-bots"></div>' +
-          '<div class="row" style="margin-bottom:10px"><button class="b" data-tab="jobs">📋 Lệnh đã nhận</button><button class="b" data-tab="files">🗂 Tài liệu lưu trữ</button><button class="b" data-tab="les">🎓 Bot đã được dạy</button>' +
+          '<div class="row" style="margin-bottom:10px"><button class="b" data-tab="jobs">📋 Lệnh đã nhận</button><button class="b" data-tab="files">🗂 Tài liệu lưu trữ</button><button class="b" data-tab="les">🎓 Bot đã được dạy</button><button class="b" data-tab="mem">🧠 Bộ nhớ</button>' +
           '</div><div id="bd-body"></div></div>';
         set(h);
         [].forEach.call(main.querySelectorAll('button[data-tab]'), function (b) { b.onclick = function () { tab = b.getAttribute('data-tab'); closeLive(); body(); }; });
@@ -724,6 +724,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
         clearInterval(timer);
         if (tab === 'files') return files();
         if (tab === 'les') return lessonsTab();
+        if (tab === 'mem') return memTab();
         var b = document.getElementById('bd-body'); if (!b) return;
         b.innerHTML = '<div class="wg"><div><div class="row" style="margin-bottom:8px"><select id="bd-f"><option value="all">Tất cả lệnh</option><option value="active">Đang chạy / xếp hàng</option><option value="done">Đã xong</option><option value="error">Bị lỗi</option></select></div><div class="wl" id="bd-list"><p class="mute">Đang tải...</p></div></div><div class="wm" id="bd-detail"><p class="mute">Chọn một lệnh bên trái để xem.</p></div></div>';
         var f = document.getElementById('bd-f'); f.value = filter; f.onchange = function () { filter = f.value; loadList(); };
@@ -880,6 +881,39 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           [].forEach.call(document.querySelectorAll('#bd-tree a[data-f]'), function (x) { x.onclick = function (ev) { ev.preventDefault(); preview(x.getAttribute('data-f'), 'bd-fprev'); }; });
           [].forEach.call(document.querySelectorAll('#bd-tree button[data-dl]'), function (x) { x.onclick = function () { download(x.getAttribute('data-dl')); }; });
         }).catch(function (e) { document.getElementById('bd-tree').innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
+      }
+
+      // ---- Bộ nhớ: mọi thứ bot đang nhớ ----
+      var PART = { 1: 'Chủ máy và cách làm việc', 2: 'Cửa hàng và kinh doanh', 3: 'Khách hàng và đối tác', 4: 'Hàng hóa và giá', 5: 'Máy móc và hệ thống', 6: 'Quy trình và quy định', 7: 'Dự án và quyết định', 9: 'Khác' };
+      function memTab() {
+        var b = document.getElementById('bd-body'); if (!b) return;
+        b.innerHTML = '<p class="mute">Đang đọc bộ nhớ của bot...</p>';
+        api('GET', 'board/memory?bot=' + encodeURIComponent(bot)).then(function (m) {
+          var el = document.getElementById('bd-body'); if (!el || tab !== 'mem') return;
+          var h = '<div class="card"><h3>🧠 Bot này đang nhớ gì</h3><p class="mute">Bot nhớ theo 4 lớp: (1) <b>bài học</b> chủ máy đã dạy, (2) <b>sổ tay</b> như cuốn sách (mục lục, chương, từng mục), (3) <b>tóm tắt</b> các việc cũ của từng cuộc trò chuyện, (4) <b>việc cũ</b> tìm lại được theo từ khóa. Cứ ' + m.rules.compressAt + ' việc cũ thì bot nén thành tóm tắt và rút điều đáng nhớ vào sổ tay; ' + m.rules.keepRecent + ' việc gần nhất giữ nguyên văn.</p>' +
+            '<table><tr><td>Bài học đã dạy</td><td><b>' + m.lessons.length + '</b></td></tr>' +
+            '<tr><td>Sổ tay</td><td><b>' + m.book.chapters.length + '</b> chương, <b>' + m.book.entries + '</b> mục' + (m.book.history ? ' · ' + m.book.history + ' mục cũ đã bị thay (lưu lịch sử)' : '') + (m.book.inbox ? ' · ' + m.book.inbox + ' dòng đang chờ xếp vào chương' : '') + '</td></tr>' +
+            '<tr><td>Tóm tắt các cuộc trò chuyện</td><td><b>' + m.scopes.filter(function (s) { return s.summaryLen; }).length + '</b> bản</td></tr>' +
+            '<tr><td>Việc đã làm xong (tìm lại được)</td><td><b>' + m.jobs.done + '</b> / ' + m.jobs.total + ' lệnh' + (m.jobs.indexed ? ' · ' + m.jobs.indexed + ' lệnh đã lập chỉ mục tìm kiếm' : '') + '</td></tr></table></div>';
+          h += '<div class="card"><h3>📝 Tóm tắt từng cuộc trò chuyện</h3>';
+          if (!m.scopes.length) h += '<p class="mute">Bot chưa làm việc nào xong nên chưa có gì để nhớ.</p>';
+          m.scopes.forEach(function (s) {
+            h += '<div style="margin-bottom:12px"><b>Cuộc trò chuyện ' + esc(s.chat) + (s.project ? ' · dự án ' + esc(s.project) : '') + '</b><br><small class="mute">' +
+              (s.summaryLen ? 'Đã nén <b>' + s.compressedJobs + '</b> việc thành tóm tắt ' + s.summaryLen + ' ký tự' : 'Chưa nén lần nào') + ' · còn <b>' + s.pendingJobs + '</b> việc mới chưa nén · ' +
+              (s.willCompress ? 'sắp nén ở lần làm xong tiếp theo' : 'nén tiếp sau khoảng <b>' + s.untilNext + '</b> việc nữa') + '</small>' +
+              (s.summaryLen ? '<details><summary>Xem tóm tắt bot đang nhớ</summary><pre style="white-space:pre-wrap">' + esc(s.summary) + '</pre></details>' : '') + '</div>';
+          });
+          h += '</div><div class="card"><h3>📖 Sổ tay (như cuốn sách)</h3><p class="mute">' + (m.book.exists ? 'Thư mục: ' + esc(m.book.dir) : 'Chưa có sổ tay. Sổ tay tự tạo khi bot nén lần đầu hoặc khi anh dặn "nhớ…".') + '</p>';
+          var lastPart = -1;
+          m.book.chapters.forEach(function (c) {
+            if (c.part !== lastPart) { lastPart = c.part; h += '<h4 style="margin:14px 0 4px">PHẦN ' + c.part + ' — ' + esc(PART[c.part] || 'Khác') + '</h4>'; }
+            h += '<details style="margin-bottom:6px"><summary><b>Chương ' + esc(c.no || '?') + ' ' + esc(c.title) + '</b> (' + c.entries.length + ' mục)' + (c.updated ? ' <small class="mute">cập nhật ' + esc(c.updated) + '</small>' : '') + '</summary>' +
+              (c.summary && c.summary !== '(chưa có)' ? '<p class="mute">' + esc(c.summary) + '</p>' : '') +
+              '<ul>' + c.entries.map(function (e) { return '<li><small class="mute">' + esc(e.date) + '</small> ' + esc(e.text) + '</li>'; }).join('') + '</ul></details>';
+          });
+          h += '</div><div class="card"><h3>🎓 Bài học chủ máy đã dạy</h3>' + (m.lessons.length ? '<ul>' + m.lessons.map(function (x) { return '<li>' + esc(x.text) + '</li>'; }).join('') + '</ul>' : '<p class="mute">Chưa dạy điều gì.</p>') + '</div>';
+          el.innerHTML = h;
+        }).catch(function (e) { var el = document.getElementById('bd-body'); if (el) el.innerHTML = '<p class="bad">' + esc(e.message) + '</p>'; });
       }
 
       // ---- Bot đã được dạy ----

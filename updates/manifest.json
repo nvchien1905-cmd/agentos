@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.9",
-  "file": "agentos-update-2026.11.11.9.tar.gz",
-  "size": 564593,
-  "sha256": "0c0141db315faad44f94c9030fbd0a6ce4d45be09ca05ddeb15ede1973e4519e",
+  "version": "2026.11.11.10",
+  "file": "agentos-update-2026.11.11.10.tar.gz",
+  "size": 567426,
+  "sha256": "ba508a8b8c5adbe9a2c22963ad0edb79dc993c89cbf705bd263d5e886dc3b959",
   "date": "2026-11-11",
-  "notes": "Sửa nén ngữ cảnh: bot chỉ có Claude không còn nén bằng Codex, tự thử cách khác khi lỗi"
+  "notes": "Bảng điều khiển bot: thẻ Bộ nhớ xem toàn bộ bot đang nhớ gì (tóm tắt, sổ tay, bài học)"
 }

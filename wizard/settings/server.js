@@ -174,7 +174,7 @@ function createSettings(o) {
   // Bảng điều khiển từng bot (wizard/lib/botboard.js): đọc dữ liệu mọi bot, điều khiển bằng tệp yêu cầu trong thư mục điều khiển của đúng bot
   let boardInst = null;
   const boardLib = () => boardInst || (boardInst = require('../lib/botboard').createBotBoard({
-    mainDataDir: o.boardMainDir, agentsHome: o.boardAgentsHome, mainWorkdir: () => envVal(readEnv() || '', 'WORKDIR') || '/var/lib/agentos/work',
+    mainDataDir: o.boardMainDir, agentsHome: o.boardAgentsHome, onedriveDir: o.onedriveDir, mainWorkdir: () => envVal(readEnv() || '', 'WORKDIR') || '/var/lib/agentos/work',
     chown: (p, user) => { try { cp.execFileSync('chown', [user + ':' + (user === 'agentos' ? 'agentos' : user), p]); } catch (e) { /* bỏ qua */ } },
   }));
   const botKey = (ctx) => String(ctx.query.get('bot') || 'main');
@@ -842,6 +842,7 @@ function createSettings(o) {
     async 'POST /api/board/forget'(b) { return boardLib().forget(String(b.bot || 'main'), b.id); },
     async 'GET /api/board/trace'(b, ctx) { return boardLib().trace(botKey(ctx), ctx.query.get('id'), ctx.query.get('from')); },
     async 'GET /api/board/changes'(b, ctx) { return boardLib().changes(botKey(ctx), ctx.query.get('id')); },
+    async 'GET /api/board/memory'(b, ctx) { return boardLib().memory(botKey(ctx)); },
     async 'GET /api/board/archive'(b, ctx) { return boardLib().archive(botKey(ctx), ctx.query.get('path') || ''); },
     async 'GET /api/board/file'(b, ctx) { return boardLib().fileView(botKey(ctx), ctx.query.get('path') || '', ctx.query.get('download') === '1'); },
     // ---- Màn hình "Việc AI" (xem như màn hình Claude Code): từng bước đang chạy, tệp đã đổi + khác biệt từng dòng, duyệt tệp dự án (chỉ đọc) — wizard/lib/watch.js

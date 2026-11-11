@@ -90,3 +90,33 @@ test('danh sách + chi tiết lệnh: trạng thái, tạm dừng, điểm đán
   const ctl = fs.readdirSync(path.join(w.mainDir, 'control')).map((n) => JSON.parse(fs.readFileSync(path.join(w.mainDir, 'control', n), 'utf8')));
   assert.deepEqual(ctl, [{ action: 'review.run', bot: 'a1', id: id1 }]);
 });
+
+test('bộ nhớ: đọc sổ tay (chương, mục, lịch sử), tóm tắt từng cuộc trò chuyện, tiến độ nén, bài học; chưa có gì thì trả rỗng', sk, () => {
+  const w = world();
+  const empty = w.board.memory('a1');
+  assert.equal(empty.exists, false); assert.equal(empty.book.exists, false); assert.deepEqual(empty.book.chapters, []);
+  const bookDir = path.join(w.agents, 'a1', 'onedrive', 'AgentOS', 'SO-TAY');
+  fs.mkdirSync(path.join(bookDir, '.lichsu'), { recursive: true });
+  fs.writeFileSync(path.join(bookDir, 'chuong-khach-hang.md'), '# Khách hàng\n> Số: 3.1\n> Tóm tắt: Khách quen mua sỉ.\n> Cập nhật: 2026-11-01\n\n## Chi tiết\n- [2026-11-01] {aaaaaa} Chị Lan mua sỉ nồi chiên mỗi tháng\n- [2026-11-02] {bbbbbb} Anh Hùng chỉ trả tiền mặt\n');
+  fs.writeFileSync(path.join(bookDir, '.lichsu', 'khach-hang.md'), '- [đã thay 2026-11-03] [2026-10-01] {cccccc} dòng cũ\n');
+  fs.writeFileSync(path.join(path.dirname(bookDir), 'GHI-NHO.md'), '# Hộp thư\n\n- chưa xếp\n');
+  const db = openDb(path.join(w.agents, 'a1', 'data', 'agentos.db'));
+  const ids = []; for (let i = 0; i < 9; i++) { const id = db.addJob('5', 'Việc số ' + i, null, null, 'main'); db.raw.prepare("UPDATE jobs SET status='done', result='ok' WHERE id=?").run(id); ids.push(id); }
+  db.kvSet('sum:5', 'Chủ máy hay hỏi về giá nồi chiên.'); db.kvSet('sumupto:5', ids[4]);
+  db.raw.close();
+  w.board.teach('a1', 'Luôn báo giá có VAT');
+  const m = w.board.memory('a1');
+  assert.equal(m.exists, true); assert.equal(m.jobs.total, 9); assert.equal(m.jobs.done, 9);
+  assert.equal(m.book.chapters.length, 1); assert.equal(m.book.chapters[0].no, '3.1'); assert.equal(m.book.chapters[0].entries.length, 2); assert.equal(m.book.entries, 2);
+  assert.equal(m.book.history, 1); assert.equal(m.book.inbox, 1);
+  assert.equal(m.scopes.length, 1); assert.equal(m.scopes[0].summary, 'Chủ máy hay hỏi về giá nồi chiên.'); assert.equal(m.scopes[0].compressedJobs, 5); assert.equal(m.scopes[0].pendingJobs, 4);
+  assert.equal(m.scopes[0].willCompress, false); assert.equal(m.scopes[0].untilNext, 15);
+  assert.equal(m.lessons.length, 1); assert.equal(m.rules.compressAt, 15);
+  // cuộc trò chuyện chưa có tóm tắt vẫn hiện, kèm tiến độ tới lần nén đầu tiên
+  const db2 = openDb(path.join(w.agents, 'a1', 'data', 'agentos.db'));
+  for (let i = 0; i < 3; i++) { const id = db2.addJob('9', 'Khác ' + i, null, null, 'main'); db2.raw.prepare("UPDATE jobs SET status='done', result='ok' WHERE id=?").run(id); }
+  db2.raw.close();
+  const m2 = w.board.memory('a1'), fresh = m2.scopes.find((s) => s.chat === '9');
+  assert.ok(fresh); assert.equal(fresh.summaryLen, 0); assert.equal(fresh.pendingJobs, 3);
+  assert.throws(() => w.board.memory('../x'), /không hợp lệ/);
+});

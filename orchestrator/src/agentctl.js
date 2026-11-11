@@ -44,6 +44,19 @@ const SETTINGS = {
   auditRetentionDays: { env: 'AUDIT_RETENTION_DAYS', kind: 'int', lo: 1, hi: 3650, def: 180, label: 'Giữ nhật ký kiểm tra bao nhiêu ngày' },
   outRetentionDays:   { env: 'OUT_RETENTION_DAYS', kind: 'int', lo: 1, hi: 3650, def: 14, label: 'Giữ tệp kết quả AI tạo ra bao nhiêu ngày' },
   backupKeep:  { env: 'BACKUP_KEEP', kind: 'int', lo: 1, hi: 60, def: 7, label: 'Giữ bao nhiêu bản sao lưu dữ liệu bot' },
+  codexSandbox: { env: 'CODEX_SANDBOX', kind: 'enum', values: ['read-only', 'workspace-write', 'danger-full-access'], def: 'read-only', label: 'Quyền của Codex: chỉ đọc / ghi trong thư mục làm việc / toàn quyền' },
+  retrySec:    { env: 'TRANSIENT_RETRY_SEC', kind: 'text', re: /^[0-9,]{0,40}$/, def: '15,60,180', label: 'Lỗi mạng/AI tạm thời thì thử lại sau bao nhiêu giây',
+    options: [['15,60,180', 'Thử 3 lần: sau 15 giây, 1 phút, 3 phút'], ['10,30', 'Thử 2 lần nhanh: 10 giây, 30 giây'], ['30,120,300,900', 'Thử 4 lần kiên nhẫn: 30 giây đến 15 phút']] },
+  jobIdleBgMin: { env: 'JOB_IDLE_BG_SEC', kind: 'int', lo: 1, hi: 480, def: 60, mul: 60, label: 'Việc chạy nền /nen: AI im lặng quá bao nhiêu phút thì coi là kẹt (phút)' },
+  memRecent:   { env: 'MEMORY_RECENT_TURNS', kind: 'int', lo: 1, hi: 20, def: 4, label: 'Bộ nhớ: giữ nguyên văn bao nhiêu lệnh gần nhất' },
+  memSummarize: { env: 'MEMORY_SUMMARIZE_AFTER', kind: 'int', lo: 5, hi: 200, def: 15, label: 'Bộ nhớ: gom bao nhiêu lệnh cũ thì nén thành tóm tắt' },
+  memRotate:   { env: 'MEMORY_ROTATE_AFTER', kind: 'int', lo: 5, hi: 200, def: 15, label: 'Bộ nhớ: sau bao nhiêu lệnh thì mở phiên AI mới (mang theo tóm tắt)' },
+  memFactsMax: { env: 'MEMORY_FACTS_MAX', kind: 'int', lo: 500, hi: 20000, def: 4500, label: 'Bộ nhớ: đưa tối đa bao nhiêu ký tự ghi nhớ vào mỗi lệnh' },
+  summaryProvider: { env: 'SUMMARY_PROVIDER', kind: 'enum', values: ['auto', 'gemini', 'deepseek', 'codex', 'none'], def: 'auto', label: 'AI dùng để nén ngữ cảnh (auto: Gemini rồi DeepSeek rồi Codex; none: không nén)' },
+  reportTime:  { env: 'REPORT_TIME', kind: 'text', re: /^([01]\d|2[0-3]):[0-5]\d$|^$/, def: '21:30', label: 'Giờ gửi báo cáo hằng ngày (giờ Việt Nam)',
+    options: [['06:00', '06:00 sáng'], ['08:00', '08:00 sáng'], ['12:00', '12:00 trưa'], ['18:00', '18:00 chiều'], ['21:30', '21:30 tối'], ['23:00', '23:00 đêm']] },
+  geminiModel: { env: 'GEMINI_MODEL', kind: 'text', re: /^[A-Za-z0-9._-]{0,60}$/, def: '', label: 'Mô hình Gemini (trống: để Gemini tự chọn)',
+    options: [['', 'Tự chọn'], ['gemini-2.5-flash', 'gemini-2.5-flash (nhanh, rẻ)'], ['gemini-2.5-pro', 'gemini-2.5-pro (mạnh)']] },
 };
 
 // Làm sạch cấu hình quyền hạn: chỉ khóa biết, đúng kiểu. Giá trị null = đưa về mặc định.

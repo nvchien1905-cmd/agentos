@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.10",
-  "file": "agentos-update-2026.11.11.10.tar.gz",
-  "size": 567426,
-  "sha256": "ba508a8b8c5adbe9a2c22963ad0edb79dc993c89cbf705bd263d5e886dc3b959",
+  "version": "2026.11.12.1",
+  "file": "agentos-update-2026.11.12.1.tar.gz",
+  "size": 568268,
+  "sha256": "a53aa17dfeb51695c4418666dbc9875bbbefcf07ce1358ee5a94b83335391f31",
   "date": "2026-11-11",
-  "notes": "Bảng điều khiển bot: thẻ Bộ nhớ xem toàn bộ bot đang nhớ gì (tóm tắt, sổ tay, bài học)"
+  "notes": "Thêm 10 mục cấu hình vào Cài đặt: quyền Codex, thử lại khi lỗi, ngưỡng bộ nhớ, giờ báo cáo, mô hình AI"
 }

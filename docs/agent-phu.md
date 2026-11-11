@@ -28,7 +28,7 @@ Nhắn cho bot quản lý: `giao cho bot Bán hàng làm: lập báo cáo doanh 
 
 ## "Độc lập" nghĩa là gì (mức chắc)
 Mỗi agent có:
-- **tài khoản hệ thống riêng** `agentos-aN`, không có sudo, thư mục riêng `/var/lib/agentos-agents/aN` (quyền 700);
+- **tài khoản hệ thống riêng** `agentos-aN`, mặc định không có sudo (chủ máy có thể cấp riêng từng bot ở Cài đặt → Bot Telegram → "Quyền quản trị máy (sudo)": tệp `/etc/sudoers.d/91-agentos-agent-aN`, bot đó gỡ cô lập và đọc được dữ liệu mọi bot khác), thư mục riêng `/var/lib/agentos-agents/aN` (quyền 700);
 - **dịch vụ systemd riêng** `agentos-agent-aN`: sập hoặc kẹt một agent không kéo theo agent khác hay bot quản lý; tự khởi động lại; lỗi liên tục thì bot quản lý nhắn cảnh báo;
 - **giới hạn RAM / CPU / số tiến trình riêng** (cgroup);
 - **không nhìn thấy** `/etc/agentos` (token, khóa), `/var/lib/agentos` (dữ liệu bot quản lý), `/srv/onedrive`, `/root`, thư mục của agent khác;

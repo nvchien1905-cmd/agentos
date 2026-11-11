@@ -110,9 +110,13 @@ function createAgents(o) {
     if (fields.ramMb !== undefined) req.ramMb = fields.ramMb;
     if (fields.cpuPct !== undefined) req.cpuPct = fields.cpuPct;
     if (fields.settings !== undefined) req.settings = validateSettings(fields.settings);
+    if (fields.sudo !== undefined) req.sudo = fields.sudo === true;
     const r = await call(req);
     if (!r.ok) throw new Error(r.msg);
     const st = load(), x = st.agents.find((y) => y.id === a.id);
+    if (req.sudo !== undefined) x.sudo = req.sudo;
+    if (req.sudo === true) x.settings = Object.assign({}, x.settings, { full: true });
+    if (req.settings && req.settings.full !== true && req.settings.full !== undefined) x.sudo = false;       // tắt Toàn quyền → thu sudo
     if (req.name !== undefined) x.name = String(req.name).slice(0, 40);
     if (req.owners !== undefined) x.owners = req.owners;
     if (req.ramMb !== undefined) x.ramMb = req.ramMb;

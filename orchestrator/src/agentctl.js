@@ -54,6 +54,7 @@ const PATHS = {
   bin: '/var/lib/agentos-agents/.bin',            // bản Claude dùng chung cho agent (KHÔNG để trong thư mục agentctl: dịch vụ agent bị cấm vào đó)
   etc: '/etc/agentos',
   units: '/etc/systemd/system',
+  sudoers: '/etc/sudoers.d',                     // tệp sudo riêng cho từng bot được chủ máy cấp quyền (91-agentos-agent-<mã>)
   mainEnv: '/etc/agentos/orchestrator.env',
   mainHome: '/var/lib/agentos',
   appDir: '/opt/agentos/orchestrator',
@@ -97,6 +98,7 @@ function validate(req) {
     if (req.ramMb !== undefined || req.action === 'create') out.ramMb = clamp('ramMb', req.ramMb);
     if (req.cpuPct !== undefined || req.action === 'create') out.cpuPct = clamp('cpuPct', req.cpuPct);
   }
+  if (req.action === 'update' && req.sudo !== undefined) { if (typeof req.sudo !== 'boolean') throw new Error('sudo phải là true/false'); out.sudo = req.sudo; }
   if ((req.action === 'create' || req.action === 'update') && req.settings !== undefined) out.settings = validateSettings(req.settings);
   if (req.action === 'remove') out.purge = req.purge === true;
   if (req.action === 'logs') out.lines = Math.max(5, Math.min(300, Number(req.lines) || 60));
@@ -135,6 +137,10 @@ function unitText(id, meta) {
     'CPUQuota=' + meta.cpuPct + '%',
     'TasksMax=1024',
     'LimitNOFILE=16384',
+  ].concat(meta.sudo ? [
+    // Bot được chủ máy cấp SUDO: gỡ cô lập để sudo chạy được (NoNewPrivileges chặn sudo, ProtectSystem chặn ghi hệ thống, InaccessiblePaths che dữ liệu bot khác). Vẫn giữ giới hạn RAM/CPU ở trên.
+    '# SUDO: bot này có quyền quản trị cả máy (chủ máy cấp ở Cài đặt → Bot Telegram)',
+  ] : [
     // Gia cố + cô lập khỏi bot quản lý và agent khác. KHÔNG đặt RestrictNamespaces/PrivateDevices/ProtectKernelTunables/RestrictSUIDSGID (bubblewrap cần, xem agentos-orchestrator.service).
     'NoNewPrivileges=true',
     'ProtectSystem=strict',
@@ -145,11 +151,12 @@ function unitText(id, meta) {
     'PrivateTmp=true',
     'ProtectControlGroups=true',
     'LockPersonality=true',
+  ]).concat([
     '',
     '[Install]',
     'WantedBy=multi-user.target',
     '',
-  ].join('\n');
+  ]).join('\n');
 }
 
 // Các dòng được chép từ cấu hình của bot quản lý sang agent: CHỈ khóa đăng nhập Claude. Không chép token bot quản lý, khóa KiotViet, Google...
@@ -248,6 +255,19 @@ function createAgentCtl(deps) {
     await sh('chown', [user + ':agentos', d + '/out']);
   }
 
+  // Tệp sudo riêng cho một bot: kiểm bằng `visudo -cf` TRƯỚC khi vào chỗ (tệp hỏng làm hỏng sudo cả máy). on=false: xóa.
+  async function applySudo(id, on) {
+    const f = P.sudoers + '/91-agentos-agent-' + id;
+    if (!on) { F.rmSync(f, { force: true }); return; }
+    const tmp = f + '.tmp';                                      // tên có dấu chấm: sudo bỏ qua khi chưa kiểm
+    F.mkdirSync(P.sudoers, { recursive: true });
+    F.writeFileSync(tmp, '# AgentOS: chủ máy cấp quyền quản trị (sudo) cho bot ' + id + '. Gỡ: tắt ở Cài đặt → Bot Telegram.\n' + userName(id) + ' ALL=(ALL:ALL) NOPASSWD: ALL\n', { mode: 0o440 });
+    const v = await sh('visudo', ['-cf', tmp]);
+    if (v.code !== 0) { F.rmSync(tmp, { force: true }); throw new Error('tệp sudo không hợp lệ'); }
+    F.renameSync(tmp, f);
+    try { F.chmodSync(f, 0o440); } catch (e) { /* bỏ qua */ }
+  }
+
   async function init() {
     for (const [d, mode] of [[P.ctl, 0o755], [P.ctl + '/req', 0o730], [P.ctl + '/res', 0o750], [P.homes, 0o755], [P.etc + '/agents', 0o700]]) {
       F.mkdirSync(d, { recursive: true });
@@ -324,6 +344,7 @@ function createAgentCtl(deps) {
     try { F.rmSync(P.units + '/' + unitName(id) + '.service', { force: true }); } catch (e) { /* bỏ qua */ }
     await sc('daemon-reload'); await sc('reset-failed', unitName(id) + '.service');
     for (const f of [id + '.env', id + '.meta.json']) { try { F.rmSync(P.etc + '/agents/' + f, { force: true }); } catch (e) { /* bỏ qua */ } }
+    try { F.rmSync(P.sudoers + '/91-agentos-agent-' + id, { force: true }); } catch (e) { /* bỏ qua */ }
     await sh('userdel', [userName(id)]);
     try { F.rmSync(P.mail + '/' + id, { recursive: true, force: true }); } catch (e) { /* bỏ qua */ }
     const home = P.homes + '/' + id;
@@ -345,6 +366,11 @@ function createAgentCtl(deps) {
     const token = parseEnv(oldEnv).TELEGRAM_TOKEN;
     for (const k of ['name', 'owners', 'ramMb', 'cpuPct']) if (r[k] !== undefined) meta[k] = r[k];
     if (r.settings) { meta.settings = Object.assign({}, meta.settings); for (const [k, v] of Object.entries(r.settings)) { if (v === null) delete meta.settings[k]; else meta.settings[k] = v; } }
+    // SUDO: chỉ có nghĩa khi bot ở chế độ Toàn quyền (AI không hộp cô lập). Cấp sudo → tự bật Toàn quyền; tắt Toàn quyền → thu sudo.
+    if (r.sudo === true) { meta.settings = Object.assign({}, meta.settings, { full: true }); meta.sudo = true; }
+    else if (r.sudo === false) meta.sudo = false;
+    if (!(meta.settings && meta.settings.full === true)) meta.sudo = false;
+    try { await applySudo(id, meta.sudo === true); } catch (e) { return fail('Không cấp được sudo: ' + maskTokens(e && e.message).slice(0, 200)); }
     const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
     const env = withPaths(() => envText(id, meta, token, mainText));
     // Giữ nguyên khóa Claude đã có trong env cũ nếu cấu hình chung không còn

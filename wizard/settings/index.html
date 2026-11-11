@@ -150,7 +150,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
   }
   function agentBot(a) {
     var st = a.status || {};
-    return { key: a.id, main: false, id: a.id, name: a.name, username: a.bot ? a.bot.username : '', active: !!st.active, state: st.state, memMb: st.memMb, restarts: st.restarts, owners: a.owners || [], full: !!(a.settings && a.settings.full), settings: a.settings || {}, ramMb: a.ramMb, cpuPct: a.cpuPct };
+    return { key: a.id, main: false, id: a.id, name: a.name, username: a.bot ? a.bot.username : '', active: !!st.active, state: st.state, memMb: st.memMb, restarts: st.restarts, owners: a.owners || [], full: !!(a.settings && a.settings.full), sudo: a.sudo === true, settings: a.settings || {}, ramMb: a.ramMb, cpuPct: a.cpuPct };
   }
 
   function botCard(b, r) {
@@ -175,8 +175,10 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     h += '<h4 style="margin:12px 0 6px">Người được phép điều khiển bot này (ID Telegram)</h4><p class="mute" style="margin:0 0 6px">Nhắn <b>/id</b> cho bot để biết ID. Nhiều ID ngăn cách bằng dấu phẩy. Muốn bot quản lý giao việc được thì ID của anh phải có ở đây.</p>' +
       '<div class="row"><input type="text" id="ago-' + k + '" value="' + esc(b.owners.join(',')) + '" class="grow"><button class="b p" data-ag="' + k + '" data-do="owners">Lưu</button></div>';
     h += '<h4 style="margin:14px 0 6px">Chế độ làm việc của AI</h4><p class="mute" style="margin:0 0 6px">' +
-      (b.main ? 'Bảo vệ: AI hỏi trước khi ghi tệp/chạy lệnh, chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, có quyền quản trị (sudo) trên máy.' : 'Bảo vệ: AI hỏi trước khi ghi tệp/chạy lệnh, chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, không hộp cô lập, nhưng vẫn bị nhốt trong tài khoản riêng của bot (KHÔNG có sudo, không đọc được dữ liệu bot khác).') + '</p>' +
+      (b.main ? 'Bảo vệ: AI hỏi trước khi ghi tệp/chạy lệnh, chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, có quyền quản trị (sudo) trên máy.' : 'Bảo vệ: AI hỏi trước khi ghi tệp/chạy lệnh, chạy trong hộp cô lập. Toàn quyền: AI tự làm một mạch, không hộp cô lập, nhưng vẫn bị nhốt trong tài khoản riêng của bot (không đọc được dữ liệu bot khác) trừ khi anh cấp sudo ở mục bên dưới.') + '</p>' +
       '<div class="row"><button class="b' + (b.full ? '' : ' p') + '" data-ag="' + k + '" data-do="safe">🛡️ Bảo vệ</button><button class="b' + (b.full ? ' p' : ' d') + '" data-ag="' + k + '" data-do="full">⚡ Toàn quyền</button></div>';
+    if (!b.main) h += '<h4 style="margin:14px 0 6px">Quyền quản trị máy (sudo)</h4><p class="mute" style="margin:0 0 6px">Mặc định TẮT. Bật thì bot này làm được MỌI việc trên máy như người quản trị: cài phần mềm, sửa hệ thống, <b>đọc được token và dữ liệu của mọi bot khác</b>. Chỉ bật cho bot anh thật sự tin và chỉ anh nhắn được. Bật sudo sẽ tự bật Toàn quyền.</p>' +
+      '<div class="row">' + (b.sudo ? '<span class="bad grow">● ĐANG CÓ SUDO</span><button class="b d" data-ag="' + k + '" data-do="sudooff">Thu hồi sudo</button>' : '<span class="mute grow">● Không có sudo</span><button class="b d" data-ag="' + k + '" data-do="sudoon">Cấp sudo cho bot này</button>') + '</div>';
     h += '<h4 style="margin:14px 0 6px">Chế độ và quyền hạn riêng</h4><div class="keybox" style="padding:10px 12px">';
     Object.keys(r.spec).forEach(function (sk) {
       if (sk === 'full') return;                                               // đã có nút chế độ ở trên
@@ -227,9 +229,13 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           else api('POST', 'bots/agent/update', { id: b.id, owners: ids }).then(function () { toast('Đã lưu, bot đã khởi động lại'); renderAgents(); }).catch(fail);
         } else if (what === 'safe' || what === 'full') {
           var on1 = what === 'full';
-          if (on1 && !b.full && !ask(b.main ? 'BẬT TOÀN QUYỀN: AI sẽ tự làm không hỏi và có quyền quản trị (sudo) trên máy này. Bạn chắc chắn?' : 'BẬT TOÀN QUYỀN cho bot "' + b.name + '": AI chạy không hỏi duyệt và không có hộp cô lập. Bot vẫn bị nhốt trong tài khoản riêng (không có sudo, không đọc được dữ liệu bot khác). Chắc chắn?')) return;
+          if (on1 && !b.full && !ask(b.main ? 'BẬT TOÀN QUYỀN: AI sẽ tự làm không hỏi và có quyền quản trị (sudo) trên máy này. Bạn chắc chắn?' : 'BẬT TOÀN QUYỀN cho bot "' + b.name + '": AI chạy không hỏi duyệt và không có hộp cô lập. Bot vẫn bị nhốt trong tài khoản riêng (không đọc được dữ liệu bot khác, muốn có sudo phải cấp riêng). Chắc chắn?')) return;
           if (b.main) api('POST', 'bot/mode', { full: on1 }).then(function () { toast(on1 ? 'Đã bật Toàn quyền' : 'Đã chuyển sang chế độ Bảo vệ'); renderAgents(); }).catch(fail);
           else api('POST', 'bots/agent/update', { id: b.id, settings: { full: on1 } }).then(function () { toast(on1 ? 'Đã bật Toàn quyền, bot đã khởi động lại' : 'Đã chuyển sang Bảo vệ, bot đã khởi động lại'); renderAgents(); }).catch(fail);
+        } else if (what === 'sudoon' || what === 'sudooff') {
+          var son = what === 'sudoon';
+          if (son && !ask('CẤP SUDO cho bot "' + b.name + '": bot này sẽ có quyền quản trị cả máy, đọc được token và dữ liệu của mọi bot khác, và tự chạy không hỏi duyệt. Chỉ cấp nếu chỉ mình anh nhắn được bot này. Chắc chắn?')) return;
+          api('POST', 'bots/agent/update', { id: b.id, sudo: son }).then(function () { toast(son ? 'Đã cấp sudo, bot đã khởi động lại' : 'Đã thu hồi sudo, bot đã khởi động lại'); renderAgents(); }).catch(fail);
         } else if (what === 'perm' || what === 'permreset') {
           if (what === 'permreset' && !ask('Đưa MỌI quyền hạn riêng của bot này về mặc định?')) return;
           var s = {};

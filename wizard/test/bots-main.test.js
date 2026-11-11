@@ -60,7 +60,7 @@ test('Cài đặt → Bot Telegram: bot quản lý cũng có thẻ riêng với 
 
 test('giao diện: mọi bot cùng một kiểu thẻ, bot quản lý có dấu ⭐ và hướng dẫn giao việc; không còn chữ "bot phụ"', () => {
   const html = fs.readFileSync(path.join(__dirname, '../settings/index.html'), 'utf8');
-  for (const k of ['function botCard', 'function mainBot', 'function agentBot', 'function bindBot', '⭐', 'giao cho bot', 'bot/settings', 'data-do="owners"', 'data-do="safe"', 'data-do="full"', 'data-do="perm"']) assert.ok(html.includes(k), k);
+  for (const k of ['function botCard', 'function mainBot', 'function agentBot', 'function bindBot', '⭐', 'giao cho bot', 'bot/settings', 'data-do="owners"', 'data-do="safe"', 'data-do="full"', 'data-do="perm"', 'sudoon', 'sudooff']) assert.ok(html.includes(k), k);
   assert.ok(!/bot phụ/i.test(html), 'bỏ cách gọi "bot phụ"');
   const js = html.split('<script>')[1].split('</script>')[0];
   assert.doesNotThrow(() => new Function(js));

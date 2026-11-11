@@ -606,3 +606,9 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Test: `mail.test.js` (hộp thư, vòng lặp nhận/trả, lệnh giao), `bots-main.test.js` (Cài đặt bot quản lý, giao diện).
 - **Sửa lỗi nghiêm trọng có từ trước**: bản chạy Claude dùng chung của bot thường nằm trong `/var/lib/agentos-agentctl/bin` nhưng dịch vụ của bot bị cấm vào thư mục đó (`InaccessiblePaths`), nên bot thường KHÔNG chạy được AI ("bwrap: execvp … Permission denied") — phát hiện khi thử giao việc trên máy ảo. Nay chép sang `/var/lib/agentos-agents/.bin/claude` (755); `agentos-agentctl init` chuyển cả bot đã có sang chỗ mới.
 - Bản Claude dùng chung do root sở hữu (bot quản lý không thay được). Đã thử thật trên máy ảo: bot quản lý thả việc vào hộp thư → bot thường nhận, chạy Claude, trả lời "OK" → bot quản lý đọc được kết quả.
+
+## 2026.11.09.9 — Cấp sudo riêng cho từng bot thường
+- **Cài đặt → Bot Telegram → thẻ bot → "Quyền quản trị máy (sudo)"**: nút "Cấp sudo cho bot này" / "Thu hồi sudo" (mặc định TẮT, hỏi xác nhận có cảnh báo). Cấp sudo tự bật Toàn quyền; chuyển về Bảo vệ thì tự thu sudo.
+- Cách làm (`agentctl.js`, chạy bằng root): ghi `/etc/sudoers.d/91-agentos-agent-<mã>` cho đúng người dùng `agentos-<mã>`, kiểm `visudo -cf` TRƯỚC khi vào chỗ (hỏng thì không cấp, không đổi gì); dịch vụ của bot gỡ `NoNewPrivileges`, `ProtectSystem`, `ProtectHome`, `InaccessiblePaths`, `PrivateTmp` (vẫn giữ giới hạn RAM/CPU). Xóa bot xóa luôn tệp sudo.
+- **Rủi ro (đã ghi rõ trên giao diện):** bot có sudo = quản trị cả máy, đọc được token và dữ liệu mọi bot khác; bị lừa (prompt injection) là mất cả máy. Chỉ cấp cho bot mà danh sách ID chỉ có chủ máy.
+- Test: `agents.test.js` (cấp, thu hồi, về Bảo vệ, xóa bot, visudo từ chối), `bots-main.test.js`.

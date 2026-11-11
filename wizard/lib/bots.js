@@ -26,7 +26,7 @@ function createBots(o) {
     const items = await ag.list();
     return {
       agents: items.map((a) => ({
-        id: a.id, name: a.name, bot: a.bot || null, owners: a.owners || [], ramMb: a.ramMb, cpuPct: a.cpuPct, settings: a.settings || {}, createdAt: a.createdAt,
+        id: a.id, name: a.name, bot: a.bot || null, owners: a.owners || [], ramMb: a.ramMb, cpuPct: a.cpuPct, settings: a.settings || {}, sudo: a.sudo === true, createdAt: a.createdAt,
         status: a.status,
       })),
       spec: spec(), limits: { ramMb: LIMITS.ramMb, cpuPct: LIMITS.cpuPct },
@@ -48,6 +48,7 @@ function createBots(o) {
     if (b.ramMb !== undefined) f.ramMb = Number(b.ramMb);
     if (b.cpuPct !== undefined) f.cpuPct = Number(b.cpuPct);
     if (b.settings !== undefined) f.settings = validateSettings(b.settings);
+    if (b.sudo !== undefined) { if (typeof b.sudo !== 'boolean') throw new Error('sudo phải là true/false'); f.sudo = b.sudo; }
     const r = await make().update(String(b.id || ''), f); tidy(); return { agent: r.agent };
   }
   async function logs(b) { const r = await make().logs(String(b.id || ''), Number(b.lines) || 60); return { text: r.text }; }

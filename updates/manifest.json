@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.09.8",
-  "file": "agentos-update-2026.11.09.8.tar.gz",
-  "size": 542236,
-  "sha256": "ea33898665c180956a6d97a382b4fdeaa78d9cc5f42df58edecf4d666d28f017",
-  "date": "2026-11-10",
-  "notes": "Mọi bot cùng một kiểu thẻ trong Cài đặt; bot quản lý giao việc cho bot thường (/giao); sửa lỗi bot thường không chạy được AI"
+  "version": "2026.11.09.9",
+  "file": "agentos-update-2026.11.09.9.tar.gz",
+  "size": 543374,
+  "sha256": "38fab31fb3ceaa1be32c17b27e0edad123d43700e3f7e39b063eb9e047659701",
+  "date": "2026-11-11",
+  "notes": "Cấp sudo riêng cho từng bot thường (Cài đặt → Bot Telegram → thẻ bot)"
 }

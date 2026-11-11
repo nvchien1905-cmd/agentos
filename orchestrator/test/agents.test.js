@@ -329,3 +329,37 @@ test('nâng cấp agent cũ (init): thêm hộp thư giao việc, chuyển Claud
   const rm = await w.ctl.handle({ rid: RID, action: 'remove', id: 'a1' });
   assert.equal(rm.ok, true); assert.ok(!fs.existsSync(path.join(w.paths.mail, 'a1')), 'xóa agent xóa luôn hộp thư');
 });
+
+test('cấp sudo cho riêng một bot: tệp sudoers đúng người dùng (kiểm visudo), tự bật Toàn quyền, gỡ cô lập; thu hồi/tắt Toàn quyền thì xóa sudo và dựng lại cô lập', async () => {
+  const w = world();
+  w.paths.sudoers = path.join(w.d, 'sudoers.d');
+  const ctl = createAgentCtl({ run: async (bin, args) => { w.cmds.push([bin].concat(args).join(' ')); return { code: bin === 'id' ? 1 : 0, out: '' }; }, paths: w.paths, now: () => 1800000000000 });
+  assert.equal((await ctl.handle({ rid: RID, action: 'create', id: 'a1', token: TOKEN, name: 'Bán hàng', owners: ['1'] })).ok, true);
+  const sf = path.join(w.paths.sudoers, '91-agentos-agent-a1'), uf = path.join(w.paths.units, 'agentos-agent-a1.service');
+  assert.ok(!fs.existsSync(sf), 'mặc định không có sudo');
+  assert.throws(() => validate({ rid: RID, action: 'update', id: 'a1', sudo: 'yes' }), /sudo/);
+  let r = await ctl.handle({ rid: RID, action: 'update', id: 'a1', sudo: true });
+  assert.equal(r.ok, true, r.msg);
+  assert.equal(fs.readFileSync(sf, 'utf8').split('\n').filter((l) => !l.startsWith('#') && l).join(''), 'agentos-a1 ALL=(ALL:ALL) NOPASSWD: ALL');
+  assert.ok(w.cmds.some((c) => /^visudo -cf .*91-agentos-agent-a1\.tmp$/.test(c)), 'kiểm bằng visudo trước khi vào chỗ');
+  assert.match(fs.readFileSync(path.join(w.paths.etc, 'agents/a1.env'), 'utf8'), /^FULL_ACCESS=1$/m);
+  let unit = fs.readFileSync(uf, 'utf8');
+  for (const k of ['NoNewPrivileges', 'ProtectSystem', 'ProtectHome', 'InaccessiblePaths', 'PrivateTmp']) assert.ok(!new RegExp('^' + k + '=', 'm').test(unit), k + ' phải bị gỡ');
+  assert.match(unit, /^MemoryMax=\d+M$/m); assert.match(unit, /^CPUQuota=100%$/m);
+  // Về Bảo vệ → thu sudo
+  r = await ctl.handle({ rid: RID, action: 'update', id: 'a1', settings: { full: false } });
+  assert.equal(r.ok, true, r.msg); assert.ok(!fs.existsSync(sf));
+  unit = fs.readFileSync(uf, 'utf8'); assert.match(unit, /^NoNewPrivileges=true$/m); assert.match(unit, /^InaccessiblePaths=/m);
+  // Cấp lại rồi thu hồi trực tiếp, rồi xóa bot cũng xóa tệp
+  await ctl.handle({ rid: RID, action: 'update', id: 'a1', sudo: true }); assert.ok(fs.existsSync(sf));
+  await ctl.handle({ rid: RID, action: 'update', id: 'a1', sudo: false }); assert.ok(!fs.existsSync(sf));
+  await ctl.handle({ rid: RID, action: 'update', id: 'a1', sudo: true });
+  await ctl.handle({ rid: RID, action: 'remove', id: 'a1' }); assert.ok(!fs.existsSync(sf), 'xóa bot xóa luôn sudo');
+  // visudo từ chối → không cấp, không đổi gì
+  const w2 = world(); w2.paths.sudoers = path.join(w2.d, 'sudoers.d');
+  const bad = createAgentCtl({ run: async (bin) => ({ code: bin === 'id' ? 1 : bin === 'visudo' ? 1 : 0, out: 'lỗi' }), paths: w2.paths, now: () => 1 });
+  await bad.handle({ rid: RID, action: 'create', id: 'a1', token: TOKEN, name: 'X', owners: ['1'] });
+  r = await bad.handle({ rid: RID, action: 'update', id: 'a1', sudo: true });
+  assert.equal(r.ok, false); assert.match(r.msg, /sudo/); assert.ok(!fs.existsSync(path.join(w2.paths.sudoers, '91-agentos-agent-a1')));
+  assert.match(fs.readFileSync(path.join(w2.paths.etc, 'agents/a1.env'), 'utf8'), /^FULL_ACCESS=0$/m);
+});

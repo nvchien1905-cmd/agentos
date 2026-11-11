@@ -397,8 +397,8 @@ function createSettings(o) {
       const keys = apikeys.keysFrom(Object.fromEntries(Object.values(apikeys.VAR).map((v) => [v, envVal(text, v)])));
       const order = envVal(text, 'ENGINE_ORDER').split(',').map((s) => s.trim()).filter(Boolean);
       const out = [];
-      // Mặc định máy CHỈ DÙNG CLAUDE (orchestrator/src/config.js CLAUDE_ONLY): ẩn Codex/Gemini/DeepSeek cho đỡ rối
-      const claudeOnly = !/^(0|false|no|off|tat)$/i.test(String(envVal(text, 'CLAUDE_ONLY') || 'true').trim());
+      // CLAUDE_ONLY=1 mới ẩn Codex/Gemini/DeepSeek; mặc định hiện đủ
+      const claudeOnly = !/^(0|false|no|off|tat)$/i.test(String(envVal(text, 'CLAUDE_ONLY') || '0').trim());
       for (const e of (claudeOnly ? apikeys.ENGINES.filter((x) => x === 'claude') : apikeys.ENGINES)) {
         const ver = await engines.installed(run, e).catch(() => null);
         const lg = engineLogin(e, text);

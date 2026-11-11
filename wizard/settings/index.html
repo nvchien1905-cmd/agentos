@@ -187,7 +187,12 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       if (d.kind === 'bool') h += '<label><input type="checkbox" id="' + id + '" ' + (cur ? 'checked' : '') + '> Bật</label>';
       else if (d.kind === 'enum') h += '<select id="' + id + '">' + d.values.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select>';
       else if (d.kind === 'int') h += '<input type="number" id="' + id + '" value="' + (cur == null ? '' : cur) + '" min="' + d.lo + '" max="' + d.hi + '" style="width:90px">';
-      else h += '<input type="text" id="' + id + '" value="' + esc(cur == null ? '' : cur) + '" placeholder="(mặc định)" style="width:260px">';
+      else if (d.options) {
+        var opts = d.options.slice(), has = opts.some(function (x) { return x[0] === cur; });
+        if (!has && cur != null) opts.push([cur, 'Đang đặt riêng: ' + cur]);
+        h += '<select id="' + id + '">' + opts.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (x[0] === (cur == null ? '' : cur) ? ' selected' : '') + '>' + esc(x[1]) + (x[0] === d.def ? ' (mặc định)' : '') + '</option>'; }).join('') + '</select>';
+      }
+      else h += '<input type="text" id="' + id + '" value="' + esc(cur == null ? '' : cur) + '" style="width:260px">';
       h += '</div>';
     });
     h += '<div class="row" style="margin-top:10px"><button class="b p" data-ag="' + k + '" data-do="perm">Lưu quyền hạn và khởi động lại bot</button><button class="b" data-ag="' + k + '" data-do="permreset">Về mặc định</button></div></div></div>';

@@ -4,7 +4,7 @@
 //   - kiểm tra nào chuyển sang ❌ (lần đầu) → báo ngay; vẫn ❌ → nhắc lại sau `remindMs` (mặc định 6 giờ), không spam
 //   - từ ❌ về ✅ → báo "đã ổn lại"
 // ⚠️ (lưu ý) không nhắn, chỉ hiện khi gõ /tuchan. Trạng thái nhớ ở db kv 'mon_state' nên khởi động lại không báo trùng.
-function createHealthMon({ selftest, db, notify, admins, log, intervalMs, remindMs, now, firstDelayMs, doctor }) {
+function createHealthMon({ selftest, db, notify, admins, log, intervalMs, remindMs, now, firstDelayMs, doctor, aiFix }) {
   log = log || (() => {});
   now = now || Date.now;
   intervalMs = intervalMs || 15 * 60 * 1000;
@@ -34,10 +34,17 @@ function createHealthMon({ selftest, db, notify, admins, log, intervalMs, remind
         } else if (prev[r.id]) fixed.push('✅ ' + r.name + ' đã ổn lại');
       }
       db.kvSet('mon_state', JSON.stringify(next));
+      // Lỗi bác sĩ máy không có cách sửa cố định (hoặc sửa không được): giao AI tự điều tra và sửa, không chỉ báo rồi im
+      const aiMsgs = [];
+      if (aiFix) {
+        const todo = results.filter((r) => r.status === 'fail' && !(byId.get(r.id) && byId.get(r.id).fixed) && !(doctor && doctor.hasRule(r.id) && !byId.has(r.id)));
+        try { const a = aiFix.repair(todo); if (a.jobs.length) aiMsgs.push('🤖 Em đã giao AI tự sửa (việc #' + a.jobs[0].job + '): ' + a.jobs.map((j) => j.name).join(', ') + '. Xong em báo kết quả.'); for (const n of a.notes) aiMsgs.push('⚠️ ' + n); } catch (e) { log('AI tự sửa lỗi: ' + e.message); }
+      }
       const msg = [];
       if (lines.length) msg.push('🚨 AgentOS phát hiện sự cố:\n' + lines.join('\n') + '\n\nGõ /tuchan để xem đầy đủ, /log để xem nhật ký.');
       if (fixed.length) msg.push(fixed.join('\n'));
       if (doctorMsgs.length) msg.push(doctorMsgs.join('\n'));
+      if (aiMsgs.length) msg.push(aiMsgs.join('\n'));
       for (const m of msg) for (const a of admins || []) { try { await notify(a, m); } catch (e) { log('không báo được sự cố: ' + e.message); } }
       return { results, told: msg.length };
     } catch (e) { log('giám sát lỗi: ' + e.message); return { error: e.message }; } finally { busy = false; }

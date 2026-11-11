@@ -8,7 +8,7 @@ const { createAgents } = require('../../orchestrator/src/agents');
 // Mô tả các mục quyền hạn để trang vẽ nút/ô nhập (không chứa giá trị bí mật)
 function spec() {
   const out = {};
-  for (const [k, d] of Object.entries(SETTINGS)) out[k] = { kind: d.kind, label: d.label, values: d.values || null, lo: d.lo === undefined ? null : d.lo, hi: d.hi === undefined ? null : d.hi, def: d.def === undefined ? null : d.def };
+  for (const [k, d] of Object.entries(SETTINGS)) out[k] = { kind: d.kind, label: d.label, values: d.values || null, lo: d.lo === undefined ? null : d.lo, hi: d.hi === undefined ? null : d.hi, def: d.def === undefined ? null : d.def, options: d.options || null };
   return out;
 }
 

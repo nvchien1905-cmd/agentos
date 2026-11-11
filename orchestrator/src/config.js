@@ -21,7 +21,7 @@ const list = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boole
 
 function load(env) {
   env = env || process.env;
-  const claudeOnly = !/^(0|false|no|off|tat)$/i.test(String(env.CLAUDE_ONLY === undefined ? 'true' : env.CLAUDE_ONLY).trim());
+  const claudeOnly = !/^(0|false|no|off|tat)$/i.test(String(env.CLAUDE_ONLY === undefined ? 'false' : env.CLAUDE_ONLY).trim());
   return {
     token: env.TELEGRAM_TOKEN || '',
     // Chạy như AGENT (bot Telegram phụ do bot quản lý tạo, xem agentctl.js): AGENT_ID=a1... Trống = bot quản lý (máy chính)
@@ -32,7 +32,7 @@ function load(env) {
     // Quản trị viên: dùng được bộ công cụ adminOnly và duyệt lệnh/ghi file. Không đặt -> mọi người được phép đều là admin.
     adminUserIds: new Set(list(env.ADMIN_USER_IDS === undefined ? env.ALLOWED_USER_IDS : env.ADMIN_USER_IDS)),
     approvalTimeoutMs: (Number(env.APPROVAL_TIMEOUT_SEC) || 300) * 1000,
-    // CHỈ DÙNG CLAUDE (mặc định, từ 2026.11.08): Codex/Gemini/DeepSeek không qua cổng duyệt và yếu hơn Claude ở việc dài → không dùng nữa. CLAUDE_ONLY=0 để dùng lại ENGINE_ORDER.
+    // Mặc định dùng đủ AI theo ENGINE_ORDER (nhiều người chỉ dùng Codex). CLAUDE_ONLY=1 (nút ở Cài đặt → AI) ép chỉ dùng Claude.
     claudeOnly: claudeOnly,
     engineOrder: claudeOnly ? ['claude'] : list(env.ENGINE_ORDER === undefined ? 'claude' : env.ENGINE_ORDER).map((s) => s.toLowerCase()),
     claudeBin: env.CLAUDE_BIN || 'claude',
@@ -64,6 +64,7 @@ function load(env) {
     fullAccess: ['1', 'true', 'yes', 'on'].includes(String(env.FULL_ACCESS || '').toLowerCase()),
     // Giới hạn mạng của AI ID thường trong hộp cô lập (landlock-net.py): chỉ kết nối ra cổng web + cổng nội bộ cần thiết. NET_GUARD=0 để tắt; NET_EXTRA_PORTS=22,8080 thêm cổng được phép
     netGuard: env.NET_GUARD !== '0',
+    aiAutoFix: env.AI_AUTOFIX !== '0',                          // lỗi máy mà bác sĩ máy không sửa được → giao AI tự điều tra và sửa (aifix.js)
     netExtraPorts: String(env.NET_EXTRA_PORTS || '').split(',').map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0 && n < 65536),
     sandboxMode: (env.SANDBOX || 'off').toLowerCase(),                 // off | auto | bwrap (xem sandbox.js)
     sandboxHide: list(env.SANDBOX_HIDE === undefined ? '/etc/agentos' : env.SANDBOX_HIDE),

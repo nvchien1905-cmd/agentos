@@ -62,7 +62,7 @@ function createDoctor(o) {
     return out;
   }
 
-  return { heal, ask, RULES, MAX_PER_DAY };
+  return { heal, ask, RULES, MAX_PER_DAY, hasRule: (id) => !!rules[id] };
 }
 
 module.exports = { createDoctor, RULES, UNIT_OK };

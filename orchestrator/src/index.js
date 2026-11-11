@@ -46,6 +46,7 @@ const { createAuditLog } = require('./auditlog');
 const { createHoiDap } = require('./hoidap');
 const { createAlerts } = require('./alerts');
 const { createDoctor } = require('./doctor');
+const { createAiFix } = require('./aifix');
 const { createFleet } = require('./fleet');
 const { createKetNoi, createRemoteAccess } = require('./ketnoi');
 const { createTsOwner } = require('./tsowner');
@@ -680,7 +681,8 @@ async function main() {
     currentJob: () => crew.currentJobId(), kiotviet,
   });
   const doctor = createDoctor({ selftest, db, log });
-  const monitor = createHealthMon({ selftest, db, notify, admins: [...cfg.adminUserIds], log, doctor });
+  const aiFix = createAiFix({ db, log, enabled: () => cfg.aiAutoFix, submit: (text) => { const id = db.addJob([...cfg.adminUserIds][0], text, null, null, 'main'); setImmediate(() => crew.wake()); return id; } });
+  const monitor = createHealthMon({ selftest, db, notify, admins: [...cfg.adminUserIds], log, doctor, aiFix });
   monitor.start();
   // Sự kiện tự kích hoạt: hóa đơn mới, hàng sắp hết, webhook (xem /sukien). Việc sinh ra chạy ở làn nền; webhook luôn ở chế độ bảo vệ.
   const triggers = createTriggers({

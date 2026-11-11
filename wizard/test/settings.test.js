@@ -243,13 +243,13 @@ test('Máy từ xa: lưu ID + mật khẩu vào kho mã hóa, danh sách không 
   } finally { await S.s.close(); }
 });
 
-test('settings: mặc định CHỈ DÙNG CLAUDE → trang AI ẩn Codex/Gemini/DeepSeek; CLAUDE_ONLY=0 thì hiện lại', async () => {
+test('settings: CLAUDE_ONLY=1 → trang AI ẩn Codex/Gemini/DeepSeek; mặc định / CLAUDE_ONLY=0 thì hiện đủ', async () => {
   const S = await boot();
   try {
-    fs.writeFileSync(S.envFile, fs.readFileSync(S.envFile, 'utf8').replace('CLAUDE_ONLY=0\n', ''));
+    fs.writeFileSync(S.envFile, fs.readFileSync(S.envFile, 'utf8').replace('CLAUDE_ONLY=0\n', 'CLAUDE_ONLY=1\n'));
     const r = await S.call('GET', 'ai');
     assert.equal(r.body.claudeOnly, true); assert.deepEqual(r.body.engines.map((e) => e.id), ['claude']); assert.deepEqual(r.body.order, ['claude']);
-    fs.writeFileSync(S.envFile, fs.readFileSync(S.envFile, 'utf8') + 'CLAUDE_ONLY=0\n');
+    fs.writeFileSync(S.envFile, fs.readFileSync(S.envFile, 'utf8').replace('CLAUDE_ONLY=1\n', 'CLAUDE_ONLY=0\n'));
     const r2 = await S.call('GET', 'ai'); assert.equal(r2.body.claudeOnly, false); assert.ok(r2.body.engines.length >= 3);
   } finally { await S.s.close(); }
 });

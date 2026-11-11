@@ -621,3 +621,11 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## 2026.11.11.2 — Bật/tắt "Chỉ dùng Claude" ngay trên trang Cài đặt
 - **Cài đặt → AI và khóa API**: thay biểu ngữ "chỉ dùng Claude" bằng nút bật/tắt (`POST /api/ai/claude-only`, ghi `CLAUDE_ONLY` rồi khởi động lại bộ điều phối). Tắt thì hiện lại Codex, Gemini, DeepSeek (khóa API, đăng nhập, thứ tự ưu tiên). Không còn phải sửa tệp `orchestrator.env` bằng tay.
 - Test: `settings.test.js`.
+
+## 2026.11.11.3 — Hiện đủ AI mặc định + AI tự sửa lỗi máy
+- **Hiện đủ AI**: bỏ mặc định "chỉ dùng Claude". Cài đặt → AI và khóa API hiện Claude, Codex, Gemini, DeepSeek (người chỉ dùng Codex vẫn dùng bình thường). Ai muốn ép chỉ Claude thì bấm nút "Bật chỉ dùng Claude" (`CLAUDE_ONLY=1`).
+- **AI tự sửa lỗi** (`aifix.js`): tự chẩn đoán (15 phút/lần) thấy lỗi mà bác sĩ máy không có cách sửa cố định, hoặc đã sửa mà vẫn lỗi → giao AI điều tra và sửa, xong báo kết quả; không còn chỉ báo "có lỗi" rồi im. Bật/tắt ở Cài đặt → Bot Telegram → thẻ bot → "AI tự điều tra và sửa lỗi máy" (`AI_AUTOFIX`, mặc định BẬT).
+- Giới hạn an toàn: mỗi lỗi tối đa 2 lần/ngày, cách nhau ≥ 1 giờ (quá thì báo chủ máy); việc chạy như việc của chủ máy ở hàng đợi chính — máy ở Toàn quyền thì AI tự làm, máy ở Bảo vệ thì lệnh cần quyền vẫn hỏi chủ máy duyệt; lời dặn cho AI: sửa nhỏ nhất, không xóa dữ liệu, không tắt bảo mật, không đổi mật khẩu/khóa, kiểm lại sau khi sửa.
+- **Rủi ro**: ở Toàn quyền, AI có thể sửa hệ thống mà không hỏi; sửa sai có thể làm lỗi nặng hơn. Muốn chắc ăn thì để máy ở Bảo vệ (AI vẫn đề xuất và hỏi duyệt) hoặc tắt công tắc.
+- Test: `aifix.test.js`.
+- **Ô chọn thay ô điền chữ** (Cài đặt → Bot Telegram): "Công cụ AI được dùng" và "Cổng mạng mở thêm" giờ là danh sách chọn có mô tả bằng tiếng thường (vd "Chỉ xem — an toàn nhất", "SSH (22)"); chỉ còn ô điền cho số (RAM, CPU, thời gian...), ID Telegram, token và tên. Giá trị đặt tay từ trước vẫn hiện thành dòng "Đang đặt riêng: …".

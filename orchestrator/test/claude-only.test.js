@@ -18,12 +18,12 @@ test('nén ngữ cảnh bằng Claude: provider "claude" gọi hàm claude(syste
   assert.equal(await bad.run('a', 'b'), null, 'lỗi thì trả null (bộ nhớ tự cắt gọn)');
 });
 
-test('mặc định CHỈ Claude: CLAUDE_ONLY=0 mới đọc lại ENGINE_ORDER / SUMMARY_PROVIDER / LIGHT_ENGINES', () => {
+test('mặc định dùng đủ AI (ENGINE_ORDER / SUMMARY_PROVIDER / LIGHT_ENGINES); CLAUDE_ONLY=1 mới ép chỉ Claude', () => {
   const ok = { TELEGRAM_TOKEN: 't', ALLOWED_USER_IDS: '1', ENGINE_ORDER: 'codex,gemini', SUMMARY_PROVIDER: 'gemini', LIGHT_ENGINES: 'gemini' };
-  const a = config.load(ok);
+  const a = config.load(Object.assign({ CLAUDE_ONLY: '1' }, ok));
   assert.equal(a.claudeOnly, true); assert.deepEqual(a.engineOrder, ['claude']); assert.equal(a.summaryProvider, 'claude'); assert.deepEqual(a.lightEngines, []);
   assert.equal(config.validate(a).length, 0);
-  const b = config.load(Object.assign({ CLAUDE_ONLY: '0' }, ok));
+  const b = config.load(ok);
   assert.equal(b.claudeOnly, false); assert.deepEqual(b.engineOrder, ['codex', 'gemini']); assert.equal(b.summaryProvider, 'gemini'); assert.deepEqual(b.lightEngines, ['gemini']);
 });
 

@@ -696,8 +696,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
     // ----- Màn hình AI: xem AI đang làm gì từng bước, tệp đã đổi (khác biệt từng dòng) và tệp dự án — như màn hình Claude Code -----
     // ===== Bảng điều khiển từng bot: lệnh đã nhận, diễn biến trực tiếp, kết quả, thành quả, AI đánh giá, dạy bot, tài liệu lưu trữ =====
     board: function () {
-      var bot = 'main', filter = 'all', sel = null, tab = 'jobs', bots = [], es = null, lastSig = '', teachDraft = '', arch = '', autoRv = true;
-      try { autoRv = localStorage.getItem('bdAuto') !== '0'; } catch (e) { autoRv = true; }
+      var bot = 'main', filter = 'all', sel = null, tab = 'jobs', bots = [], es = null, lastSig = '', teachDraft = '', arch = '';
       var ST = { queued: 'Đang xếp hàng', running: 'Đang chạy', waiting: 'Tạm dừng / chờ', done: 'Xong', error: 'Lỗi', cancelled: 'Đã hủy', limit: 'Hết hạn mức', interrupted: 'Bị ngắt' };
       var STC = { running: 'ok', done: 'ok', error: 'bad', limit: 'warn', cancelled: 'mute', interrupted: 'warn', queued: 'warn', waiting: 'warn' };
       function alive() { return cur === 'board' && document.getElementById('bd-root'); }
@@ -710,9 +709,8 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       function frame() {
         var h = '<div id="bd-root"><h2>🎛 Bảng điều khiển bot</h2><div class="row" style="margin-bottom:10px" id="bd-bots"></div>' +
           '<div class="row" style="margin-bottom:10px"><button class="b" data-tab="jobs">📋 Lệnh đã nhận</button><button class="b" data-tab="files">🗂 Tài liệu lưu trữ</button><button class="b" data-tab="les">🎓 Bot đã được dạy</button>' +
-          '<span class="grow"></span><label><input type="checkbox" id="bd-auto" ' + (autoRv ? 'checked' : '') + '> Tự nhờ AI đánh giá khi mở lệnh đã xong</label></div><div id="bd-body"></div></div>';
+          '</div><div id="bd-body"></div></div>';
         set(h);
-        var ab = document.getElementById('bd-auto'); if (ab) ab.onchange = function () { autoRv = ab.checked; try { localStorage.setItem('bdAuto', autoRv ? '1' : '0'); } catch (e) { /* bỏ qua */ } };
         [].forEach.call(main.querySelectorAll('button[data-tab]'), function (b) { b.onclick = function () { tab = b.getAttribute('data-tab'); closeLive(); body(); }; });
         api('GET', 'board/bots').then(function (r) { bots = r.bots; drawBots(); }).catch(fail);
         body();
@@ -759,16 +757,13 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           var sg = sigOf(d); if (!first && !force && sg === lastSig) return;
           var ta = document.getElementById('bd-teach'); if (ta) teachDraft = ta.value;
           lastSig = sg; renderDetail(d);
-          var finished = ['done', 'error', 'cancelled', 'limit', 'interrupted'].indexOf(d.job.status) >= 0;
-          if (finished && autoRv && !d.review && !d.reviewPending && !renderDetail.asked[bot + ':' + id]) { renderDetail.asked[bot + ':' + id] = 1; api('POST', 'board/review', { bot: bot, id: id }).then(function () { lastSig = ''; }).catch(function () { /* để chủ máy bấm tay */ }); }
         }).catch(function (e) { var el = document.getElementById('bd-detail'); if (el) el.innerHTML = '<div class="card"><p class="bad">' + esc(e.message) + '</p></div>'; });
       }
-      renderDetail.asked = {};
       function reviewHtml(d) {
         var r = d.review;
         if (d.reviewPending) return '<p class="mute">⏳ AI độc lập đang xem xét lệnh này (khoảng nửa phút)...</p>';
-        if (!r) return '<p class="mute">Chưa có đánh giá. AI độc lập (không phải AI đã làm việc này, nếu máy có nhiều AI) sẽ xem lệnh, các bước và kết quả rồi nhận xét có thông minh, có tối ưu chưa và cách làm tốt hơn.</p><div class="row"><button class="b p" id="bd-rv">🔍 Nhờ AI đánh giá</button></div>';
-        if (r.error) return '<p class="bad">' + esc(r.error) + '</p><div class="row"><button class="b p" id="bd-rv">Thử đánh giá lại</button></div>';
+        if (!r) return '<p class="mute">Chưa đánh giá. Bấm nút bên dưới thì AI độc lập (không phải AI đã làm việc này, nếu máy có nhiều AI) mới xem lệnh, các bước và kết quả rồi nhận xét có thông minh, có tối ưu chưa và cách làm tốt hơn. Mỗi lần bấm tốn một lượt gọi AI.</p><div class="row"><button class="b p" id="bd-rv">🔍 Yêu cầu AI đánh giá</button></div>';
+        if (r.error) return '<p class="bad">' + esc(r.error) + '</p><div class="row"><button class="b p" id="bd-rv">🔍 Yêu cầu AI đánh giá lại</button></div>';
         var li = function (a, cls) { return a && a.length ? '<ul style="margin:4px 0 8px 18px">' + a.map(function (x) { return '<li class="' + cls + '">' + esc(x) + '</li>'; }).join('') + '</ul>' : ''; };
         var h = '<p><span class="' + (r.diem >= 7 ? 'ok' : r.diem >= 5 ? 'warn' : 'bad') + '" style="font-size:22px"><b>★ ' + esc(r.diem) + '/10</b></span> &nbsp; <b>' + esc(r.ketLuan) + '</b> <small>(đánh giá bởi ' + esc(r.by || 'AI') + ', ' + esc(when(r.at)) + ')</small></p>';
         if (r.daLam && r.daLam.length) h += '<b>Làm tốt</b>' + li(r.daLam, 'ok');
@@ -777,7 +772,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           h += '<b>Cách tối ưu hơn</b><div>' + r.cachTotHon.map(function (x, i) { return '<div class="row" style="margin:4px 0"><span class="grow">• ' + esc(x) + '</span><button class="b" data-teach="' + i + '">🎓 Dạy bot làm theo</button></div>'; }).join('') + '</div>';
         }
         h += '<div style="margin-top:10px"><b>🎓 Dạy bot</b> <small>— bài học này sẽ được đưa vào đầu mọi lệnh về sau của bot</small><textarea id="bd-teach" rows="3" style="width:100%;margin:6px 0;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px">' + esc(teachDraft || r.baiHoc || '') + '</textarea>' +
-          '<div class="row"><button class="b p" id="bd-teach-go">Dạy bot điều này</button><button class="b" id="bd-rv">Đánh giá lại</button></div></div>';
+          '<div class="row"><button class="b p" id="bd-teach-go">Dạy bot điều này</button><button class="b" id="bd-rv">🔍 Yêu cầu AI đánh giá lại</button></div></div>';
         return h;
       }
       function renderDetail(d) {
@@ -805,7 +800,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
       function wireDetail(d) {
         var el = document.getElementById('bd-detail');
         [].forEach.call(el.querySelectorAll('button[data-c]'), function (b) { b.onclick = function () { control(b.getAttribute('data-c')); }; });
-        on('bd-rv', function () { api('POST', 'board/review', { bot: bot, id: sel }).then(function () { toast('Đã nhờ AI đánh giá, đợi khoảng nửa phút'); lastSig = ''; setTimeout(function () { refreshDetail(true); }, 4000); }).catch(fail); });
+        on('bd-rv', function () { api('POST', 'board/review', { bot: bot, id: sel }).then(function () { toast('Đã yêu cầu AI đánh giá, đợi khoảng nửa phút'); lastSig = ''; setTimeout(function () { refreshDetail(true); }, 4000); }).catch(fail); });
         function teach(text) { api('POST', 'board/teach', { bot: bot, text: text, job: sel }).then(function (r) { toast(r.dup ? 'Bot đã được dạy điều này rồi' : 'Đã dạy bot. Từ lệnh sau bot sẽ làm theo.'); teachDraft = ''; refreshDetail(true); }).catch(fail); }
         on('bd-teach-go', function () { teach(document.getElementById('bd-teach').value); });
         [].forEach.call(el.querySelectorAll('button[data-teach]'), function (b) { b.onclick = function () { teach(d.review.cachTotHon[Number(b.getAttribute('data-teach'))]); }; });
@@ -895,7 +890,7 @@ table{border-collapse:collapse;width:100%}td{padding:6px 4px;border-bottom:1px s
           api('GET', 'board/jobs?bot=' + encodeURIComponent(bot) + '&limit=1').then(function (r) {
             var el = document.getElementById('bd-les'); if (!el) return;
             var l = r.lessons || [];
-            el.innerHTML = l.length ? '<table>' + l.map(function (x) { return '<tr><td>' + esc(x.text) + '<br><small>' + esc(when(x.at)) + (x.fromJob ? ' · từ lệnh #' + x.fromJob : '') + '</small></td><td style="text-align:right"><button class="b d" data-fg="' + esc(x.id) + '">Xóa</button></td></tr>'; }).join('') + '</table>' : '<p class="mute">Chưa dạy điều gì. Mở một lệnh đã xong, nhờ AI đánh giá rồi bấm "Dạy bot".</p>';
+            el.innerHTML = l.length ? '<table>' + l.map(function (x) { return '<tr><td>' + esc(x.text) + '<br><small>' + esc(when(x.at)) + (x.fromJob ? ' · từ lệnh #' + x.fromJob : '') + '</small></td><td style="text-align:right"><button class="b d" data-fg="' + esc(x.id) + '">Xóa</button></td></tr>'; }).join('') + '</table>' : '<p class="mute">Chưa dạy điều gì. Mở một lệnh đã xong, bấm "Yêu cầu AI đánh giá" rồi bấm "Dạy bot".</p>';
             [].forEach.call(el.querySelectorAll('button[data-fg]'), function (x) { x.onclick = function () { api('POST', 'board/forget', { bot: bot, id: x.getAttribute('data-fg') }).then(function () { toast('Đã xóa bài học'); draw(); }).catch(fail); }; });
           }).catch(fail);
         }

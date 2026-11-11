@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.11.7",
-  "file": "agentos-update-2026.11.11.7.tar.gz",
-  "size": 564466,
-  "sha256": "90a65249edf2283633bff90e85b1575322f8e2c66530297295e392f4357561b1",
+  "version": "2026.11.11.8",
+  "file": "agentos-update-2026.11.11.8.tar.gz",
+  "size": 564261,
+  "sha256": "43dea1598094ae7903d4f2594a61c6352ab1782622cb7de001f972247e82525c",
   "date": "2026-11-11",
-  "notes": "Bảng điều khiển bot: lệnh đã nhận, trực tiếp, tạm dừng/tiếp tục/hủy, AI đánh giá, dạy bot, thành quả, tài liệu lưu trữ"
+  "notes": "Bảng điều khiển bot: nút Yêu cầu AI đánh giá (chỉ đánh giá khi bấm)"
 }

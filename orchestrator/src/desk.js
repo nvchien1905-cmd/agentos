@@ -2,10 +2,12 @@
 // Máy khách của trợ lý màn hình (deskd, chạy bằng root ở /run/agentos/desk.sock): gửi một lệnh cố định, nhận kết quả JSON.
 const net = require('net');
 
-function createDeskClient(sock) {
+function createDeskClient(sock, opts) {
+  const agent = String((opts && opts.agent) || process.env.AGENT_ID || '');       // bot phụ (a1, a2…): trình duyệt đăng nhập mở bằng hồ sơ RIÊNG của bot đó
   const path = sock || process.env.DESK_SOCKET || '/run/agentos/desk.sock';
   return {
     call(req, timeoutMs) {
+      if (agent && new RegExp('^a\\d{1,3}$').test(agent) && req && (req.cmd === 'open' || req.cmd === 'close') && req.agent === undefined) req = Object.assign({}, req, { agent });
       return new Promise((resolve) => {
         const c = net.connect(path);
         let buf = '', done = false;

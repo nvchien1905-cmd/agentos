@@ -234,3 +234,22 @@ test('rdconnect: nối RustDesk tới máy khác bằng ID + mật khẩu, dư�
   const locked = make({ sess: Object.assign({}, SESS, { active: false }) });
   assert.equal((await locked.desk.handle({ cmd: 'rdconnect', id: '264372510', password: 'ok' })).ok, false);
 });
+
+test('bot phụ (agent): mở trình duyệt đăng nhập bằng HỒ SƠ RIÊNG và người dùng riêng của nó; đóng chỉ đóng đúng cửa sổ của nó; mã bot lạ bị bỏ qua; ứng dụng khác không đổi', async () => {
+  const { desk, calls, detached } = make({ first: (cmd, args) => (cmd === 'ps' && args.includes('agentos-a1') ? { code: 0, out: '  700 /opt/google/chrome/chrome --user-data-dir=/var/lib/agentos-agents/a1/data/browser-profile --no-first-run https://www.google.com/\n  701 /opt/google/chrome/chrome --headless --remote-debugging-pipe --user-data-dir=/var/lib/agentos-agents/a1/data/browser-profile\n  702 /opt/google/chrome/chrome --user-data-dir=/var/lib/agentos/data/browser-profile\n', err: '' } : null) });
+  const r = await desk.handle({ cmd: 'open', app: 'webbot', agent: 'a1' });
+  assert.equal(r.ok, true); assert.match(r.app, /\(bot a1\)/);
+  const xh = calls.find((c) => c.args.includes('xhost')); assert.ok(xh.args.includes('+SI:localuser:agentos-a1'), 'cấp quyền vẽ cho đúng người dùng của bot a1');
+  const [bin, args] = detached[0]; assert.equal(bin, 'runuser'); assert.deepEqual(args.slice(0, 3), ['-u', 'agentos-a1', '--']);
+  assert.ok(args.includes('--user-data-dir=/var/lib/agentos-agents/a1/data/browser-profile'), 'hồ sơ riêng của bot a1'); assert.ok(!args.some((a) => /\/var\/lib\/agentos\/data\/browser-profile/.test(a)), 'không dùng hồ sơ của bot quản lý');
+  assert.ok(args.some((a) => /^HOME=.*a1/.test(a)) || args.includes('DISPLAY=:0'));
+  calls.length = 0; const c = await desk.handle({ cmd: 'close', app: 'webbot', agent: 'a1' });
+  assert.equal(c.closed, 1, 'chỉ cửa sổ hiển thị của hồ sơ bot a1: không đóng trình duyệt ẩn của AI, không đóng hồ sơ của bot quản lý');
+  assert.deepEqual(calls.find((x) => x.cmd === 'kill').args, ['-TERM', '700']); assert.ok(calls.some((x) => x.args.includes('-SI:localuser:agentos-a1')));
+  // mã bot lạ / giả (cố trỏ ra ngoài thư mục bot) → như bot quản lý, không bao giờ ghép vào đường dẫn
+  detached.length = 0;
+  for (const bad of ['a1/../../root', '../x', 'main', 'A1', 'a', '', 5, 'a1; rm -rf /']) { await desk.handle({ cmd: 'open', app: 'webbot', agent: bad }); }
+  assert.ok(detached.every(([b, a]) => a.slice(0, 3).join(' ') === '-u agentos --' && a.includes('--user-data-dir=/var/lib/agentos/data/browser-profile')), JSON.stringify(detached.map((d) => d[1].slice(0, 3))));
+  // ứng dụng khác (Chrome thường, Zalo) không bị đổi bởi mã bot
+  detached.length = 0; await desk.handle({ cmd: 'open', app: 'zalo', agent: 'a1' }); assert.ok(!detached[0][1].some((a) => /agentos-a1/.test(a)));
+});

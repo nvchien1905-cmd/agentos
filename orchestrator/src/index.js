@@ -161,7 +161,9 @@ async function main() {
   const TODO_HINT = 'DANH SÁCH VIỆC: với việc từ 3 bước trở lên, TRƯỚC KHI làm hãy gọi công cụ todo_set (máy chủ agentos_todo) để lập danh sách các bước (mục đầu đặt in_progress), và gọi lại để cập nhật mỗi khi xong một bước (luôn gửi toàn bộ danh sách; chỉ một mục in_progress). Việc ngắn 1–2 bước thì không cần. Không nhắc tới công cụ này trong câu trả lời cho người dùng.';
   // Việc quản trị máy mà hệ thống TỰ làm khi chủ máy nhắn (bot quản lý chặn trước khi tới AI): đừng bắt chủ máy gõ lệnh hay tự làm thay
   const OS_HINT = 'QUẢN TRỊ BOT: THÊM BOT TELEGRAM mới = chủ máy chỉ cần DÁN TOKEN (từ @BotFather) vào chat, hoặc nói "thêm bot đó" sau khi dán — hệ thống TỰ tạo agent, tự xóa tin có token. Khi chủ máy nhờ thêm bot mà chưa có token thì chỉ bảo "anh dán token vào đây, em thêm luôn"; TUYỆT ĐỐI không bảo chủ máy tự gõ lệnh /daily hay tự thao tác thay. Giao việc cho bot thường: chủ máy nhắn "giao cho bot <tên> làm: …".';
-  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT + (cfg.agentId ? '' : ' ' + OS_HINT);
+  // Bot phụ: mặc định dùng được màn hình thật, Chrome và ứng dụng của máy (nhóm agentos-desk); chủ máy chỉ phải tự đăng nhập các trang cần mật khẩu
+  const AGENT_HINT = 'MÁY CÓ MÀN HÌNH THẬT: bạn dùng được Chrome và các ứng dụng khác của máy (Zalo, Chrome...) bằng lệnh `agentos-desk` (open chrome|zalo|webbot, screenshot, click, type...) hoặc bộ công cụ /dieukhien. Việc cần chủ máy ĐĂNG NHẬP một trang (Facebook...): bảo chủ máy gõ `/mo webbot` (mở trình duyệt CỦA BẠN trên màn hình máy), đăng nhập xong gõ `/dong webbot` rồi nhắn "xong" — bạn KHÔNG BAO GIỜ tự nhập mật khẩu. Lệnh màn hình báo lỗi quyền (EACCES) thì báo chủ máy gõ /capnhat co rồi khởi động lại bot, đừng tự tìm đường vòng.';
+  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT + ' ' + (cfg.agentId ? AGENT_HINT : OS_HINT);
   const LOGIN_HINT ='TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập, mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
   const fullHint = (canCli) => 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
     'Hãy tự làm trọn vẹn việc được giao, một mạch, không hỏi xin phép vụn vặt giữa chừng (chỉ hỏi lại khi thiếu thông tin thật sự không thể đoán, hoặc trước việc không hoàn tác được). ' +
@@ -182,7 +184,7 @@ async function main() {
   const tools = loadTools({
     file: cfg.toolsFile,
     fallbackAllow: cfg.allowedTools,
-    vars: { DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath, NODE_BIN: process.execPath, SRC_DIR: __dirname },
+    vars: { AGENT_ID: cfg.agentId || '', DATA_DIR: path.dirname(cfg.dbPath), WORKDIR: cfg.workdir, OUT_DIR: outDir, DISPLAY: cfg.display, CHROME_PATH: cfg.chromePath, NODE_BIN: process.execPath, SRC_DIR: __dirname },
   });
   if (tools.errors.length) { tools.errors.forEach((e) => console.error('LỖI CẤU HÌNH CÔNG CỤ: ' + e)); process.exit(1); }
   // Công cụ lập danh sách việc cần làm cho AI (todo-mcp.js): Claude Code chạy không tương tác không có TodoWrite → tự cấp; hiện ☑/▶️/☐ trên Telegram và màn hình Việc AI

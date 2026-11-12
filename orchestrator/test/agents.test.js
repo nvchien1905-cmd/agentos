@@ -30,6 +30,7 @@ function world(poolOn) {
   const ctl = createAgentCtl({ run, paths, now: () => 1800000000000 });
   return { d, paths, cmds, ctl };
 }
+const RID2 = 'bbbbbbbbbbbbbbbb';
 const create = (w, over) => w.ctl.handle(Object.assign({ rid: RID, action: 'create', id: 'a1', token: TOKEN, name: 'Kế toán', owners: ['1'], ramMb: 1024, cpuPct: 100 }, over || {}));
 
 test('validate: từ chối mã agent / token / số / việc sai, giới hạn ngoài khoảng, tên rỗng', () => {
@@ -253,7 +254,9 @@ function botWith(over) {
 
 test('bot: AGENT chặn lệnh quản trị máy (cập nhật, toàn quyền, /daily, /menu) nhưng vẫn nhận việc và /help, /claude', async () => {
   const { bot, msg, subs } = botWith({ agentMode: true });
-  for (const c of ['/capnhat co', '/toanquyen bat', '/daily', '/menu', '/google', '/ketnoi', '/manhinh', '/may']) assert.match(await bot.handle(msg(c)), /chỉ có ở bot quản lý/, c);
+  for (const c of ['/capnhat co', '/toanquyen bat', '/daily', '/menu', '/google', '/ketnoi', '/may', '/khoimay co', '/tatmay co', '/lenh ls']) assert.match(await bot.handle(msg(c)), /chỉ có ở bot quản lý/, c);
+  // bot phụ MẶC ĐỊNH dùng được màn hình, Chrome và ứng dụng của máy (lệnh nhanh của chủ máy); khóa/tắt/khởi động lại máy và chạy lệnh vẫn chỉ ở bot quản lý
+  for (const c of ['/manhinh', '/mo chrome', '/mo webbot', '/dong webbot', '/cuaso', '/timchu Lưu', '/bamchu Gửi', '/go abc', '/phim Return', '/bam 10 20', '/chuyen Zalo', '/dan']) assert.doesNotMatch(String(await bot.handle(msg(c))), /chỉ có ở bot quản lý/, c);
   assert.match(await bot.handle(msg('/help')), /AgentOS/);
   assert.match(await bot.handle(msg('/id')), /ID Telegram/);
   await bot.handle(msg('/claude viết thư'));
@@ -446,4 +449,29 @@ test('bot quản lý (ảnh chụp thật): dán token rồi nói "thêm bot đ�
   assert.match(r, /Đã tạo agent a1 "Facebook Huyền Anh"/); assert.equal(subs.length, 0, 'không được giao cho AI'); assert.deepEqual(deleted, [3]);
   assert.equal(calls.length, 1);
   await bot.handle(msg('Báo cáo doanh số hôm nay giúp anh')); assert.equal(subs.length, 1, 'câu thường vẫn đi cho AI');
+});
+
+test('bot phụ: tạo mới và cập nhật đều đưa tài khoản vào nhóm agentos-desk (mặc định dùng được màn hình/Chrome/ứng dụng của máy), nhóm chỉ để nối ổ cắm màn hình', async () => {
+  const w = world(); await w.ctl.init();
+  assert.equal((await create(w)).ok, true);
+  const g = w.cmds.findIndex((c) => c === 'groupadd -f agentos-desk'), u = w.cmds.findIndex((c) => c === 'usermod -aG agentos-desk agentos-a1');
+  assert.ok(g >= 0 && u > g, w.cmds.join(' | '));
+  assert.ok(w.cmds.findIndex((c) => c.startsWith('useradd')) < u, 'vào nhóm sau khi tạo tài khoản');
+  assert.ok(!w.cmds.some((c) => /usermod.*(-G|-aG) (agentos|sudo)/.test(c)), 'không đưa bot phụ vào nhóm agentos (nhóm có quyền vào dữ liệu của bot quản lý)');
+  w.cmds.length = 0; assert.equal((await w.ctl.handle({ rid: RID2, action: 'update', id: 'a1' })).ok, true);
+  assert.ok(w.cmds.includes('usermod -aG agentos-desk agentos-a1'), 'bot tạo từ bản cũ được bổ sung quyền khi cập nhật');
+});
+
+test('máy khách trợ lý màn hình: bot phụ tự gửi mã bot khi mở/đóng trình duyệt đăng nhập (đúng hồ sơ riêng), không thêm vào lệnh khác; mã lạ bị bỏ', { skip: process.platform === 'win32' }, async () => {
+  const net = require('net'); const dir = tmp(); const sock = path.join(dir, 'd.sock'); const seen = [];
+  const srv = net.createServer((c) => { let b = ''; c.on('data', (d) => { b += d; const i = b.indexOf('\n'); if (i >= 0) { seen.push(JSON.parse(b.slice(0, i))); c.end(JSON.stringify({ ok: true }) + '\n'); } }); });
+  await new Promise((r) => srv.listen(sock, r));
+  try {
+    const { createDeskClient } = require('../src/desk');
+    const a = createDeskClient(sock, { agent: 'a2' });
+    await a.call({ cmd: 'open', app: 'webbot' }); await a.call({ cmd: 'close', app: 'webbot' }); await a.call({ cmd: 'screenshot' }); await a.call({ cmd: 'open', app: 'webbot', agent: 'a7' });
+    assert.deepEqual(seen.map((r) => r.agent), ['a2', 'a2', undefined, 'a7']);
+    seen.length = 0; await createDeskClient(sock, { agent: 'x1; rm' }).call({ cmd: 'open', app: 'webbot' }); await createDeskClient(sock, { agent: '' }).call({ cmd: 'open', app: 'webbot' });
+    assert.deepEqual(seen.map((r) => r.agent), [undefined, undefined]);
+  } finally { srv.close(); }
 });

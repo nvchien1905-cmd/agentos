@@ -272,6 +272,8 @@ function createAgentCtl(deps) {
   const ok = (msg, extra) => Object.assign({ ok: true, msg }, extra || {});
   const fail = (msg) => ({ ok: false, msg });
   const sh = async (bin, args) => { const r = await run(bin, args); return r; };
+  // MẶC ĐỊNH mọi bot được xem/điều khiển màn hình thật của máy (mở Chrome, ứng dụng...): ổ cắm màn hình thuộc nhóm agentos-desk; nhóm này KHÔNG cho vào dữ liệu của bot khác
+  const ensureDeskGroup = async (user) => { try { await sh('groupadd', ['-f', 'agentos-desk']); await sh('usermod', ['-aG', 'agentos-desk', user]); } catch (e) { /* bỏ qua: máy chưa có groupadd */ } };
   const sc = (...a) => sh('systemctl', a);
 
   function writeSecure(file, text, mode) {
@@ -433,6 +435,7 @@ function createAgentCtl(deps) {
       const u = await sh('useradd', ['--system', '--user-group', '--home-dir', home, '--no-create-home', '--shell', '/usr/sbin/nologin', user]);
       if (u.code !== 0) return fail('Không tạo được tài khoản hệ thống: ' + maskTokens(u.out).slice(0, 200));
     }
+    await ensureDeskGroup(user);
     for (const d of [home, home + '/data', home + '/work', home + '/onedrive']) F.mkdirSync(d, { recursive: true });
     const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
     const env = withPaths(() => envText(id, meta, r.token, mainText));
@@ -489,6 +492,7 @@ function createAgentCtl(deps) {
     const envFile = P.etc + '/agents/' + id + '.env';
     const oldEnv = F.readFileSync(envFile, 'utf8');
     const token = parseEnv(oldEnv).TELEGRAM_TOKEN;
+    await ensureDeskGroup(userName(id));           // bot tạo từ bản cũ được bổ sung quyền dùng màn hình khi cập nhật/khởi động lại
     for (const k of ['name', 'owners', 'ramMb', 'cpuPct']) if (r[k] !== undefined) meta[k] = r[k];
     if (r.settings) { meta.settings = Object.assign({}, meta.settings); for (const [k, v] of Object.entries(r.settings)) { if (v === null) delete meta.settings[k]; else meta.settings[k] = v; } }
     // SUDO: chỉ có nghĩa khi bot ở chế độ Toàn quyền (AI không hộp cô lập). Cấp sudo → tự bật Toàn quyền; tắt Toàn quyền → thu sudo.

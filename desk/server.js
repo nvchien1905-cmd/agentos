@@ -28,6 +28,15 @@ const APPS = {
   codex: { label: 'Codex', argv: ['/usr/local/bin/agentos-ai', 'codex'], match: null },
   gemini: { label: 'Gemini', argv: ['/usr/local/bin/agentos-ai', 'gemini'], match: null },
 };
+// BOT PHỤ (agent) cũng mở được trình duyệt đăng nhập, nhưng bằng HỒ SƠ RIÊNG của nó (/var/lib/agentos-agents/<mã>/data/browser-profile) và đúng người dùng của nó (agentos-<mã>): yêu cầu có trường "agent" (mã dạng a1, a2…).
+// Bot phụ đã được cấp quyền xem/điều khiển màn hình (nhóm agentos-desk) nên không thêm quyền nào mới; trường này chỉ chọn đúng hồ sơ trình duyệt.
+const AGENT_RE = /^a\d{1,3}$/;
+function appFor(key, agent) {
+  const base = APPS[key];
+  if (!base || !agent || !AGENT_RE.test(String(agent)) || !/^(fbbot|webbot)$/.test(key)) return base;
+  const MAIN = '/var/lib/agentos/data/browser-profile', prof = '/var/lib/agentos-agents/' + agent + '/data/browser-profile';
+  return Object.assign({}, base, { runAs: 'agentos-' + agent, label: base.label + ' (bot ' + agent + ')', argv: base.argv.map((a) => a.split(MAIN).join(prof)), match: (c) => /(\/opt\/google\/chrome\/chrome|google-chrome)/.test(c) && c.includes(prof) && !/playwright|--remote-debugging|--headless/.test(c) });
+}
 const KEY_RE = /^[A-Za-z0-9_+\- ]{1,60}$/;      // tên phím xdotool: Return, ctrl+v, alt+F4...
 const MAX_TYPE = 2000;
 // Bỏ dấu + chữ thường để so khớp chữ trên màn hình (OCR hay sai dấu): "Gửi" khớp "gui"
@@ -226,7 +235,7 @@ function createDesk(o) {
     },
 
     async open(req) {
-      const app = APPS[String(req.app || '').toLowerCase()];
+      const app = appFor(String(req.app || '').toLowerCase(), req.agent);
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (app.runAs && !s.virtual) {
@@ -257,7 +266,7 @@ function createDesk(o) {
     },
 
     async close(req) {
-      const key = String(req.app || '').toLowerCase(); const app = APPS[key];
+      const key = String(req.app || '').toLowerCase(); const app = appFor(key, req.agent);
       if (!app) return fail('Ứng dụng không có trong danh sách. Dùng: ' + Object.keys(APPS).join(', '));
       if (!app.match) return fail(app.label + ' chạy trong cửa sổ dòng lệnh, hãy tự đóng cửa sổ đó.');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
@@ -498,8 +507,10 @@ if (require.main === module) {
   const desk = createDesk({ chownTo: (() => { try { const id = Number(cp.execFileSync('id', ['-u', 'agentos']).toString()); const g = Number(cp.execFileSync('id', ['-g', 'agentos']).toString()); return [id, g]; } catch (e) { return null; } })() });
   const dir = path.dirname(SOCK);
   fs.mkdirSync(dir, { recursive: true });
-  try { cp.execFileSync('chgrp', ['agentos', dir]); fs.chmodSync(dir, 0o750); } catch (e) { /* */ }
-  serve(desk, SOCK, 'agentos');
+  // Nhóm `agentos-desk` (người dùng agentos của bot quản lý + mọi người dùng agentos-aN của bot phụ): chỉ có quyền vào ổ cắm màn hình, KHÔNG có quyền vào dữ liệu của nhau. Chưa có nhóm này (máy cũ) thì dùng nhóm agentos như trước.
+  const grp = (() => { try { cp.execFileSync('getent', ['group', 'agentos-desk'], { stdio: 'ignore' }); return 'agentos-desk'; } catch (e) { return 'agentos'; } })();
+  try { cp.execFileSync('chgrp', [grp, dir]); fs.chmodSync(dir, 0o750); } catch (e) { /* */ }
+  serve(desk, SOCK, grp);
   // Không để màn hình tự khóa khi nhàn rỗi (mỗi phút, tốn rất ít)
   setInterval(() => { desk.handle({ cmd: 'nolock' }).catch(() => {}); }, 60000).unref();
   setTimeout(() => { desk.handle({ cmd: 'nolock' }).catch(() => {}); }, 5000).unref();
@@ -508,4 +519,4 @@ if (require.main === module) {
   console.log('deskd nghe ở ' + SOCK);
 }
 
-module.exports = { createDesk, serve, APPS, ocrFind, fold };
+module.exports = { createDesk, serve, APPS, appFor, ocrFind, fold };

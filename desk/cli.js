@@ -42,7 +42,7 @@ if (require.main === module) {
   const cmd = a[0];
   const map = {
     screenshot: () => ({ cmd: 'screenshot' }), windows: () => ({ cmd: 'windows' }), who: () => ({ cmd: 'who' }), lock: () => ({ cmd: 'lock' }),
-    open: () => ({ cmd: 'open', app: a[1] }), close: () => ({ cmd: 'close', app: a[1] }),
+    open: () => ({ cmd: 'open', app: a[1], agent: process.env.AGENT_ID || undefined }), close: () => ({ cmd: 'close', app: a[1], agent: process.env.AGENT_ID || undefined }),
     click: () => ({ cmd: 'click', x: a[1], y: a[2], button: /^[1-5]$/.test(a[3] || '') ? a[3] : 1, double: a.includes('double') }),
     type: () => ({ cmd: 'type', text: a.slice(1).join(' ') }), key: () => ({ cmd: 'key', key: a.slice(1).join(' ') }),
     clip: () => ({ cmd: 'clip', text: a.slice(1).join(' ') }),

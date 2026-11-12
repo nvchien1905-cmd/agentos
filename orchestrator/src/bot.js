@@ -8,7 +8,7 @@ const { createMenuUi } = require('./menuUi');
 const searchLib = require('./search');
 
 // Lệnh agent (bot phụ) được dùng. Các lệnh còn lại (cập nhật, toàn quyền, kết nối máy, Google, màn hình...) chỉ ở bot quản lý.
-const AGENT_CMDS = new Set(['tim', 'anh', 'nghiencuu', 've', 'taodoc', 'help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai']);
+const AGENT_CMDS = new Set(['manhinh', 'cuaso', 'mo', 'dong', 'chuyen', 'timchu', 'bamchu', 'go', 'phim', 'bam', 'dan', 'tim', 'anh', 'nghiencuu', 've', 'taodoc', 'help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai']);
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +

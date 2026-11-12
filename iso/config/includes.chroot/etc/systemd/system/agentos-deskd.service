@@ -5,8 +5,11 @@ Description=AgentOS - trợ lý màn hình (chụp màn hình, mở/đóng ứng
 After=systemd-user-sessions.service
 
 [Service]
-# Chạy bằng root để nhìn/điều khiển phiên đồ họa của người ngồi máy. Chỉ nghe ở /run/agentos/desk.sock (nhóm agentos),
+# Chạy bằng root để nhìn/điều khiển phiên đồ họa của người ngồi máy. Chỉ nghe ở /run/agentos/desk.sock (nhóm agentos-desk),
 # chỉ nhận một số lệnh CỐ ĐỊNH (không có lệnh chạy bất kỳ). Xem desk/server.js.
+# Nhóm agentos-desk = được nối ổ cắm màn hình (bot quản lý + mọi bot phụ). Tạo nhóm và đưa người dùng agentos vào trước khi mở ổ cắm ("-": lỗi không chặn khởi động).
+ExecStartPre=-/usr/sbin/groupadd -f agentos-desk
+ExecStartPre=-/usr/sbin/usermod -aG agentos-desk agentos
 ExecStart=/usr/bin/node /opt/agentos/desk/server.js
 Restart=always
 RestartSec=3

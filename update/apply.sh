@@ -100,3 +100,13 @@ if [ -f /usr/local/sbin/agentos-wifi-setup ]; then
   chmod 755 /usr/local/sbin/agentos-wifi-setup
   systemd-run --no-block --unit=agentos-wifi-setup sh -c "/usr/local/sbin/agentos-wifi-setup >> /var/log/agentos-wifi-setup.log 2>&1" >/dev/null 2>&1 || { nohup /usr/local/sbin/agentos-wifi-setup >> /var/log/agentos-wifi-setup.log 2>&1 & }
 fi
+
+# Mọi bot (quản lý + bot phụ) mặc định dùng được màn hình/Chrome/ứng dụng của máy: nhóm riêng agentos-desk cho ổ cắm màn hình (không kéo theo quyền vào dữ liệu của nhau).
+groupadd -f agentos-desk 2>/dev/null || true
+usermod -aG agentos-desk agentos 2>/dev/null || true
+for u in $(getent passwd | awk -F: '$1 ~ /^agentos-a[0-9]+$/ {print $1}'); do
+  usermod -aG agentos-desk "$u" 2>/dev/null || true
+  id=${u#agentos-}
+  # nhóm mới chỉ có hiệu lực sau khi bot khởi động lại (hoãn 60 giây: sau lúc trợ lý màn hình đổi nhóm ổ cắm)
+  systemctl is-active --quiet agentos-agent-$id.service && systemd-run --on-active=60 --unit=agentos-agent-$id-desk-$(date +%s) systemctl restart agentos-agent-$id.service >/dev/null 2>&1 || true
+done

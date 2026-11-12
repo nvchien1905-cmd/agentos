@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.1",
-  "file": "agentos-update-2026.11.13.1.tar.gz",
-  "size": 615524,
-  "sha256": "b242f9ba7371307bf414a3657ad8b817491dcd1f174839f4150f31eb167b11a2",
+  "version": "2026.11.13.2",
+  "file": "agentos-update-2026.11.13.2.tar.gz",
+  "size": 617035,
+  "sha256": "358fd097a53d7d5891fee232168cb0b9c103f9ff5bc11bee3e4f794411e057b3",
   "date": "2026-11-12",
-  "notes": "Cài đặt → KiotViet: tích bot nào được dùng khóa API của từng gian hàng (bot được tích nhận khóa và dùng được API)"
+  "notes": "Mọi bot (kể cả bot phụ) mặc định dùng được màn hình, Chrome và ứng dụng của máy; /mo webbot trên bot phụ mở trình duyệt với hồ sơ riêng của bot đó"
 }

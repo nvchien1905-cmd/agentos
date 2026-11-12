@@ -14,6 +14,8 @@ const BROWSE_ACTIONS = /^browser_(navigate|navigate_back|snapshot|take_screensho
 // Điều khiển màn hình máy (desk-mcp.js): chỉ XEM (chụp, đọc chữ, liệt kê cửa sổ) thì tự cho phép; mọi thao tác (bấm, gõ, phím, cuộn, kéo, mở ứng dụng) hỏi chủ máy, bấm "cho phép cả việc này" thì cho cả nhóm công cụ màn hình trong việc đó.
 const DESK_OBSERVE = /^screen_(screenshot|info|windows|find|clipboard_get|wait)$/;
 const DESK_ALL = 'mcp__desk__*';
+// Lệnh `agentos-desk` vô hại (xem màn hình, mở/đóng ứng dụng trong danh sách) AI chạy thẳng, không bắt chủ máy bấm cho phép từng lần; bấm/gõ/phím vẫn hỏi. Khớp TOÀN BỘ câu lệnh (không có ; | & $ ...).
+const DESK_SAFE_CMD = /^agentos-desk (?:(?:screenshot|windows|info|who)|(?:open|close) (?:chrome|webbot|fbbot|zalo|rustdesk|deepseek|chatgpt|claudeweb))$/;
 const isDesk = (tool) => /^mcp__desk__/.test(tool);
 const LABEL = { exec: 'Chạy lệnh', write: 'Ghi/sửa file', interact: 'Thao tác trên trang web', browse: 'Xem web', other: 'Dùng công cụ', read: 'Đọc file' };
 
@@ -151,6 +153,7 @@ function decide(ctx) {
   if (cls === 'interact' && state.allowed && (state.allowed.has(tool) || (isDesk(tool) && state.allowed.has(DESK_ALL)))) return Object.assign(out, { action: 'allow', taint: true });
   if (cls === 'exec') {
     const cmd = String(input.command || '').trim();
+    if (DESK_SAFE_CMD.test(cmd)) return Object.assign(out, { action: 'allow' });
     const safe = !tainted && !SHELL_META.test(cmd) && (pol.allowExec || []).some((r) => { try { return new RegExp(r).test(cmd); } catch (e) { return false; } });
     if (safe) return Object.assign(out, { action: 'allow' });
   }
@@ -212,4 +215,4 @@ function finishAsk(out, cls, tainted) {
   return out;
 }
 
-module.exports = { DESK_OBSERVE, DESK_ALL, isDesk, decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };
+module.exports = { DESK_SAFE_CMD, DESK_OBSERVE, DESK_ALL, isDesk, decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };

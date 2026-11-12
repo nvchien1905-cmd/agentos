@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.2",
-  "file": "agentos-update-2026.11.13.2.tar.gz",
-  "size": 617035,
-  "sha256": "358fd097a53d7d5891fee232168cb0b9c103f9ff5bc11bee3e4f794411e057b3",
+  "version": "2026.11.13.3",
+  "file": "agentos-update-2026.11.13.3.tar.gz",
+  "size": 619941,
+  "sha256": "7a561061a09702e4ec99e1bceb1b95911d3c4c53e337718bbcb8c19b504e7b27",
   "date": "2026-11-12",
-  "notes": "Mọi bot (kể cả bot phụ) mặc định dùng được màn hình, Chrome và ứng dụng của máy; /mo webbot trên bot phụ mở trình duyệt với hồ sơ riêng của bot đó"
+  "notes": "Nhắn tin bình thường, bot tự làm trên màn hình máy: 'Em mở ra anh đăng nhập' mở trình duyệt, 'xong' thì đóng và làm tiếp; AI chạy agentos-desk vô hại không hỏi"
 }

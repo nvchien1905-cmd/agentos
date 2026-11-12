@@ -6,6 +6,7 @@ const { capsText } = require('./engineCaps');
 const { createSessions } = require('./sessions');
 const { createMenuUi } = require('./menuUi');
 const searchLib = require('./search');
+const { createNaturalDesk } = require('./naturalDesk');
 
 // Lệnh agent (bot phụ) được dùng. Các lệnh còn lại (cập nhật, toàn quyền, kết nối máy, Google, màn hình...) chỉ ở bot quản lý.
 const AGENT_CMDS = new Set(['manhinh', 'cuaso', 'mo', 'dong', 'chuyen', 'timchu', 'bamchu', 'go', 'phim', 'bam', 'dan', 'tim', 'anh', 'nghiencuu', 've', 'taodoc', 'help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai']);
@@ -81,6 +82,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
   const help = helpText(profiles);
   const pcmd = projects ? createProjectCommands({ db, projects, isAdmin, memory, engines: () => worker.engineNames() }) : null;
   const menuUi = createMenuUi({ isAdmin, run: (m) => handle(m), send, submit: (c, t, e) => submit(c, t, e), googleStatus });
+  // Nhắn bình thường ("em mở Chrome cho anh đăng nhập", "xong", "chụp màn hình", "mở zalo"): bot TỰ làm trên màn hình máy, không bắt chủ máy gõ lệnh (naturalDesk.js)
+  const natDesk = createNaturalDesk({ quick, isAdmin, submit: (c, p) => submit(c, p, null), audit: (what, text) => { if (db.addAudit) db.addAudit({ tool: 'nhắn bình thường', cls: 'remote', decision: 'allow', source: 'user', summary: what + ' · "' + String(text).slice(0, 60) + '"' }); } });
   let flow = null;                                 // điều hướng dự án: nút Tiếp tục, hỏi chọn dự án khi quay lại sau vài giờ, đặt tên dự án mới (projectFlow.js)
 
   // project: undefined = dự án đang chọn của cuộc trò chuyện; null = chế độ chung; chuỗi = mã dự án (cú pháp #tên)
@@ -529,6 +532,8 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     // Chủ máy dán token bot / nói "thêm bot đó": bot quản lý TỰ tạo agent (không qua AI, không bắt gõ lệnh, tin chứa token bị xóa)
     const added = agentsUi && agentsUi.tryAdd ? agentsUi.tryAdd(chatId, uid, text, msg) : null;
     if (added) return added;
+    const nd = natDesk.tryHandle(chatId, uid, text);               // "mở Chrome cho anh đăng nhập" / "xong" / "chụp màn hình" → bot tự làm
+    if (nd) return nd;
     const asg = agentsUi ? agentsUi.tryAssign(chatId, uid, text) : null;            // "giao cho bot X làm Y" -> hộp thư của bot thường (không qua AI)
     if (asg) return asg;
     const nl = engineCtl && isAdmin(uid) ? naturalAi(text) : null;                 // "chuyển sang dùng codex" -> như /ai codex (không qua AI, không bị chặn)

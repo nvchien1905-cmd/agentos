@@ -14,12 +14,15 @@ function terms(text) {
 }
 
 // Cắt đoạn trích quanh chỗ khớp đầu tiên và tô sáng các từ khớp. Làm trên chữ gốc (có dấu): so khớp bằng bản bỏ dấu cùng độ dài.
+const FOLD1 = new Map();          // nhớ kết quả bỏ dấu từng ký tự (nhanh gấp nhiều lần gọi normalize cho mỗi ký tự)
+const fold1 = (ch) => { let r = FOLD1.get(ch); if (r === undefined) { const f = fold(ch); r = f.length === 1 ? f : ch.toLowerCase(); if (FOLD1.size < 5000) FOLD1.set(ch, r); } return r; };
+const MAX_SCAN = 60000;            // câu trả lời có thể dài cả MB: chỉ dò chỗ khớp trong 60.000 ký tự đầu (không làm đơ trang/bot)
 function excerpt(text, tms, width) {
-  const raw = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  const raw = String(text == null ? '' : text).slice(0, MAX_SCAN * 2).replace(/\s+/g, ' ').trim().slice(0, MAX_SCAN);
   if (!raw) return '';
   width = width || 160;
   // Bỏ dấu từng ký tự để chỉ số khớp với chữ gốc (NFD cả chuỗi làm lệch chỉ số)
-  const flat = Array.from(raw).map((ch) => { const f = fold(ch); return f.length === 1 ? f : ch.toLowerCase(); }).join('');
+  const flat = Array.from(raw).map(fold1).join('');
   let first = -1;
   for (const t of tms) { const i = flat.indexOf(t); if (i >= 0 && (first < 0 || i < first)) first = i; }
   let start = 0;

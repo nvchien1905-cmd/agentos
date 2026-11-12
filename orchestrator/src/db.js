@@ -143,11 +143,18 @@ function openDb(file) {
       const words = [...new Set(String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').split(/[^a-z0-9]+/).filter((w) => w.length >= 3))].slice(0, 8);
       if (!words.length) return [];
       const match = words.map((w) => '"' + w + '"').join(' OR ');
+      // CHẠY ĐỒNG BỘ trước mỗi việc nên phải rẻ: trước đây xếp hạng bm25 TOÀN BỘ việc khớp ("gia", "khong" khớp gần hết) → 0,5 giây ở 2.000 việc, 9 giây ở 10.000, hơn 1 phút ở 30.000 (đơ cả bot).
+      // Nay lấy tối đa 250 việc khớp MỚI NHẤT của cuộc trò chuyện (duyệt rowid giảm dần, dừng sớm) rồi chấm điểm bằng số từ khớp có trọng số độ hiếm trong chính nhóm đó.
       try {
-        const rows = db.prepare("SELECT j.id AS id, j.prompt AS prompt, j.result AS result FROM jobs_fts f JOIN jobs j ON j.id = f.rowid WHERE jobs_fts MATCH ? AND j.chat_id = ? AND COALESCE(j.project,'') = ? AND j.status = 'done' AND j.id > ? ORDER BY bm25(jobs_fts) LIMIT ?")
-          .all(match, chatId, proj, minId || 0, (limit || 3) + (excludeIds ? excludeIds.length : 0) + 2);
+        const cand = db.prepare("SELECT j.id AS id, j.prompt AS prompt, j.result AS result FROM jobs_fts f JOIN jobs j ON j.id = f.rowid WHERE jobs_fts MATCH ? AND f.rowid > ? AND j.chat_id = ? AND COALESCE(j.project,'') = ? AND j.status = 'done' ORDER BY f.rowid DESC LIMIT 250")
+          .all(match, minId || 0, chatId, proj);
         const ex = new Set(excludeIds || []);
-        return rows.filter((r) => !ex.has(r.id)).slice(0, limit || 3);
+        const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
+        const has = cand.filter((r) => !ex.has(r.id)).map((r) => { const t = fold((r.prompt || '') + ' ' + String(r.result || '').slice(0, 20000)); return { r, w: words.filter((w) => t.includes(w)) }; });
+        const df = new Map(); for (const c of has) for (const w of c.w) df.set(w, (df.get(w) || 0) + 1);
+        const idf = (w) => Math.log(1 + has.length / (df.get(w) || 1));
+        for (const c of has) c.score = c.w.reduce((a, w) => a + idf(w), 0);
+        return has.sort((a, b) => b.score - a.score || b.r.id - a.r.id).slice(0, limit || 3).map((c) => c.r);
       } catch (e) { return []; }
     },
     ftsAvailable() { return hasFts; },

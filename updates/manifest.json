@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.12.3",
-  "file": "agentos-update-2026.11.12.3.tar.gz",
-  "size": 610265,
-  "sha256": "a8746b4bb7b97629c7e5c88534f9ab5c144bda43aa74b00416a22e3ea04ba4cf",
+  "version": "2026.11.12.4",
+  "file": "agentos-update-2026.11.12.4.tar.gz",
+  "size": 610851,
+  "sha256": "38e20dfaf4738105f3eb5e59be569ad21f3f1a9b37fbda74871a7c0f1e872192",
   "date": "2026-11-12",
-  "notes": "/anh: chưa có khóa API tạo ảnh thì Claude tự vẽ bằng mã (poster, banner, sơ đồ, biểu đồ), sửa ảnh theo lời nhắn"
+  "notes": "Sửa lỗi bot đứng hình khi lịch sử việc dài (nhớ lại việc cũ từ 75 giây xuống 6 ms ở 30.000 việc) và tăng tốc tìm kiếm"
 }

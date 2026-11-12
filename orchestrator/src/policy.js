@@ -49,7 +49,8 @@ function classify(tool, input) {
   if (tool === 'Bash') return 'exec';
   if (BROWSE_WEB.has(tool)) return 'browse';
   const mcp = parseMcp(tool);
-  if (mcp && mcp.server === 'agentos_todo') return 'read';                  // chỉ ghi danh sách việc cần làm, không đụng gì khác
+  if (mcp && mcp.server === 'agentos_todo') return 'read';
+  if (mcp && mcp.server === 'agentos_cmd') return 'read';                   // bot_command/bot_help: cổng /cmd (gate.js) tự kiểm và hỏi từng lệnh nhạy cảm                  // chỉ ghi danh sách việc cần làm, không đụng gì khác
   if (mcp && /^browser/.test(mcp.server)) return BROWSE_ACTIONS.test(mcp.name) ? 'browse' : 'interact';
   if (mcp && mcp.server === 'desk') return DESK_OBSERVE.test(mcp.name) ? 'browse' : 'interact';
   return 'other';

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.3",
-  "file": "agentos-update-2026.11.13.3.tar.gz",
-  "size": 619941,
-  "sha256": "7a561061a09702e4ec99e1bceb1b95911d3c4c53e337718bbcb8c19b504e7b27",
+  "version": "2026.11.13.4",
+  "file": "agentos-update-2026.11.13.4.tar.gz",
+  "size": 624630,
+  "sha256": "85c0377b4d3375cc026a4b19bb96cc12cbe0bf122b31a332630be596c1e7682d",
   "date": "2026-11-12",
-  "notes": "Nhắn tin bình thường, bot tự làm trên màn hình máy: 'Em mở ra anh đăng nhập' mở trình duyệt, 'xong' thì đóng và làm tiếp; AI chạy agentos-desk vô hại không hỏi"
+  "notes": "Nhắn bằng lời, AI tự chạy mọi lệnh của bot (công cụ bot_command): xem/làm chạy luôn, lệnh nhạy cảm hỏi chủ máy bằng nút"
 }

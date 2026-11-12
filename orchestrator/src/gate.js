@@ -2,11 +2,12 @@
 const http = require('http');
 const crypto = require('crypto');
 const { decide, decideGuard, originOf } = require('./policy');
+const { classify: classifyCmd } = require('./cmdTool');
 
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
 //   POST /gate  header x-gate-token  body {jobId, tool, input}  ->  {behavior:'allow',updatedInput} | {behavior:'deny',message}
-function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub, journal }) {
+function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub, journal, cmd }) {
   log = log || (() => {});
   const token = crypto.randomBytes(24).toString('hex');
   const jobs = new Map();     // jobId -> { job, policy, state:{tainted, allowed:Set} }
@@ -71,6 +72,29 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     try { return { ok: true, data: await kv.api.rawGet(String(body.path || ''), body.shop ? String(body.shop) : undefined) }; } catch (e) { return { ok: false, error: e.message }; }
   }
 
+  // LỆNH CỦA BOT cho AI (công cụ bot_command, cmdTool.js): chủ máy nhắn bằng lời, AI chạy lệnh thay. cmd = { run(job, text) -> {text, files}, isAdmin(chatId), help() -> text }
+  // Chỉ việc của chủ máy. safe: chạy luôn · normal: chạy luôn nếu việc CHƯA đọc nội dung web, đã đọc web thì hỏi · danger: LUÔN hỏi chủ máy bằng nút bấm.
+  async function cmdCall(body) {
+    const entry = jobs.get(Number(body.jobId));
+    if (!entry) return { ok: false, error: 'Việc không còn chạy.' };
+    if (!cmd || !cmd.run) return { ok: false, error: 'Máy này chưa hỗ trợ chạy lệnh của bot qua AI.' };
+    if (!cmd.isAdmin(String(entry.job.chat_id))) return { ok: false, error: 'Chỉ việc của chủ máy (quản trị viên) mới chạy được lệnh của bot.' };
+    if (body.help === true) return { ok: true, text: cmd.help ? await cmd.help(entry.job) : 'Gõ /help trên Telegram để xem lệnh.' };
+    const c = classifyCmd(body.command);
+    if (!c.ok) return { ok: false, error: c.error };
+    const tainted = !!(entry.state && entry.state.tainted);
+    const d = { action: 'ask', cls: 'other', label: 'Chạy lệnh của bot', summary: c.text, reason: '', warn: '', taint: false, canRemember: false };
+    if (c.level === 'danger') d.warn = '⚠️ Lệnh nhạy cảm: ' + c.why + '. Chỉ cho phép nếu chính anh vừa nhờ làm việc này.';
+    else if (c.level === 'normal' && tainted) d.warn = 'Việc này đã đọc nội dung từ web. Nếu anh không ngờ tới lệnh này, có thể do trang web cài vào: hãy từ chối.';
+    const needAsk = c.level === 'danger' || (c.level === 'normal' && tainted);
+    if (needAsk) {
+      const r = await approvals.request(entry.job, 'bot_command', d);
+      if (!r.allowed) return { ok: false, error: 'Chủ máy không cho phép lệnh này (' + (r.source === 'timeout' ? 'không trả lời kịp' : 'đã từ chối') + '). Đừng thử lại; báo chủ máy và dừng bước này.' };
+    } else audit(entry.job.id, 'bot_command', d, 'allow', 'auto');
+    try { const out = await cmd.run(entry.job, c.text); return { ok: true, text: String((out && out.text) || '').slice(0, 3500), files: (out && out.files) || 0 }; }
+    catch (e) { log('bot_command lỗi: ' + e.message); return { ok: false, error: 'Lệnh báo lỗi: ' + String(e && e.message || e).slice(0, 300) }; }
+  }
+
   // Trợ lý phụ (subagents.js): chỉ AI chính của một việc đang chạy mới gọi được
   async function subCall(body) {
     if (!sub || !sub.enabled()) return { ok: false, error: 'Tính năng trợ lý phụ đang tắt.' };
@@ -86,7 +110,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
 
   function handler(req, res) {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
-    if (req.method !== 'POST' || (req.url !== '/gate' && req.url !== '/kiotviet' && req.url !== '/sub')) return send(404, { error: 'not found' });
+    if (req.method !== 'POST' || (req.url !== '/gate' && req.url !== '/kiotviet' && req.url !== '/sub' && req.url !== '/cmd')) return send(404, { error: 'not found' });
     const given = Buffer.from(String(req.headers['x-gate-token'] || ''));
     const want = Buffer.from(token);
     if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return send(401, { error: 'unauthorized' });
@@ -97,6 +121,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { return send(400, { error: 'bad json' }); }
       if (req.url === '/kiotviet') return send(200, await kiotvietCall(body));
       if (req.url === '/sub') return send(200, await subCall(body));
+      if (req.url === '/cmd') return send(200, await cmdCall(body));
       try { send(200, await evaluate(body)); } catch (e) { log('cổng lỗi: ' + e.message); send(200, { behavior: 'deny', message: 'Lỗi nội bộ của cổng duyệt, từ chối.' }); }
     });
   }

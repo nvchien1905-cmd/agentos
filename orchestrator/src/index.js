@@ -163,7 +163,8 @@ async function main() {
   const OS_HINT = 'QUẢN TRỊ BOT: THÊM BOT TELEGRAM mới = chủ máy chỉ cần DÁN TOKEN (từ @BotFather) vào chat, hoặc nói "thêm bot đó" sau khi dán — hệ thống TỰ tạo agent, tự xóa tin có token. Khi chủ máy nhờ thêm bot mà chưa có token thì chỉ bảo "anh dán token vào đây, em thêm luôn"; TUYỆT ĐỐI không bảo chủ máy tự gõ lệnh /daily hay tự thao tác thay. Giao việc cho bot thường: chủ máy nhắn "giao cho bot <tên> làm: …". MÀN HÌNH THẬT: bạn tự mở/xem Chrome và ứng dụng bằng `agentos-desk` (screenshot, windows, open chrome|webbot|zalo, close …; bấm/gõ thì hỏi chủ máy). Chủ máy chỉ cần nhắn bình thường, KHÔNG bắt họ gõ lệnh hay tự làm thay; riêng đăng nhập (mật khẩu, mã xác minh) thì mở trình duyệt `agentos-desk open webbot` cho họ tự đăng nhập rồi chờ họ nhắn "xong".';
   // Bot phụ: mặc định dùng được màn hình thật, Chrome và ứng dụng của máy (nhóm agentos-desk); chủ máy chỉ phải tự đăng nhập các trang cần mật khẩu
   const AGENT_HINT = 'MÁY CÓ MÀN HÌNH THẬT: bạn dùng được Chrome và các ứng dụng khác của máy (Zalo, Chrome...) bằng lệnh `agentos-desk` (open chrome|zalo|webbot, screenshot, click, type...) hoặc bộ công cụ /dieukhien. Việc cần chủ máy ĐĂNG NHẬP một trang (Facebook...): bảo chủ máy gõ `/mo webbot` (mở trình duyệt CỦA BẠN trên màn hình máy), đăng nhập xong gõ `/dong webbot` rồi nhắn "xong" — bạn KHÔNG BAO GIỜ tự nhập mật khẩu. Lệnh màn hình báo lỗi quyền (EACCES) thì báo chủ máy gõ /capnhat co rồi khởi động lại bot, đừng tự tìm đường vòng.';
-  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT + ' ' + (cfg.agentId ? AGENT_HINT : OS_HINT);
+  const CMD_HINT = 'LỆNH CỦA BOT: chủ máy KHÔNG phải gõ lệnh. Khi họ nhờ bằng lời một việc mà bot có lệnh (xem doanh số/tồn kho, mở/đóng ứng dụng, hẹn giờ, nhớ/quên, quản lý bot phụ, trạng thái, cập nhật, camera, ổ cắm...), bạn gọi công cụ bot_command với đúng lệnh (ví dụ "/doanhso hôm nay"; không rõ cú pháp thì gọi bot_help) rồi báo kết quả bằng lời. Lệnh nhạy cảm tự hỏi chủ máy bằng nút bấm. TUYỆT ĐỐI không trả lời "anh gõ lệnh /…" hay bảo họ tự làm.';
+  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT + ' ' + (cfg.agentId ? AGENT_HINT : OS_HINT) + ' ' + CMD_HINT;
   const LOGIN_HINT ='TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập, mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
   const fullHint = (canCli) => 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
     'Hãy tự làm trọn vẹn việc được giao, một mạch, không hỏi xin phép vụn vặt giữa chừng (chỉ hỏi lại khi thiếu thông tin thật sự không thể đoán, hoặc trước việc không hoàn tác được). ' +
@@ -257,7 +258,21 @@ async function main() {
   // Nhật ký "trước khi sửa" toàn máy (journal.js): cổng duyệt lưu bản gốc của tệp sắp bị sửa/xóa (ở bất kỳ đâu, tệp lớn cũng được) trước khi công cụ chạy. Tắt cùng CHECKPOINTS=0.
   const journal = cfg.checkpoints.enabled ? createJournal({ dir: path.join(dataDir, 'journal'), log, cwdOf, exclude: [dataDir], stateUndo: createStateUndo({ dir: path.join(dataDir, 'journal-state'), log }) }) : null;
   if (journal) { journal.gc().catch(() => {}); setInterval(() => { journal.gc().catch(() => {}); }, 6 * 3600 * 1000).unref(); }
-  const gate = createGate({ db, approvals, journal, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; } });
+  // LỆNH CỦA BOT cho AI (công cụ bot_command, cmdTool.js + cmd-mcp.js): chủ máy nhắn bằng lời, AI chạy lệnh thay qua ĐÚNG đường như chủ máy tự gõ. botRef gán sau khi bot dựng xong.
+  let botRef = null;
+  const botCmd = {
+    isAdmin: (chatId) => isAdmin(chatId),
+    help: async (job) => { if (!botRef) return ''; const id = Number(job.chat_id) || job.chat_id; const r = await botRef.handle({ from: { id }, chat: { id, type: 'private' }, text: '/help', message_id: 0 }); return typeof r === 'string' ? r : (r && r.text) || ''; },
+    run: async (job, text) => {
+      if (!botRef) throw new Error('Bot chưa sẵn sàng.');
+      const chatId = String(job.chat_id), uid = /^\d+$/.test(chatId) ? Number(chatId) : chatId;
+      const r = await botRef.handle({ from: { id: uid }, chat: { id: uid, type: 'private' }, text, message_id: 0 });
+      let files = 0;
+      if (r && typeof r === 'object' && Array.isArray(r.files)) for (const f of r.files) { try { await tg.sendFile(chatId, f); files++; } catch (e) { log('gửi tệp của lệnh lỗi: ' + e.message); } }
+      return { text: r == null ? '(lệnh đã nhận, không có chữ trả về)' : typeof r === 'string' ? r : r.text ? r.text : JSON.stringify(r).slice(0, 600), files };
+    },
+  };
+  const gate = createGate({ db, approvals, journal, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; }, cmd: botCmd });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 
@@ -267,7 +282,7 @@ async function main() {
     const mcpServers = Object.assign({}, perChatServers(tools.mcpServersFor(profile), job), {
       agentos_gate: { command: process.execPath, args: [path.join(__dirname, 'gate-mcp.js')], env },
       agentos_todo: TODO_SERVER,
-    });
+    }, isAdmin(String(job.chat_id)) ? { agentos_cmd: { command: process.execPath, args: [path.join(__dirname, 'cmd-mcp.js')], env } } : {});
     const waitSec = Math.ceil(cfg.approvalTimeoutMs / 1000) + 30;
     const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
     const settings = path.join(jobDir, 'job-' + job.id + '.settings.json');
@@ -320,7 +335,7 @@ async function main() {
       const onDelta = onProgress && traced(job) ? (t) => trace.delta(job, t) : undefined;          // chữ AI đang gõ → màn hình Việc AI
       if (jobFull(job)) {
         const mcpConfig = path.join(jobDir, 'job-' + job.id + '.mcp.json');
-        fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: perChatServers(tools.mcpServersFor(allMcp()), job) }), { mode: 0o600 });
+        fs.writeFileSync(mcpConfig, JSON.stringify({ mcpServers: Object.assign(perChatServers(tools.mcpServersFor(allMcp()), job), isAdmin(String(job.chat_id)) ? { agentos_cmd: { command: process.execPath, args: [path.join(__dirname, 'cmd-mcp.js')], env: { AGENTOS_GATE_URL: 'http://127.0.0.1:' + gatePort, AGENTOS_GATE_TOKEN: gate.token, AGENTOS_JOB_ID: String(job.id) } } } : {}) }), { mode: 0o600 });
         let gf = null, jf = null;
         if (guardOn()) { try { gate.begin(job, { policy: {} }, { guard: true }); gf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được hàng rào cho việc #' + job.id + ': ' + e.message); } }
         else if (journal) { try { gate.begin(job, { policy: {} }, { guard: true, journalOnly: true }); jf = guardFiles(job); } catch (e) { gate.end(job.id); log('không dựng được nhật ký trước-khi-sửa cho việc #' + job.id + ': ' + e.message); } }      // hàng rào tắt: chỉ ghi nhật ký, không hỏi/chặn
@@ -750,7 +765,7 @@ async function main() {
   const mail = cfg.agentId ? (cfg.mailRoot ? createMail({ root: cfg.mailRoot }) : null) : createMail({});
   // Tài nguyên chung: bot nào chạy/dừng thì chia lại RAM bảo đảm cho các bot đang chạy (agentctl 'balance'); đặt lại 5 phút/lần phòng bot tự khởi động lại
   if (agentsReg) { const bal = () => agentsReg.call({ action: 'balance' }).catch(() => {}); const t1 = setTimeout(bal, 90 * 1000), t2 = setInterval(bal, 5 * 60 * 1000); if (t1.unref) t1.unref(); if (t2.unref) t2.unref(); }
-  const bot = createBot({
+  const bot = botRef = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
     fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage: (c, m) => tg.deleteMessage(c, m),
     sandboxLine: () => sandbox.statusText(), checkpoints: cfg.checkpoints.enabled ? checkpoints : null, journal,

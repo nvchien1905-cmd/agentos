@@ -183,9 +183,9 @@ test('approvals: hết giờ thì từ chối, việc dừng thì từ chối, g
 
 // ---------- gate (HTTP) ----------
 
-async function gateSetup(policy) {
+async function gateSetup(policy, extra) {
   const A = approvalsSetup({ timeoutMs: 2000 });
-  const gate = createGate({ db: A.db, approvals: A.approvals, workdir: WD, log: () => {} });
+  const gate = createGate(Object.assign({ db: A.db, approvals: A.approvals, workdir: WD, log: () => {} }, extra || {}));
   const port = await gate.listen(0);
   const job = { id: 9, chat_id: '1' };
   gate.begin(job, { policy: policy || {} });
@@ -426,4 +426,89 @@ test('config: ADMIN_USER_IDS mặc định là mọi người được phép; ph
   assert.equal(config.validate(config.load(Object.assign({ ADMIN_USER_IDS: '9' }, base))).length, 1);
   assert.equal(config.load(base).approvalTimeoutMs, 300000);
   assert.equal(config.load(Object.assign({ APPROVAL_TIMEOUT_SEC: '60' }, base)).approvalTimeoutMs, 60000);
+});
+
+// ---------- bot_command: AI chạy lệnh của bot khi chủ máy nhắn bằng lời ----------
+const cmdOf = (log, over) => Object.assign({ isAdmin: (c) => String(c) === '1', help: async () => 'DANH SÁCH LỆNH', run: async (job, text) => { log.push(text); return { text: 'kết quả của ' + text, files: text.startsWith('/manhinh') ? 1 : 0 }; } }, over || {});
+
+test('bot_command: lệnh xem/làm chạy luôn khi việc chưa đọc web; kết quả và số tệp trả về cho AI; nhật ký ghi; chỉ việc của chủ máy; lệnh sai/lạ bị báo', async () => {
+  const ran = []; const G = await gateSetup({}, { cmd: cmdOf(ran) });
+  try {
+    const call = (command, extra) => fetch('http://127.0.0.1:' + G.port + '/cmd', { method: 'POST', headers: { 'x-gate-token': G.gate.token, 'content-type': 'application/json' }, body: JSON.stringify(Object.assign({ jobId: 9, command }, extra || {})) }).then((r) => r.json());
+    let r = await call('/doanhso hôm nay'); assert.deepEqual(r, { ok: true, text: 'kết quả của /doanhso hôm nay', files: 0 });
+    r = await call('/manhinh'); assert.equal(r.files, 1);
+    r = await call('/mo webbot'); assert.equal(r.ok, true);                                  // lệnh 'làm' nhưng việc chưa đọc web: chạy luôn
+    r = await call('/hen 08:00 báo cáo doanh số'); assert.equal(r.ok, true);
+    assert.deepEqual(ran, ['/doanhso hôm nay', '/manhinh', '/mo webbot', '/hen 08:00 báo cáo doanh số']); assert.equal(G.asked.length, 0, 'không hỏi gì');
+    assert.ok(G.db.jobAudit(9).some((a) => a.tool === 'bot_command' && a.summary === '/doanhso hôm nay' && a.source === 'auto'));
+    assert.equal((await call('', {})).ok, false); assert.match((await call('doanh số')).error, /bắt đầu bằng/); assert.match((await call('/khongcolenhnay')).error, /Không có lệnh/);
+    assert.equal((await call('x', { help: true })).text, 'DANH SÁCH LỆNH');
+    assert.equal((await call('/doanhso', { jobId: 404 })).ok, false);
+    assert.equal(ran.length, 4, 'lệnh lỗi/lạ không chạy');
+  } finally { await G.gate.close(); }
+});
+
+test('bot_command: lệnh NHẠY CẢM luôn hỏi chủ máy bằng nút (cho phép → chạy, từ chối → không chạy); sau khi đọc web, lệnh "làm" cũng phải hỏi; việc của người thường bị chặn; công cụ không bị cổng công cụ hỏi lần hai', async () => {
+  const ran = []; const G = await gateSetup({}, { cmd: cmdOf(ran) });
+  try {
+    const call = (command, jobId) => G.call2 ? null : fetch('http://127.0.0.1:' + G.port + '/cmd', { method: 'POST', headers: { 'x-gate-token': G.gate.token, 'content-type': 'application/json' }, body: JSON.stringify({ jobId: jobId || 9, command }) }).then((r) => r.json());
+    // nhạy cảm: hỏi, cho phép
+    let p = call('/tatmay co'); await tick(); assert.equal(G.asked.length, 1); assert.match(G.asked[0].text, /Chạy lệnh của bot/); assert.match(G.asked[0].text, /\/tatmay co/); assert.match(G.asked[0].text, /TẮT máy/);
+    assert.equal(ran.length, 0, 'chưa chạy khi chưa được duyệt'); await G.approvals.answer(G.asked[0].buttons[0][0].data, 1); assert.equal((await p).ok, true); assert.deepEqual(ran, ['/tatmay co']);
+    // nhạy cảm: từ chối
+    p = call('/toanquyen'); await tick(); await G.approvals.answer(G.asked[1].buttons[0][G.asked[1].buttons[0].length - 1].data, 1); let r = await p; assert.equal(r.ok, false); assert.match(r.error, /không cho phép/); assert.equal(ran.length, 1);
+    // cách dùng nhạy cảm của lệnh thường
+    p = call('/capnhat co'); await tick(); assert.equal(G.asked.length, 3); await G.approvals.answer(G.asked[2].buttons[0][G.asked[2].buttons[0].length - 1].data, 1); await p;
+    p = call('/daily xoa a1'); await tick(); assert.equal(G.asked.length, 4); await G.approvals.answer(G.asked[3].buttons[0][G.asked[3].buttons[0].length - 1].data, 1); await p;
+    assert.equal((await call('/capnhat')).ok, true, '/capnhat trơn chỉ xem có bản mới'); assert.equal(G.asked.length, 4);
+    // đã đọc nội dung web: lệnh 'làm' phải hỏi, lệnh 'xem' vẫn chạy luôn
+    await fetch('http://127.0.0.1:' + G.port + '/gate', { method: 'POST', headers: { 'x-gate-token': G.gate.token, 'content-type': 'application/json' }, body: JSON.stringify({ jobId: 9, tool: 'WebFetch', input: { url: 'https://example.com' } }) });
+    assert.equal(G.gate.state(9).tainted, true);
+    const before = G.asked.length; p = call('/mo chrome'); await tick(); assert.equal(G.asked.length, before + 1); assert.match(G.asked[before].text, /đã đọc nội dung từ web/); await G.approvals.answer(G.asked[before].buttons[0][0].data, 1); assert.equal((await p).ok, true);
+    r = await call('/doanhso'); assert.equal(r.ok, true); assert.equal(G.asked.length, before + 1, 'lệnh xem không hỏi dù đã đọc web');
+    // việc của người thường (không phải chủ máy)
+    G.gate.begin({ id: 10, chat_id: '2' }, { policy: {} }); r = await call('/doanhso', 10); assert.equal(r.ok, false); assert.match(r.error, /chủ máy/);
+    // cổng công cụ: bot_command/bot_help tự cho phép (cổng /cmd tự kiểm từng lệnh, không hỏi hai lần)
+    for (const tool of ['mcp__agentos_cmd__bot_command', 'mcp__agentos_cmd__bot_help']) { const g = await G.call({ jobId: 9, tool, input: { command: '/tatmay' } }); assert.equal(g.body.behavior, 'allow', tool); }
+    // chưa cấu hình cmd (máy cũ)
+    const G2 = await gateSetup(); try { const x = await fetch('http://127.0.0.1:' + G2.port + '/cmd', { method: 'POST', headers: { 'x-gate-token': G2.gate.token, 'content-type': 'application/json' }, body: JSON.stringify({ jobId: 9, command: '/doanhso' }) }).then((q) => q.json()); assert.equal(x.ok, false); } finally { await G2.gate.close(); }
+    assert.equal((await fetch('http://127.0.0.1:' + G.port + '/cmd', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 401);
+  } finally { await G.gate.close(); }
+});
+
+test('bot_command: lệnh báo lỗi thì AI nhận lỗi rõ ràng, không treo cổng; kết quả dài bị cắt', async () => {
+  const G = await gateSetup({}, { cmd: cmdOf([], { run: async (job, text) => { if (text === '/ton lỗi') throw new Error('KiotViet không trả lời'); return { text: 'x'.repeat(9000), files: 0 }; } }) });
+  try {
+    const call = (command) => fetch('http://127.0.0.1:' + G.port + '/cmd', { method: 'POST', headers: { 'x-gate-token': G.gate.token, 'content-type': 'application/json' }, body: JSON.stringify({ jobId: 9, command }) }).then((r) => r.json());
+    const e = await call('/ton lỗi'); assert.equal(e.ok, false); assert.match(e.error, /KiotViet không trả lời/);
+    const big = await call('/viec'); assert.equal(big.ok, true); assert.equal(big.text.length, 3500);
+  } finally { await G.gate.close(); }
+});
+
+test('cmd-mcp (tiến trình thật): nói đúng giao thức MCP, bot_command và bot_help đi qua cổng thật, lỗi/từ chối trả về cho AI', async () => {
+  const ran = []; const G = await gateSetup({}, { cmd: cmdOf(ran) });
+  try {
+    const env = { AGENTOS_GATE_URL: 'http://127.0.0.1:' + G.port, AGENTOS_GATE_TOKEN: G.gate.token, AGENTOS_JOB_ID: '9' };
+    const msgs = [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } },
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'bot_command', arguments: { command: '/ton nồi chiên' } } },
+      { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'bot_command', arguments: { command: '/manhinh' } } },
+      { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'bot_help', arguments: {} } },
+      { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'bot_command', arguments: { command: 'doanh số hôm nay' } } },
+      { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'khac', arguments: {} } },
+    ].map((m) => JSON.stringify(m)).join('\n') + '\n';
+    const out = (await runScript('cmd-mcp.js', env, msgs)).trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(out.length, 7); assert.equal(out[0].result.serverInfo.name, 'agentos-cmd'); assert.deepEqual(out[1].result.tools.map((x) => x.name), ['bot_command', 'bot_help']);
+    assert.match(out[1].result.tools[0].description, /KHÔNG bảo chủ máy tự gõ lệnh/);
+    assert.equal(out[2].result.content[0].text, 'kết quả của /ton nồi chiên'); assert.ok(!out[2].result.isError);
+    assert.match(out[3].result.content[0].text, /Đã gửi 1 tệp/); assert.equal(out[4].result.content[0].text, 'DANH SÁCH LỆNH');
+    assert.equal(out[5].result.isError, true); assert.match(out[5].result.content[0].text, /bắt đầu bằng/); assert.equal(out[6].result.isError, true);
+    assert.deepEqual(ran, ['/ton nồi chiên', '/manhinh']);
+    const bad = (await runScript('cmd-mcp.js', Object.assign({}, env, { AGENTOS_GATE_TOKEN: 'sai' }), JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'bot_command', arguments: { command: '/ton' } } }) + '\n')).trim();
+    assert.equal(JSON.parse(bad).result.isError, true); assert.match(JSON.parse(bad).result.content[0].text, /401/);
+    const none = (await runScript('cmd-mcp.js', { AGENTOS_GATE_URL: '', AGENTOS_GATE_TOKEN: '', AGENTOS_JOB_ID: '' }, JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'bot_command', arguments: { command: '/ton' } } }) + '\n')).trim();
+    assert.match(JSON.parse(none).result.content[0].text, /chưa được cấu hình/);
+  } finally { await G.gate.close(); }
 });

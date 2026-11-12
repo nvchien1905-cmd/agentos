@@ -93,3 +93,10 @@ done
 if [ -x /usr/local/sbin/agentos-node22 ]; then
   systemd-run --no-block --unit=agentos-node22 /usr/local/sbin/agentos-node22 >/dev/null 2>&1 || { nohup /usr/local/sbin/agentos-node22 >/dev/null 2>&1 & }
 fi
+
+# Wi-Fi tự lưu mật khẩu + tự kết nối (máy tự đăng nhập không mở được kho khóa nên hỏi lại mật khẩu Wi-Fi mỗi ngày): cài gnome-keyring, tạo kho khóa không mật khẩu, bật tự kết nối.
+# Chạy nền: có thể phải tải gói; lỗi chỉ ghi /var/log/agentos-wifi-setup.log. Cần khởi động lại máy (hoặc đăng xuất/đăng nhập) một lần để biểu tượng mạng dùng kho khóa mới, rồi nhập mật khẩu Wi-Fi MỘT lần.
+if [ -f /usr/local/sbin/agentos-wifi-setup ]; then
+  chmod 755 /usr/local/sbin/agentos-wifi-setup
+  systemd-run --no-block --unit=agentos-wifi-setup sh -c "/usr/local/sbin/agentos-wifi-setup >> /var/log/agentos-wifi-setup.log 2>&1" >/dev/null 2>&1 || { nohup /usr/local/sbin/agentos-wifi-setup >> /var/log/agentos-wifi-setup.log 2>&1 & }
+fi

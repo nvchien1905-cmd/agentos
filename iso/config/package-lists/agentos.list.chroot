@@ -9,6 +9,9 @@ git
 openssh-server
 network-manager
 network-manager-gnome
+gnome-keyring
+libpam-gnome-keyring
+libsecret-tools
 locales
 
 # Trình cài đặt (Calamares) + cấu hình mặc định kiểu Debian

@@ -1,0 +1,63 @@
+#!/bin/sh
+# agentos-wifi-setup: Wi-Fi TỰ LƯU mật khẩu và TỰ KẾT NỐI lại sau mỗi lần khởi động (chạy bằng root; chạy lại nhiều lần không hại).
+#
+# Vì sao trước đây hỏi mật khẩu Wi-Fi mỗi ngày: máy tự đăng nhập (không gõ mật khẩu) nên "kho khóa" gnome-keyring của người dùng bị khóa hoặc không có,
+# biểu tượng mạng (nm-applet) không lưu/đọc được mật khẩu → hỏi lại mỗi lần bật máy.
+# Việc làm:
+#   1. Cài gnome-keyring (nếu thiếu và có mạng) để biểu tượng mạng có nơi lưu mật khẩu.
+#   2. Tạo cho mỗi người dùng thường một kho khóa "login" KHÔNG ĐẶT MẬT KHẨU (tự mở khi đăng nhập, không hỏi gì; tệp chỉ chủ đọc, an toàn ngang tệp cấu hình mạng).
+#      Đã có kho khóa (do người dùng tự đặt mật khẩu) thì để nguyên.
+#   3. Mọi mạng Wi-Fi đã lưu: bật tự kết nối và thử lại MÃI MÃI (mặc định NetworkManager chỉ thử 4 lần rồi bỏ nếu Wi-Fi lên chậm sau khi bật máy).
+#   4. Cấu hình NetworkManager: tắt tiết kiệm điện Wi-Fi (hay làm rớt mạng ở máy chạy suốt).
+# Biến thử nghiệm: AGENTOS_HOME_ROOT (mặc định /home), AGENTOS_NM_CONF_DIR (mặc định /etc/NetworkManager/conf.d), AGENTOS_WIFI_NO_APT=1 (không cài gói).
+set -u
+HOME_ROOT="${AGENTOS_HOME_ROOT:-/home}"
+CONF_DIR="${AGENTOS_NM_CONF_DIR:-/etc/NetworkManager/conf.d}"
+did=""
+
+# 1. gói gnome-keyring
+if [ "${AGENTOS_WIFI_NO_APT:-0}" != "1" ] && ! dpkg -s gnome-keyring >/dev/null 2>&1; then
+  if DEBIAN_FRONTEND=noninteractive timeout 300 apt-get install -y gnome-keyring libpam-gnome-keyring libsecret-tools >/dev/null 2>&1; then did="$did cài-gnome-keyring"
+  else echo "agentos-wifi-setup: chưa cài được gnome-keyring (kiểm tra mạng rồi chạy lại: sudo agentos-wifi-setup)" >&2; fi
+fi
+
+# 2. kho khóa không mật khẩu cho từng người dùng thường
+for h in "$HOME_ROOT"/*; do
+  [ -d "$h" ] || continue
+  u=$(stat -c %U "$h" 2>/dev/null) || continue
+  uid=$(id -u "$u" 2>/dev/null) || continue
+  [ "$uid" -ge 1000 ] 2>/dev/null || continue
+  d="$h/.local/share/keyrings"
+  [ -e "$d/login.keyring" ] && continue                      # đã có kho khóa: không đụng (có thể đã đặt mật khẩu riêng)
+  gid=$(id -g "$u")
+  mkdir -p "$h/.local/share" && chown "$uid:$gid" "$h/.local" "$h/.local/share" 2>/dev/null
+  install -d -m 700 -o "$uid" -g "$gid" "$d" || continue
+  t=$(date +%s)
+  printf '[keyring]\ndisplay-name=login\nctime=%s\nmtime=%s\nlock-on-idle=false\nlock-after=false\n' "$t" "$t" > "$d/login.keyring"
+  [ -e "$d/default" ] || printf 'login' > "$d/default"
+  chown "$uid:$gid" "$d/login.keyring" "$d/default"; chmod 600 "$d/login.keyring" "$d/default"
+  did="$did kho-khóa:$u"
+done
+
+# 3. mạng Wi-Fi đã lưu: tự kết nối
+if command -v nmcli >/dev/null 2>&1; then
+  nmcli -t -f UUID,TYPE connection show 2>/dev/null | while IFS=: read -r uuid type; do
+    [ "$type" = "802-11-wireless" ] && nmcli connection modify "$uuid" connection.autoconnect yes connection.autoconnect-retries 0 >/dev/null 2>&1
+  done
+fi
+
+# 4. cấu hình NetworkManager
+mkdir -p "$CONF_DIR"
+want='# AgentOS: không tiết kiệm điện Wi-Fi (2 = tắt)
+[connection]
+wifi.powersave=2
+'
+cur=$(cat "$CONF_DIR/50-agentos-wifi.conf" 2>/dev/null || true)
+if [ "$cur" != "$(printf '%s' "$want")" ]; then
+  printf '%s\n' "$want" > "$CONF_DIR/50-agentos-wifi.conf" && chmod 644 "$CONF_DIR/50-agentos-wifi.conf"
+  command -v nmcli >/dev/null 2>&1 && nmcli general reload >/dev/null 2>&1
+  did="$did cấu-hình-NetworkManager"
+fi
+
+echo "agentos-wifi-setup: xong${did:- (không có gì cần đổi)}"
+exit 0

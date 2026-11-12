@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.12.4",
-  "file": "agentos-update-2026.11.12.4.tar.gz",
-  "size": 610851,
-  "sha256": "38e20dfaf4738105f3eb5e59be569ad21f3f1a9b37fbda74871a7c0f1e872192",
+  "version": "2026.11.12.5",
+  "file": "agentos-update-2026.11.12.5.tar.gz",
+  "size": 612372,
+  "sha256": "45db60be4438d36d89984be2a6bd7ca4bf4ad3575f5b01d150d6ffcd61b38cfa",
   "date": "2026-11-12",
-  "notes": "Sửa lỗi bot đứng hình khi lịch sử việc dài (nhớ lại việc cũ từ 75 giây xuống 6 ms ở 30.000 việc) và tăng tốc tìm kiếm"
+  "notes": "Wi-Fi tự lưu mật khẩu và tự kết nối: hết hỏi mật khẩu Wi-Fi mỗi ngày (kho khóa không mật khẩu, tự kết nối lại mãi mãi, tắt tiết kiệm điện Wi-Fi)"
 }

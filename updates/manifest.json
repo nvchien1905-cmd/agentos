@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.12.2",
-  "file": "agentos-update-2026.11.12.2.tar.gz",
-  "size": 609630,
-  "sha256": "bca3932ac64297801da1f366e7134874be2783b26a2f3220a7b32a50ef0a4dc7",
-  "date": "2026-11-11",
-  "notes": "Nghiên cứu sâu có trích dẫn (/nghiencuu), tạo ảnh (/anh, /ve) và tài liệu Word/Excel/PDF/PowerPoint (/taodoc + Xưởng sáng tạo), điều khiển màn hình máy (/dieukhien), tìm lại hội thoại cũ (/tim + ô tìm trong Bảng điều khiển)"
+  "version": "2026.11.12.3",
+  "file": "agentos-update-2026.11.12.3.tar.gz",
+  "size": 610265,
+  "sha256": "a8746b4bb7b97629c7e5c88534f9ab5c144bda43aa74b00416a22e3ea04ba4cf",
+  "date": "2026-11-12",
+  "notes": "/anh: chưa có khóa API tạo ảnh thì Claude tự vẽ bằng mã (poster, banner, sơ đồ, biểu đồ), sửa ảnh theo lời nhắn"
 }

@@ -19,7 +19,7 @@ function helpText(profiles) {
     '🖥️ /may - ĐỘI MÁY: xem/giao việc/cập nhật các máy AgentOS khác của cửa hàng (qua Tailscale) · /may <tên> <việc> · /may them <tên> <địa chỉ> <khóa>\n' +
     '🔑 /ketnoi <tên máy> - chép khóa SSH của máy này sang máy trong Đội máy (có nút duyệt) để chạy lệnh/chép tệp trên máy đó không cần mật khẩu\n' +
     '🔎 /tim <từ khóa> [homnay|tuan|thang] - TÌM LẠI hội thoại cũ (cả câu hỏi lẫn câu trả lời, không cần gõ đúng dấu) · /viec <số> - xem đầy đủ một việc\n' +
-    '🎨 /anh <mô tả> - tạo ảnh bằng AI (cần khóa Gemini hoặc OpenAI, chỉ quản trị viên) · /anh sua <chỉnh gì> - sửa ảnh vừa tạo. Không có khóa: /ve <mô tả> để AI vẽ bằng mã. Tài liệu Word/Excel/PDF: /taodoc; nghiên cứu có trích dẫn: /nghiencuu; điều khiển màn hình máy: /dieukhien\n' +
+    '🎨 /anh <mô tả> - tạo ảnh (chỉ quản trị viên): có khóa Gemini/OpenAI thì tạo ảnh AI; KHÔNG có khóa thì Claude vẽ bằng mã (poster, banner, sơ đồ, biểu đồ; không vẽ được ảnh chụp thật) · /anh sua <chỉnh gì> - sửa ảnh vừa tạo. Tài liệu Word/Excel/PDF: /taodoc; nghiên cứu có trích dẫn: /nghiencuu; điều khiển màn hình máy: /dieukhien\n' +
     '🩺 /bacsi - nhờ AI phân tích các lỗi máy đang gặp và đề xuất cách sửa (máy cũng tự sửa lỗi quen thuộc như dịch vụ chết, ổ đầy, rồi báo)\n' +
     '🏛️ /hoidong <việc> - HỘI ĐỒNG AI: hai AI làm độc lập, AI thứ ba đối chiếu và kết luận (cho việc quan trọng, tốn gấp ~3 lần hạn mức)\n' +
     '📁 /duan - DỰ ÁN: mỗi dự án có thư mục tệp, chỉ dẫn, sổ tay, lịch sử riêng; mọi AI dùng chung dữ liệu dự án (Claude hết hạn mức thì Codex làm tiếp). /duan moi <tên> · /duan <tên> · /duan thoat · #<tên-dự-án> <việc>\n' +
@@ -394,10 +394,25 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           return searchLib.format(q, r, mem, { scope: (adm ? 'mọi cuộc trò chuyện' : 'hội thoại của bạn') + (span ? ' · ' + span[1].toLowerCase() : ''), now: now() });
         }
         case 'anh': {                                       // tạo ảnh bằng API (Gemini/OpenAI); /anh sua <chỉnh gì> sửa ảnh vừa tạo
-          if (!images) return 'Máy này chưa có tính năng tạo ảnh.';
-          if (!isAdmin(uid)) return 'Lệnh /anh chỉ dành cho quản trị viên (tạo ảnh tốn tiền theo khóa API của chủ máy).';
+          if (!isAdmin(uid)) return 'Lệnh /anh chỉ dành cho quản trị viên.';
           let a = String(cmd[3] || '').trim();
           if (!a) return 'Cách dùng: /anh <mô tả ảnh> (thêm ngang hoặc doc ở đầu để đổi khung: /anh ngang poster khuyến mại) · /anh sua <chỉnh gì> (sửa ảnh vừa tạo, cần khóa Gemini). Chưa có khóa API: dùng /ve để AI vẽ bằng mã.';
+          // Không có khóa API tạo ảnh (Gemini/OpenAI): CLAUDE (hoặc AI đang dùng) tự VẼ bằng mã SVG/HTML rồi máy chụp thành ảnh — dùng thuê bao sẵn có, không tốn thêm tiền.
+          // Hợp với poster, banner, infographic, sơ đồ, biểu đồ, logo đơn giản; KHÔNG vẽ được ảnh chụp/ảnh thật. Sửa: đưa lại mã hình vừa vẽ cho AI sửa theo lời nhắn.
+          if (!(images && images.ready().length)) {
+            const sm0 = /^(sua|chinh|edit)\s+/i.exec(noAcc(a)); if (sm0) a = a.slice(sm0[0].length).trim();
+            const zm0 = /^(ngang|doc|vuong)\s+/i.exec(noAcc(a)); let frame = '';
+            if (zm0) { frame = zm0[1].toLowerCase() === 'ngang' ? ' Khung ngang 16:9 (rộng 1200px, cao 675px).' : zm0[1].toLowerCase() === 'doc' ? ' Khung dọc 9:16 (rộng 1200px, cao 2133px).' : ' Khung vuông (1200x1200px).'; a = a.slice(zm0[0].length).trim(); }
+            if (!a) return 'Gõ thêm mô tả hoặc điều cần sửa.';
+            let prompt = a + frame;
+            if (sm0) {
+              const prev = db.recentJobs(chatId, 40).find((j) => j.profile === 've' && j.status === 'done' && j.result);
+              const html = prev && require('./creative').extractHtml(prev.result);
+              if (!html) return 'Chưa có hình nào để sửa. Vẽ trước bằng /anh <mô tả>.';
+              prompt = 'Đây là hình đã vẽ trước đó (mã HTML):\n```html\n' + html + '\n```\nHãy SỬA hình này theo yêu cầu, giữ nguyên phần còn lại, trả lại TOÀN BỘ mã mới: ' + a + frame;
+            }
+            return submit(chatId, prompt, null, 've') || '🎨 Đang vẽ...';
+          }
           const day = new Date(now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
           const ck = 'imgday:' + chatId + ':' + day, used = Number(db.kvGet(ck)) || 0;
           if (used >= 30) return 'Hôm nay đã tạo 30 ảnh (giới hạn mỗi ngày để tránh tốn tiền API). Mai tạo tiếp nhé.';

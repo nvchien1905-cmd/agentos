@@ -725,7 +725,7 @@ mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}.wi{paddin
         var b = document.getElementById('sb-body'); if (!b || !S) return;
         var ready = S.providers.filter(function (p) { return p.ready; });
         var h = '<div class="card"><h3 style="margin:0 0 6px">Tạo ảnh mới</h3>';
-        if (!ready.length) h += '<p class="warn">Chưa có khóa API tạo ảnh. Thêm khóa <b>Google Gemini</b> hoặc <b>OpenAI</b> ở mục 🤖 AI và khóa API. Chưa có khóa thì nhắn bot <b>/ve &lt;mô tả&gt;</b> để AI vẽ bằng mã (poster, sơ đồ, biểu đồ) — không cần khóa.</p>';
+        if (!ready.length) h += '<p class="warn">Chưa có khóa API tạo ảnh. Thêm khóa <b>Google Gemini</b> hoặc <b>OpenAI</b> ở mục 🤖 AI và khóa API. Chưa có khóa thì nhắn bot <b>/anh &lt;mô tả&gt;</b>: Claude sẽ tự vẽ bằng mã (poster, banner, sơ đồ, biểu đồ — không vẽ được ảnh chụp thật), dùng thuê bao sẵn có, không cần khóa.</p>';
         h += '<textarea id="sb-prompt" rows="3" style="width:100%" placeholder="Mô tả ảnh cần tạo. Ví dụ: Poster khuyến mại nồi chiên không dầu, nền đỏ cam, chữ GIẢM 30% thật to"></textarea>' +
           '<div class="row" style="margin-top:8px"><label>Khung <select id="sb-size">' + S.sizes.map(function (z) { return '<option value="' + esc(z.id) + '">' + esc(z.label) + '</option>'; }).join('') + '</select></label>' +
           '<label>Dùng <select id="sb-prov"><option value="auto">Tự chọn</option>' + ready.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.label) + '</option>'; }).join('') + '</select></label>' +

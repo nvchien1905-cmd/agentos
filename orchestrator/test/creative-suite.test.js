@@ -411,9 +411,19 @@ dbTest('Telegram: /anh tạo ảnh, nhớ ảnh vừa tạo để /anh sua; gi�
   r = await say('/anh sửa đổi nền sang xanh'); assert.ok(r.files, JSON.stringify(r)); assert.equal(JSON.parse(log[1].init.body).contents[0].parts.length, 2);
   db.kvSet('imgday:111:' + new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10), '30'); assert.match(await say('/anh thêm một ảnh nữa'), /30 ảnh/);
   assert.match(await mk({ images: imgs, isAdmin: () => false }).handle({ from: { id: 111 }, chat: { id: 111, type: 'private' }, text: '/anh abc' }), /chỉ dành cho quản trị viên/);      // tạo ảnh tốn tiền API: chỉ chủ máy
-  assert.match(await mk({}).handle({ from: { id: 111 }, chat: { id: 111, type: 'private' }, text: '/anh abc' }), /chưa có tính năng tạo ảnh/);
+  assert.match(await mk({ images: imgs, isAdmin: () => false }).handle({ from: { id: 111 }, chat: { id: 111, type: 'private' }, text: '/anh abc' }), /chỉ dành cho quản trị viên/);
   db.kvSet('imgday:111:' + new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10), '0');
-  const noKey = mk({ images: images.createImages({ keys: {}, dir, fetch: async () => { throw new Error('x'); } }) }); assert.match(await noKey.handle({ from: { id: 111 }, chat: { id: 111, type: 'private' }, text: '/anh mèo' }), /\/ve/);
+  // Không có khóa API tạo ảnh (hoặc máy chưa có bộ tạo ảnh): Claude/AI đang dùng VẼ BẰNG MÃ qua bộ công cụ /ve; sửa = đưa lại mã hình vừa vẽ
+  const sayK = (b, t) => b.handle({ from: { id: 111 }, chat: { id: 111, type: 'private' }, text: t });
+  const noKey = mk({ images: images.createImages({ keys: {}, dir, fetch: async () => { throw new Error('không được gọi API'); } }) });
+  await sayK(noKey, '/anh ngang poster khuyến mại 20/10'); let vj = db.recentJobs('111', 1)[0];
+  assert.equal(vj.profile, 've'); assert.match(vj.prompt, /^poster khuyến mại 20\/10 Khung ngang 16:9/);
+  await sayK(mk({}), '/anh doc banner'); vj = db.recentJobs('111', 1)[0]; assert.equal(vj.profile, 've'); assert.match(vj.prompt, /Khung dọc 9:16/);          // máy chưa có bộ tạo ảnh vẫn vẽ được
+  assert.match(await sayK(noKey, '/anh sua đổi nền sang xanh'), /Chưa có hình nào để sửa/);
+  db.finishJob(vj.id, 'done', { result: 'Đây:\n```html\n<div id="cu">Poster cũ</div>\n```' });
+  await sayK(noKey, '/anh sửa đổi nền sang xanh'); vj = db.recentJobs('111', 1)[0];
+  assert.equal(vj.profile, 've'); assert.match(vj.prompt, /<div id="cu">Poster cũ<\/div>/); assert.match(vj.prompt, /SỬA hình này[\s\S]*đổi nền sang xanh/);
+  assert.match(await sayK(noKey, '/anh'), /Cách dùng/);
 });
 
 dbTest('Telegram: /nghiencuu, /ve, /taodoc là bộ công cụ có sẵn → tạo việc đúng bộ công cụ; /dieukhien chỉ quản trị viên', async () => {

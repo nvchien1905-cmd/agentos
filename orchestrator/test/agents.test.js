@@ -411,3 +411,39 @@ test('tài nguyên chung: bot không có trần riêng, nằm trong nhóm chung;
   assert.ok(w.cmds.includes('systemctl restart agentos-agent-a1'));
   assert.throws(() => validate({ rid: RID, action: 'pool', reserveMb: -5 }), /reserveMb/);
 });
+
+test('thêm bot bằng câu thường: chủ máy dán token → bot quản lý TỰ tạo agent (không bắt gõ lệnh), xóa tin có token, lấy tên từ câu; "thêm bot đó" dùng token đã nhớ; người thường và câu thường không bị đụng', async () => {
+  const calls = [], sent = [], deleted = [];
+  let n = 0;
+  const agents = { add: async (a) => { calls.push(a); if (++n === 2) throw new Error('mạng lỗi'); return { agent: { id: 'a' + n, name: a.name || 'Bot mặc định', bot: { username: 'bot' + n + '_bot' }, ramMb: 1536, cpuPct: 100 } }; } };
+  const ui = createAgentsUi({ agents, isAdmin: (u) => String(u) === '1', send: async (c, t) => { sent.push(t); }, deleteMessage: async (c, id) => { deleted.push(id); } });
+  // không đụng: câu thường không token, "thêm bot đó" khi CHƯA có token nhớ, người thường dán token, lệnh có dấu /
+  assert.equal(ui.tryAdd('1', '1', 'thêm bot vào nhóm giúp anh', { message_id: 1 }), null);
+  assert.equal(ui.tryAdd('1', '1', 'Em thêm bot đó vào phần bot telegram đi', { message_id: 2 }), null);
+  assert.equal(ui.tryAdd('1', '2', 'token ' + TOKEN, { message_id: 3 }), null);
+  assert.equal(ui.tryAdd('1', '1', '/daily them ' + TOKEN, { message_id: 4 }), null);
+  assert.deepEqual(deleted, []); assert.equal(calls.length, 0);
+  // dán token kèm lời mô tả (như ảnh chụp): tạo luôn, tên = "Facebook Huyền Anh", xóa tin ngay, token không lọt vào tên
+  const r = await ui.tryAdd('1', '1', 'Đây là token của bot Facebook Huyền Anh, bot này chỉ có nhiệm vụ trực Messenger\n' + TOKEN, { message_id: 9 });
+  assert.match(r, /Đã tạo agent a1 "Facebook Huyền Anh" — bot @bot1_bot/); assert.match(r, /đã xóa khỏi cuộc trò chuyện/); assert.deepEqual(deleted, [9]);
+  assert.deepEqual(calls[0], { token: TOKEN, name: 'Facebook Huyền Anh' }); assert.match(sent[0], /Đang tạo agent/);
+  // token không kèm tên → tên rỗng (hệ thống lấy tên bot Telegram); lần tạo này LỖI → token vẫn được nhớ
+  const bad = await ui.tryAdd('1', '1', TOKEN2, { message_id: 10 });
+  assert.match(bad, /⚠️ mạng lỗi/); assert.deepEqual(calls[1], { token: TOKEN2, name: '' }); assert.deepEqual(deleted, [9, 10]);
+  // sau đó nói "thêm bot đó" (không kèm token) → dùng token đã nhớ, KHÔNG xóa tin nào nữa
+  const again = await ui.tryAdd('1', '1', 'Em thêm bot đó vào phần bot telegram đi', { message_id: 11 });
+  assert.match(again, /Đã tạo agent a3/); assert.deepEqual(calls[2], { token: TOKEN2, name: '' }); assert.deepEqual(deleted, [9, 10]);
+  // đã tạo xong thì token được quên: nói tiếp "thêm bot đó" không tạo lại
+  assert.equal(ui.tryAdd('1', '1', 'thêm bot đó đi', { message_id: 12 }), null); assert.equal(calls.length, 3);
+});
+
+test('bot quản lý (ảnh chụp thật): dán token rồi nói "thêm bot đó" → bot TỰ tạo agent, KHÔNG thành việc cho AI và không bắt chủ máy gõ lệnh; câu thường vẫn đi cho AI', async () => {
+  const calls = [], deleted = [];
+  const agents = { add: async (a) => { calls.push(a); return { agent: { id: 'a1', name: a.name || 'Bot', bot: { username: 'fb_bot' }, ramMb: 1536, cpuPct: 100 } }; }, all: () => [], resolve: () => null };
+  const ui = createAgentsUi({ agents, isAdmin: () => true, send: async () => {}, deleteMessage: async (c, id) => { deleted.push(id); } });
+  const { bot, msg, subs } = botWith({ agentsUi: ui });
+  const r = await bot.handle(msg('Đây là token của bot Facebook Huyền Anh, bot này chỉ làm việc trực tin nhắn\n' + TOKEN));
+  assert.match(r, /Đã tạo agent a1 "Facebook Huyền Anh"/); assert.equal(subs.length, 0, 'không được giao cho AI'); assert.deepEqual(deleted, [3]);
+  assert.equal(calls.length, 1);
+  await bot.handle(msg('Báo cáo doanh số hôm nay giúp anh')); assert.equal(subs.length, 1, 'câu thường vẫn đi cho AI');
+});

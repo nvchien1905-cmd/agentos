@@ -159,7 +159,9 @@ async function main() {
   // Tư duy trước khi làm + quy tắc KiotViet (API trước, web sau cùng): gắn vào mọi lần chạy AI (thinking.js)
   const KV_ON = cfg.kiotviet.shops.length > 0;
   const TODO_HINT = 'DANH SÁCH VIỆC: với việc từ 3 bước trở lên, TRƯỚC KHI làm hãy gọi công cụ todo_set (máy chủ agentos_todo) để lập danh sách các bước (mục đầu đặt in_progress), và gọi lại để cập nhật mỗi khi xong một bước (luôn gửi toàn bộ danh sách; chỉ một mục in_progress). Việc ngắn 1–2 bước thì không cần. Không nhắc tới công cụ này trong câu trả lời cho người dùng.';
-  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT;
+  // Việc quản trị máy mà hệ thống TỰ làm khi chủ máy nhắn (bot quản lý chặn trước khi tới AI): đừng bắt chủ máy gõ lệnh hay tự làm thay
+  const OS_HINT = 'QUẢN TRỊ BOT: THÊM BOT TELEGRAM mới = chủ máy chỉ cần DÁN TOKEN (từ @BotFather) vào chat, hoặc nói "thêm bot đó" sau khi dán — hệ thống TỰ tạo agent, tự xóa tin có token. Khi chủ máy nhờ thêm bot mà chưa có token thì chỉ bảo "anh dán token vào đây, em thêm luôn"; TUYỆT ĐỐI không bảo chủ máy tự gõ lệnh /daily hay tự thao tác thay. Giao việc cho bot thường: chủ máy nhắn "giao cho bot <tên> làm: …".';
+  const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT + (cfg.agentId ? '' : ' ' + OS_HINT);
   const LOGIN_HINT ='TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập, mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
   const fullHint = (canCli) => 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
     'Hãy tự làm trọn vẹn việc được giao, một mạch, không hỏi xin phép vụn vặt giữa chừng (chỉ hỏi lại khi thiếu thông tin thật sự không thể đoán, hoặc trước việc không hoàn tác được). ' +

@@ -41,6 +41,50 @@ function createAgentsUi(o) {
   function logText(r) { const t = (r.text || '').trim(); return '📜 Nhật ký agent ' + r.agent.id + ' (' + esc(r.agent.name) + '):\n' + (t ? t.split('\n').slice(-30).join('\n').slice(-3500) : '(chưa có dòng nào)'); }
   const done = (a, what) => '✅ Agent ' + a.id + ' (' + esc(a.name) + '): ' + what;
 
+  // Tạo agent từ token (dùng chung cho lệnh /daily them và câu thường "thêm bot đó")
+  async function addAgent(chatId, token, name) {
+    if (send) await send(chatId, '⏳ Đang tạo agent (tạo tài khoản + dịch vụ riêng, khoảng 10–30 giây)…');
+    const r = await agents.add({ token, name: String(name || '').trim() });
+    return '✅ Đã tạo agent ' + r.agent.id + ' "' + esc(r.agent.name) + '" — bot @' + r.agent.bot.username + '.\nMở @' + r.agent.bot.username + ' trên Telegram và nhắn thử (chỉ ID của anh được phép). Giới hạn: RAM ' + r.agent.ramMb + ' MB, CPU ' + r.agent.cpuPct + '%. Đổi: /daily gioihan ' + r.agent.id + ' <RAM MB> <CPU %>.' + (r.warn ? '\n⚠️ ' + r.warn : '');
+  }
+
+  // CHỦ MÁY DÁN TOKEN BOT (hoặc nói "thêm bot đó" sau khi đã dán) = muốn thêm bot Telegram: bot quản lý TỰ LÀM, không bắt chủ máy gõ lệnh và không đưa token cho AI.
+  // - tin có token: xóa ngay (token là bí mật), nhớ token 60 phút, tạo agent luôn (tên lấy từ câu "bot <tên>" nếu có, không thì lấy tên bot ở Telegram);
+  // - tin KHÔNG có token mà nói "thêm bot đó/này…" khi còn token nhớ: tạo agent bằng token đó.
+  // Trả null nếu không phải việc này (câu đi tiếp cho AI). Lệnh bắt đầu bằng "/" không qua đây.
+  const TOKEN_G = /\b\d{8,12}:[A-Za-z0-9_-]{30,}/;
+  const pending = new Map();                                   // chatId -> { token, name, at }
+  const FRESH_MS = 60 * 60 * 1000;
+  const WANT_ADD = /\b(them|tao|add|cai|dua|bo sung|kich hoat)\b[^.\n]{0,50}\b(bot|agent)\b/;
+  function nameFrom(text) {                                    // "…token của bot Facebook Huyền Anh, bot này chỉ…" → "Facebook Huyền Anh"
+    const t = String(text || '').replace(TOKEN_G, ' ').replace(/\s+/g, ' ');
+    const m = /\bbot\s+([^,.:;()\n]{2,60})/i.exec(t); if (!m) return '';
+    const STOP = /^(nay|do|kia|chi|co|lam|de|la|nhe|di|telegram|cua|duoc|se|dang|vao|voi|va|bot|phan|moi)$/;
+    const out = [];
+    for (const w of m[1].trim().split(' ')) { if (STOP.test(noAcc(w))) { if (!out.length) continue; break; } out.push(w); if (out.length >= 4) break; }
+    return out.join(' ').slice(0, 40);
+  }
+  function tryAdd(chatId, uid, text, msg) {
+    if (!isAdmin(uid) || !agents || typeof agents.add !== 'function') return null;
+    const t = String(text || '');
+    if (/^\s*\//.test(t)) return null;
+    const mt = TOKEN_G.exec(t);
+    const p = pending.get(String(chatId));
+    const fresh = p && Date.now() - p.at < FRESH_MS;
+    if (!mt && !(fresh && WANT_ADD.test(noAcc(t)))) return null;
+    let token, name;
+    if (mt) {
+      token = mt[0]; name = nameFrom(t);
+      pending.set(String(chatId), { token, name, at: Date.now() });
+      if (deleteMessage && msg && msg.message_id) Promise.resolve(deleteMessage(chatId, msg.message_id)).catch(() => {});       // token là bí mật: xóa tin ngay
+    } else { token = p.token; name = p.name; }
+    return run(async () => {
+      const r = await addAgent(chatId, token, name);
+      pending.delete(String(chatId));
+      return r + '\n(Tin có token đã xóa khỏi cuộc trò chuyện. Việc cụ thể cho bot này, nhắn: "giao cho bot ' + (name || 'tên bot') + ' làm: …".)';
+    });
+  }
+
   async function run(fn) { try { return await fn(); } catch (e) { return '⚠️ ' + String(e && e.message || e).slice(0, 500); } }
 
   function command(chatId, uid, arg, msg) {
@@ -54,9 +98,7 @@ function createAgentsUi(o) {
         const mt = rest.match(/^(\d{6,}:[A-Za-z0-9_-]{30,})\s*([\s\S]*)$/);
         if (deleteMessage && msg && msg.message_id) Promise.resolve(deleteMessage(chatId, msg.message_id)).catch(() => {});      // token là bí mật: xóa tin ngay
         if (!mt) return 'Chưa thấy token đúng dạng. Tạo bot ở @BotFather (/newbot), chép token (dạng 123456789:AAAA…) rồi gõ: /daily them <token> [tên agent]';
-        if (send) await send(chatId, '⏳ Đang tạo agent (tạo tài khoản + dịch vụ riêng, khoảng 10–30 giây)…');
-        const r = await agents.add({ token: mt[1], name: mt[2].trim() });
-        return '✅ Đã tạo agent ' + r.agent.id + ' "' + esc(r.agent.name) + '" — bot @' + r.agent.bot.username + '.\nMở @' + r.agent.bot.username + ' trên Telegram và nhắn thử (chỉ ID của anh được phép). Giới hạn: RAM ' + r.agent.ramMb + ' MB, CPU ' + r.agent.cpuPct + '%. Đổi: /daily gioihan ' + r.agent.id + ' <RAM MB> <CPU %>.' + (r.warn ? '\n⚠️ ' + r.warn : '');
+        return await addAgent(chatId, mt[1], mt[2].trim());
       }
       const ref = rest.split(/\s+/)[0] || '';
       const args = rest.slice(ref.length).trim();
@@ -180,7 +222,7 @@ function createAgentsUi(o) {
     return verb === 'logs' ? '' : 'Xong';
   }
 
-  return { command, card, isCallback, callback, HELP, parseAssign, tryAssign, assignCommand };
+  return { command, card, isCallback, callback, HELP, parseAssign, tryAssign, tryAdd, assignCommand };
 }
 
 module.exports = { createAgentsUi, HELP };

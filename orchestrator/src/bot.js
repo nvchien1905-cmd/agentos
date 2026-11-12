@@ -526,7 +526,10 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
         return quietAck ? (ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó).' : null) : 'Đang tra giúp bạn...';
       }, (e) => '⚠️ Chưa tra được: ' + e.message);
     }
-    const asg = agentsUi ? agentsUi.tryAssign(chatId, uid, text) : null;             // "giao cho bot X làm Y" -> hộp thư của bot thường (không qua AI)
+    // Chủ máy dán token bot / nói "thêm bot đó": bot quản lý TỰ tạo agent (không qua AI, không bắt gõ lệnh, tin chứa token bị xóa)
+    const added = agentsUi && agentsUi.tryAdd ? agentsUi.tryAdd(chatId, uid, text, msg) : null;
+    if (added) return added;
+    const asg = agentsUi ? agentsUi.tryAssign(chatId, uid, text) : null;            // "giao cho bot X làm Y" -> hộp thư của bot thường (không qua AI)
     if (asg) return asg;
     const nl = engineCtl && isAdmin(uid) ? naturalAi(text) : null;                 // "chuyển sang dùng codex" -> như /ai codex (không qua AI, không bị chặn)
     if (nl) return aiCommand(uid, nl);

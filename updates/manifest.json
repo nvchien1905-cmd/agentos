@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.12.5",
-  "file": "agentos-update-2026.11.12.5.tar.gz",
-  "size": 612372,
-  "sha256": "45db60be4438d36d89984be2a6bd7ca4bf4ad3575f5b01d150d6ffcd61b38cfa",
+  "version": "2026.11.12.6",
+  "file": "agentos-update-2026.11.12.6.tar.gz",
+  "size": 613620,
+  "sha256": "d6876ee2b7b4f58e7eba5c5a24af6cb678b78a45623882929290da25812095df",
   "date": "2026-11-12",
-  "notes": "Wi-Fi tự lưu mật khẩu và tự kết nối: hết hỏi mật khẩu Wi-Fi mỗi ngày (kho khóa không mật khẩu, tự kết nối lại mãi mãi, tắt tiết kiệm điện Wi-Fi)"
+  "notes": "Bot quản lý tự thêm bot Telegram khi chủ máy dán token hoặc nói 'thêm bot đó' (không bắt gõ lệnh, xóa tin chứa token)"
 }

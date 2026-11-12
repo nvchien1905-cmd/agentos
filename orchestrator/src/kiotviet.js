@@ -406,16 +406,22 @@ function createMultiKiotViet(shops, o) {
   };
 }
 
+// BOT NÀO ĐƯỢC DÙNG gian hàng (chủ máy tích ở Cài đặt → KiotViet): `bots` = danh sách mã bot ('main' = bot quản lý, 'a1'… = bot phụ). Không có trường này (gian cũ) = chỉ bot quản lý.
+const BOT_ID_RE = /^(main|a\d{1,3})$/;
+const botsField = (v) => (Array.isArray(v) ? [...new Set(v.map(String).filter((x) => BOT_ID_RE.test(x)))] : null);
+const botsOf = (shop) => (shop && Array.isArray(shop.bots) ? shop.bots : ['main']);
+const shopsForBot = (shops, botId) => (shops || []).filter((s) => botsOf(s).includes(botId || 'main'));
+
 // Danh sách gian hàng từ cấu hình: KIOTVIET_SHOPS (JSON một dòng, do trang Cài đặt ghi) + bộ khóa cũ KIOTVIET_CLIENT_ID/SECRET/RETAILER (nếu chưa có trong danh sách).
 function parseShops(env) {
   env = env || {};
   let arr = [];
   try { const j = JSON.parse(env.KIOTVIET_SHOPS || '[]'); if (Array.isArray(j)) arr = j; } catch (e) { arr = []; }
-  const out = arr.map((s) => ({ name: String((s && s.name) || '').trim(), retailer: String((s && s.retailer) || '').trim(), clientId: String((s && s.clientId) || '').trim(), clientSecret: String((s && s.clientSecret) || '').trim() })).filter((s) => s.retailer && s.clientId && s.clientSecret);
+  const out = arr.map((s) => ({ name: String((s && s.name) || '').trim(), retailer: String((s && s.retailer) || '').trim(), clientId: String((s && s.clientId) || '').trim(), clientSecret: String((s && s.clientSecret) || '').trim(), bots: botsField(s && s.bots) })).filter((s) => s.retailer && s.clientId && s.clientSecret);
   if (env.KIOTVIET_CLIENT_ID && env.KIOTVIET_CLIENT_SECRET && env.KIOTVIET_RETAILER && !out.some((s) => s.retailer.toLowerCase() === String(env.KIOTVIET_RETAILER).toLowerCase())) {
     out.unshift({ name: '', retailer: env.KIOTVIET_RETAILER, clientId: env.KIOTVIET_CLIENT_ID, clientSecret: env.KIOTVIET_CLIENT_SECRET });
   }
   return out;
 }
 
-module.exports = { createKiotViet, createMultiKiotViet, parseShops, splitRevenueQuery, parseRange, vnDate, noAccent, money, checkReadPath };
+module.exports = { BOT_ID_RE, botsField, botsOf, shopsForBot, createKiotViet, createMultiKiotViet, parseShops, splitRevenueQuery, parseRange, vnDate, noAccent, money, checkReadPath };

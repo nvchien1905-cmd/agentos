@@ -1,7 +1,7 @@
 'use strict';
 // Khai báo các GIAN HÀNG KiotViet (mỗi gian = một cửa hàng KiotViet riêng) trong orchestrator.env, dùng cho trang Cài đặt → KiotViet.
 // Lưu ở KIOTVIET_SHOPS (JSON một dòng). Bộ khóa cũ KIOTVIET_CLIENT_ID/SECRET/RETAILER được gộp vào danh sách khi lưu lần đầu rồi xóa khỏi tệp.
-const { parseShops } = require('../../orchestrator/src/kiotviet');
+const { parseShops, botsField, botsOf } = require('../../orchestrator/src/kiotviet');
 
 const TOKEN_URL = 'https://id.kiotviet.vn/connect/token';
 const API = 'https://public.kiotapi.com';
@@ -17,7 +17,7 @@ const shopsFromEnv = (text) => parseShops(envMap(text));
 
 // Trả danh sách để HIỂN THỊ (khóa bí mật được che)
 function view(text) {
-  return shopsFromEnv(text).map((s) => ({ name: s.name || s.retailer, retailer: s.retailer, clientId: mask(s.clientId), clientSecret: mask(s.clientSecret) }));
+  return shopsFromEnv(text).map((s) => ({ name: s.name || s.retailer, retailer: s.retailer, clientId: mask(s.clientId), clientSecret: mask(s.clientSecret), bots: botsOf(s) }));
 }
 
 // Kiểm khóa thật với KiotViet: lấy token rồi đọc danh sách chi nhánh. Trả { ok, detail, branches }.
@@ -44,7 +44,7 @@ async function check(s, fetchImpl) {
 function writeShops(text, shops) {
   const lines = String(text || '').split('\n').filter((l) => !LEGACY.some((k) => l.startsWith(k + '=')) && !l.startsWith('KIOTVIET_SHOPS='));
   while (lines.length && lines[lines.length - 1] === '') lines.pop();
-  if (shops.length) lines.push('KIOTVIET_SHOPS=' + JSON.stringify(shops));
+  if (shops.length) lines.push('KIOTVIET_SHOPS=' + JSON.stringify(shops.map((s) => (s.bots ? s : Object.assign({}, s, { bots: undefined })))));       // bots trống (gian cũ) = chỉ bot quản lý: không ghi trường này
   lines.push('');
   return lines.join('\n');
 }
@@ -52,12 +52,12 @@ function writeShops(text, shops) {
 // Thêm/sửa một gian (khớp theo Retailer; để trống Client Secret/ID khi sửa = giữ khóa cũ)
 function upsert(text, s) {
   const clean = (v) => String(v || '').trim();
-  const n = { name: clean(s.name), retailer: clean(s.retailer), clientId: clean(s.clientId), clientSecret: clean(s.clientSecret) };
+  const n = { name: clean(s.name), retailer: clean(s.retailer), clientId: clean(s.clientId), clientSecret: clean(s.clientSecret), bots: Array.isArray(s.bots) ? botsField(s.bots) : null };
   for (const k of ['name', 'retailer', 'clientId', 'clientSecret']) if (/[\r\n\0]/.test(n[k])) throw new Error('Có ký tự không hợp lệ trong ô nhập');
   if (!/^[A-Za-z0-9._-]{2,60}$/.test(n.retailer)) throw new Error('Retailer là tên cửa hàng KiotViet (ví dụ tongkhohuyenanh01): chữ không dấu, số, gạch.');
   const shops = shopsFromEnv(text);
   const i = shops.findIndex((x) => x.retailer.toLowerCase() === n.retailer.toLowerCase());
-  if (i >= 0) { n.clientId = n.clientId || shops[i].clientId; n.clientSecret = n.clientSecret || shops[i].clientSecret; shops[i] = n; } else shops.push(n);
+  if (i >= 0) { n.clientId = n.clientId || shops[i].clientId; n.clientSecret = n.clientSecret || shops[i].clientSecret; if (!Array.isArray(s.bots)) n.bots = shops[i].bots; shops[i] = n; } else shops.push(n);
   if (!n.clientId || !n.clientSecret) throw new Error('Cần Client ID và Client Secret.');
   return { text: writeShops(text, shops), shop: n };
 }
@@ -69,4 +69,14 @@ function remove(text, retailer) {
   return writeShops(text, shops);
 }
 
-module.exports = { view, check, upsert, remove, shopsFromEnv, mask };
+// Chủ máy tích bot nào được dùng gian hàng này (bots = mảng mã bot: 'main', 'a1'…). Trả { text, before, after }
+function setBots(text, retailer, bots) {
+  if (!Array.isArray(bots)) throw new Error('Danh sách bot không hợp lệ');
+  const shops = shopsFromEnv(text), i = shops.findIndex((x) => x.retailer.toLowerCase() === String(retailer || '').toLowerCase());
+  if (i < 0) throw new Error('Không có gian hàng này.');
+  const before = botsOf(shops[i]), after = botsField(bots);
+  shops[i] = Object.assign({}, shops[i], { bots: after });
+  return { text: writeShops(text, shops), before, after };
+}
+
+module.exports = { view, check, upsert, remove, setBots, shopsFromEnv, mask };

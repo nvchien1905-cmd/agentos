@@ -242,6 +242,12 @@ function envText(id, meta, token, mainEnvText) {
   for (const l of String(mainEnvText || '').split(/\r?\n/)) {
     if (SHARED_KEYS.test(l) && !/[\0]/.test(l)) { lines.push(l.trim()); shared++; }
   }
+  // Gian hàng KiotViet mà chủ máy đã TÍCH cho agent này (Cài đặt → KiotViet): chỉ những gian đó (kèm khóa) vào tệp cấu hình riêng của agent (chỉ root đọc)
+  try {
+    const m = /^KIOTVIET_SHOPS=(.*)$/m.exec(String(mainEnvText || ''));
+    const mine = m ? JSON.parse(m[1]).filter((s) => s && Array.isArray(s.bots) && s.bots.includes(id)) : [];
+    if (mine.length) lines.push('KIOTVIET_SHOPS=' + JSON.stringify(mine));
+  } catch (e) { /* cấu hình gian hàng hỏng: agent không có KiotViet */ }
   return { text: lines.join('\n') + '\n', shared };
 }
 

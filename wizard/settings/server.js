@@ -126,6 +126,9 @@ function createSettings(o) {
     getMe: (token) => tgLib.getMe(token, { fetch: fetchImpl }),
     afterSave: (p) => chownAgentos(p),
   }));
+  // Danh sách bot để tích quyền dùng khóa KiotViet (bot quản lý + các bot phụ) và đồng bộ khóa xuống cấu hình của bot phụ (agentctl update viết lại tệp cấu hình riêng rồi khởi động lại bot đó)
+  const kvBotList = async () => { const l = await botsLib().list().catch(() => ({ agents: [] })); return [{ key: 'main', name: 'Bot quản lý' }].concat((l.agents || []).map((a) => ({ key: a.id, name: a.name, username: (a.bot && a.bot.username) || '' }))); };
+  const kvSyncAgents = async (ids) => { const warn = []; for (const id of [...new Set(ids)]) { if (id === 'main') continue; try { await botsLib().update({ id }); } catch (e) { warn.push(id + ': ' + String(e.message || e).slice(0, 160)); } } return warn; };
   // Bot quản lý cũng có đủ chế độ/quyền hạn riêng như mọi bot: giá trị nằm trong tệp cấu hình của bộ điều phối (cùng khóa với agent, xem agentctl.SETTINGS)
   const AC = () => require('../../orchestrator/src/agentctl');
   const mainSettings = (t) => {
@@ -365,7 +368,20 @@ function createSettings(o) {
     },
 
     // ----- KiotViet: nhiều gian hàng (mỗi gian một cửa hàng KiotViet với khóa API riêng) -----
-    async 'GET /api/kiotviet'() { return { shops: kvLib.view(readEnv() || ''), configured: readEnv() != null }; },
+    // Bot nào được dùng gian hàng: 'main' = bot quản lý, còn lại là bot phụ (agent). Gian được tích cho bot phụ nào thì khóa được ghi vào cấu hình riêng của bot đó (chỉ root đọc) và bot đó khởi động lại để nhận khóa.
+    async 'GET /api/kiotviet'() { return { shops: kvLib.view(readEnv() || ''), configured: readEnv() != null, bots: await kvBotList() }; },
+    async 'POST /api/kiotviet/bots'(b) {
+      const text = needEnv(), retailer = String(b.retailer || '').trim();
+      const known = new Set((await kvBotList()).map((x) => x.key));
+      const bots = (Array.isArray(b.bots) ? b.bots : []).map(String);
+      for (const x of bots) if (!known.has(x)) throw new Error('Không có bot "' + x + '".');
+      const r = kvLib.setBots(text, retailer, bots);
+      saveEnv(r.text);
+      const changed = [...new Set([...r.before.filter((x) => !r.after.includes(x)), ...r.after.filter((x) => !r.before.includes(x))])];
+      if (changed.includes('main')) await restart('agentos-orchestrator');
+      const warn = await kvSyncAgents(changed);
+      return { saved: true, bots: r.after, changed, warn };
+    },
     async 'POST /api/kiotviet/save'(b) {
       const text = needEnv();
       let u;
@@ -376,7 +392,8 @@ function createSettings(o) {
       if (!r.ok) throw new Error(r.detail);
       u = kvLib.upsert(text, b);
       saveEnv(u.text); await restart('agentos-orchestrator');
-      return { saved: true, detail: r.detail, shop: { name: u.shop.name || u.shop.retailer, retailer: u.shop.retailer } };
+      const warn = await kvSyncAgents(cur ? (cur.bots || []).filter((x) => x !== 'main').concat((u.shop.bots || []).filter((x) => x !== 'main')) : (u.shop.bots || []));       // khóa đổi → bot phụ đang dùng gian này nhận khóa mới
+      return { saved: true, detail: r.detail, warn, shop: { name: u.shop.name || u.shop.retailer, retailer: u.shop.retailer } };
     },
     async 'POST /api/kiotviet/test'(b) {
       const cur = kvLib.shopsFromEnv(readEnv() || '').find((x) => x.retailer.toLowerCase() === String(b.retailer || '').trim().toLowerCase());
@@ -384,8 +401,10 @@ function createSettings(o) {
       return kvLib.check(cur, fetchImpl);
     },
     async 'POST /api/kiotviet/delete'(b) {
-      saveEnv(kvLib.remove(needEnv(), b.retailer)); await restart('agentos-orchestrator');
-      return { deleted: true };
+      const text = needEnv(), had = kvLib.shopsFromEnv(text).find((x) => x.retailer.toLowerCase() === String(b.retailer || '').trim().toLowerCase());
+      saveEnv(kvLib.remove(text, b.retailer)); await restart('agentos-orchestrator');
+      const warn = await kvSyncAgents(had && Array.isArray(had.bots) ? had.bots : []);        // bot phụ đang dùng gian này mất khóa
+      return { deleted: true, warn };
     },
 
     // ----- Máy từ xa: kho mật khẩu RustDesk (mã hóa). Mật khẩu chỉ đi MỘT chiều vào kho, không bao giờ trả ra màn hình/chat -----

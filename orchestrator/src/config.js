@@ -80,7 +80,7 @@ function load(env) {
     oneDriveDir: env.ONEDRIVE_DIR || '/srv/onedrive',
     // KiotViet API chính thức (chỉ đọc) cho /doanhso và /ton
     // shops: nhiều gian hàng (KIOTVIET_SHOPS do trang Cài đặt → KiotViet ghi) + bộ khóa cũ ở ba biến bên dưới
-    kiotviet: { clientId: env.KIOTVIET_CLIENT_ID || '', clientSecret: env.KIOTVIET_CLIENT_SECRET || '', retailer: env.KIOTVIET_RETAILER || '', shops: require('./kiotviet').parseShops(env) },
+    kiotviet: { clientId: env.KIOTVIET_CLIENT_ID || '', clientSecret: env.KIOTVIET_CLIENT_SECRET || '', retailer: env.KIOTVIET_RETAILER || '', shops: require('./kiotviet').shopsForBot(require('./kiotviet').parseShops(env), /^a\d{1,3}$/.test(env.AGENT_ID || '') ? env.AGENT_ID : 'main') },
     reportTime: /^\d{2}:\d{2}$/.test(env.REPORT_TIME || '') ? env.REPORT_TIME : '21:30',      // giờ gửi báo cáo hằng ngày (giờ VN); đổi bằng /baocao gio
     updateUrl: env.UPDATE_URL || '',                              // nơi lấy bản cập nhật (mặc định: kho GitHub chính thức)
     // Bộ nhớ dùng chung cho mọi AI (memory.js) + nén ngữ cảnh bằng mô hình rẻ (summarizer.js) + chọn AI theo độ khó (router.js)

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.12.6",
-  "file": "agentos-update-2026.11.12.6.tar.gz",
-  "size": 613620,
-  "sha256": "d6876ee2b7b4f58e7eba5c5a24af6cb678b78a45623882929290da25812095df",
+  "version": "2026.11.13.1",
+  "file": "agentos-update-2026.11.13.1.tar.gz",
+  "size": 615524,
+  "sha256": "b242f9ba7371307bf414a3657ad8b817491dcd1f174839f4150f31eb167b11a2",
   "date": "2026-11-12",
-  "notes": "Bot quản lý tự thêm bot Telegram khi chủ máy dán token hoặc nói 'thêm bot đó' (không bắt gõ lệnh, xóa tin chứa token)"
+  "notes": "Cài đặt → KiotViet: tích bot nào được dùng khóa API của từng gian hàng (bot được tích nhận khóa và dùng được API)"
 }

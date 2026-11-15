@@ -252,11 +252,13 @@ function botWith(over) {
   return { bot, msg, subs };
 }
 
-test('bot: AGENT chặn lệnh quản trị máy (cập nhật, toàn quyền, /daily, /menu) nhưng vẫn nhận việc và /help, /claude', async () => {
+test('bot: AGENT dùng được mọi lệnh như bot quản lý (độc lập); chỉ không chỉ đạo được bot khác (/giao, /daily, /agent)', async () => {
   const { bot, msg, subs } = botWith({ agentMode: true });
-  for (const c of ['/capnhat co', '/toanquyen bat', '/daily', '/menu', '/google', '/ketnoi', '/may', '/khoimay co', '/tatmay co', '/lenh ls']) assert.match(await bot.handle(msg(c)), /chỉ có ở bot quản lý/, c);
-  // bot phụ MẶC ĐỊNH dùng được màn hình, Chrome và ứng dụng của máy (lệnh nhanh của chủ máy); khóa/tắt/khởi động lại máy và chạy lệnh vẫn chỉ ở bot quản lý
-  for (const c of ['/manhinh', '/mo chrome', '/mo webbot', '/dong webbot', '/cuaso', '/timchu Lưu', '/bamchu Gửi', '/go abc', '/phim Return', '/bam 10 20', '/chuyen Zalo', '/dan', '/zalo', '/zalo bat tudong']) assert.doesNotMatch(String(await bot.handle(msg(c))), /chỉ có ở bot quản lý/, c);
+  // không lệnh nào bị chặn bằng câu "chỉ có ở bot quản lý"
+  for (const c of ['/capnhat', '/toanquyen', '/menu', '/google', '/ketnoi', '/may', '/hen 12:00 nhắc việc', '/manhinh', '/mo chrome', '/mo webbot', '/dong webbot', '/cuaso', '/timchu Lưu', '/bamchu Gửi', '/go abc', '/phim Return', '/bam 10 20', '/chuyen Zalo', '/dan', '/zalo', '/zalo bat tudong', '/facebook', '/fanpage', '/dongbo']) assert.doesNotMatch(String(await bot.handle(msg(c))), /chỉ có ở bot quản lý/, c);
+  // chỉ đạo bot khác là việc của bot quản lý
+  assert.match(String(await bot.handle(msg('/giao a1 làm gì đó'))), /không giao việc được/);
+  assert.match(String(await bot.handle(msg('/daily'))), /chưa hỗ trợ nhiều bot/);
   assert.match(await bot.handle(msg('/help')), /AgentOS/);
   assert.match(await bot.handle(msg('/id')), /ID Telegram/);
   await bot.handle(msg('/claude viết thư'));

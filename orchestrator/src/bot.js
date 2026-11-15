@@ -9,7 +9,6 @@ const searchLib = require('./search');
 const { createNaturalDesk } = require('./naturalDesk');
 
 // Lệnh agent (bot phụ) được dùng. Các lệnh còn lại (cập nhật, toàn quyền, kết nối máy, Google, màn hình...) chỉ ở bot quản lý.
-const AGENT_CMDS = new Set(['manhinh', 'cuaso', 'mo', 'dong', 'chuyen', 'timchu', 'bamchu', 'go', 'phim', 'bam', 'dan', 'tim', 'anh', 'nghiencuu', 've', 'taodoc', 'help', 'id', 'start', 'huy', 'nen', 'tieptuc', 'moi', 'viec', 'trangthai', 'duan', 'project', 'kynang', 'skill', 'hoantac', 'khoiphuc', 'phien', 'cho', 'dung', 'nhatky', 'hoidong', 'nho', 'quen', 'trinho', 'ai', 'zalo']);
 
 function helpText(profiles) {
   return 'AgentOS - nhắn việc bằng chữ, AI sẽ làm.\n' +
@@ -217,8 +216,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     const cmd = text.match(/^\/(\w+)(@\w+)?\s*([\s\S]*)$/);
     if (cmd) {
       const name = cmd[1].toLowerCase();
-      // AGENT (bot phụ): chỉ nhận việc và lệnh cơ bản; lệnh quản trị máy (cập nhật, toàn quyền, kết nối máy, Google...) chỉ có ở bot quản lý.
-      if (agentMode && !AGENT_CMDS.has(name) && !worker.engineNames().includes(name)) return 'Lệnh /' + name + ' chỉ có ở bot quản lý. Bot này là agent: cứ nhắn việc cần làm, hoặc gõ /help.';
+      // Bot phụ (agent) dùng được MỌI lệnh như bot quản lý, làm việc độc lập; chỉ việc chỉ đạo bot khác (/giao, /daily, /agent) là của bot quản lý (xem case 'giao' / 'daily').
       if (worker.engineNames().includes(name)) {
         if (roles && !roles.canAsk(uid)) return 'Vai của bạn (' + roles.label(uid) + ') chỉ xem được báo cáo, chưa nhắn việc cho AI được.';
         const prompt = cmd[3].trim();

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.8",
-  "file": "agentos-update-2026.11.13.8.tar.gz",
-  "size": 633210,
-  "sha256": "a5a8b988280c1560b63d60d604445a9f570d9c3959690da68a4844cd3974673d",
+  "version": "2026.11.13.9",
+  "file": "agentos-update-2026.11.13.9.tar.gz",
+  "size": 633171,
+  "sha256": "ff16e36cd2cdb7802ab30a2c64a40466de50728af1dc6d487bc9df01f778ac37",
   "date": "2026-11-15",
-  "notes": "Sửa: bản cập nhật khởi động lại cả các bot Telegram phụ (trước đó bot phụ vẫn chạy mã cũ nên chưa có /zalo)"
+  "notes": "Bot phụ dùng được mọi lệnh như bot quản lý (đặt lịch /hen, báo cáo...), chỉ không chỉ đạo được bot khác"
 }

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.6",
-  "file": "agentos-update-2026.11.13.6.tar.gz",
-  "size": 632927,
-  "sha256": "37c3572099dd47e7115f39285cf22f865f61b1125c2b15468da2cbc0fe68ecc9",
+  "version": "2026.11.13.7",
+  "file": "agentos-update-2026.11.13.7.tar.gz",
+  "size": 632984,
+  "sha256": "5a0a22d90e1adfc848ab79313c59fd690803a6d75365f5513bc4ce74432bfa19",
   "date": "2026-11-15",
-  "notes": "Trợ lý Zalo: bot dùng Chrome vào Zalo, tự soạn và tự gửi tin như người thật (/zalo: nháp hoặc tự động, hạn mức, khung giờ, phiếu gửi, gõ chậm)"
+  "notes": "Bot phụ (như Zalo Chien) dùng được /zalo; /zalo bat tudong bật và chọn chế độ trong một lệnh"
 }

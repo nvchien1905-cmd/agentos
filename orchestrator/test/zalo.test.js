@@ -144,3 +144,9 @@ test('zalo: lệnh cấu hình và cách AI gọi lệnh qua bot_command (duyet 
   assert.equal(classify('/zalo gui Nhóm A | chào').level, 'danger');
   assert.equal(classify('/zalo bat').level, 'normal'); assert.equal(classify('/zalo tudong').level, 'normal');
 });
+
+test('zalo: "/zalo bat tudong" bật và chọn chế độ tự động trong một lệnh', () => {
+  const { z } = mk();
+  assert.match(z.command('bat tudong'), /BẬT.*TỰ ĐỘNG/s); assert.equal(z.load().enabled, true); assert.equal(z.load().mode, 'tudong');
+  z.command('bat nhap'); assert.equal(z.load().mode, 'nhap');
+});

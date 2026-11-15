@@ -256,7 +256,7 @@ test('bot: AGENT chặn lệnh quản trị máy (cập nhật, toàn quyền, /
   const { bot, msg, subs } = botWith({ agentMode: true });
   for (const c of ['/capnhat co', '/toanquyen bat', '/daily', '/menu', '/google', '/ketnoi', '/may', '/khoimay co', '/tatmay co', '/lenh ls']) assert.match(await bot.handle(msg(c)), /chỉ có ở bot quản lý/, c);
   // bot phụ MẶC ĐỊNH dùng được màn hình, Chrome và ứng dụng của máy (lệnh nhanh của chủ máy); khóa/tắt/khởi động lại máy và chạy lệnh vẫn chỉ ở bot quản lý
-  for (const c of ['/manhinh', '/mo chrome', '/mo webbot', '/dong webbot', '/cuaso', '/timchu Lưu', '/bamchu Gửi', '/go abc', '/phim Return', '/bam 10 20', '/chuyen Zalo', '/dan']) assert.doesNotMatch(String(await bot.handle(msg(c))), /chỉ có ở bot quản lý/, c);
+  for (const c of ['/manhinh', '/mo chrome', '/mo webbot', '/dong webbot', '/cuaso', '/timchu Lưu', '/bamchu Gửi', '/go abc', '/phim Return', '/bam 10 20', '/chuyen Zalo', '/dan', '/zalo', '/zalo bat tudong']) assert.doesNotMatch(String(await bot.handle(msg(c))), /chỉ có ở bot quản lý/, c);
   assert.match(await bot.handle(msg('/help')), /AgentOS/);
   assert.match(await bot.handle(msg('/id')), /ID Telegram/);
   await bot.handle(msg('/claude viết thư'));

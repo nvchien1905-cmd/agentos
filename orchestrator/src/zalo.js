@@ -141,7 +141,7 @@ function createZalo(o) {
     const t = String(arg || '').trim(); const m = /^(\S+)\s*([\s\S]*)$/.exec(t); if (!m) return status();
     const sub = noAccent(m[1]), rest = m[2].trim();
     if (sub === 'bat') {
-      st.mut((c) => { c.enabled = true; c.since = now(); });
+      st.mut((c) => { c.enabled = true; c.since = now(); if (/^tu ?dong$/.test(noAccent(rest))) c.mode = 'tudong'; else if (noAccent(rest) === 'nhap') c.mode = 'nhap'; });
       return '🟢 Đã BẬT trợ lý Zalo (chế độ ' + (st.load().mode === 'tudong' ? 'TỰ ĐỘNG' : 'NHÁP') + ').\n⚠️ Zalo không cho phép tự động hóa tài khoản cá nhân: có thể bị khóa tạm hoặc đòi xác minh — anh tự chịu rủi ro này. Để an toàn bot gõ chậm như người, giữ hạn mức ' + st.load().perHour + ' tin/giờ, tin nhạy cảm luôn chờ anh duyệt.\n' +
         'Bước tiếp: 1) /zalo dangnhap (đăng nhập Zalo Web một lần)  2) /zalo tudong nếu muốn AI tự gửi (mặc định NHÁP).\nBây giờ anh chỉ cần nhắn bình thường: "nhắn nhóm Phương Đình: …", "trả lời tin Zalo mới giúp anh".';
     }

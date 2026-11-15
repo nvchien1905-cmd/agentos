@@ -37,6 +37,7 @@ function helpText(profiles) {
     '🔔 /canhbao - cảnh báo CHỦ ĐỘNG khi doanh số tụt bất thường hoặc có hàng mới sắp hết (bot tự nhắn, không tốn hạn mức AI) · /canhbao kiemtra\n' +
     '📘 /fanpage - AI trả lời tin nhắn FANPAGE qua API chính thức (nháp có nút ✅/❌ hoặc tự động) · /fanpage ketnoi nhờ AI tự lấy khóa · /fanpage tudong · /fanpage chidan <nội dung>\n' +
     '👤 /facebook - TRỢ LÝ TRỰC Messenger cá nhân: may [tên máy Windows] (MỘT LỆNH — dùng Chrome thật của máy Windows, khuyên dùng) · dangnhap (chỉ cách cũ, Chrome của bot) · bat · nhap (chỉ soạn nháp) · tudong [tên] (AI tự trả lời tin đơn giản, nhạy cảm vẫn chờ duyệt) · khong <tên> · chidan · chuky · nhatky · /fb tra <số> <nội dung>\n' +
+    '💬 /zalo - TRỢ LÝ ZALO cá nhân qua Chrome (gõ chậm như người thật, tự soạn + tự gửi): bat · tat · dangnhap · tudong (AI tự gửi) · nhap (anh bấm ✅) · gui <nơi nhận> | <nội dung> · chan <tên> · gioihan · nhip · gio · chidan · nhatky\n' +
     '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
     '📊 /chiphi [tuan|thang|homnay] - thống kê dùng AI theo AI và theo dự án · /chiphi tran <AI> <số việc/tháng> - đặt trần tháng (vượt thì dồn sang AI khác)\n' +
@@ -71,8 +72,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'camera', 'dien', 'vao']);
-function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'camera', 'dien', 'vao']);
+function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -270,6 +271,11 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /facebook.';
           if (!facebook) return 'Máy này chưa có tính năng Facebook.';
           return facebook.command(String(cmd[3] || ''));
+        }
+        case 'zalo': {                                      // Trợ lý Zalo cá nhân qua Chrome: bật/tắt, chế độ, hạn mức, gửi tin (zalo.js)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /zalo.';
+          if (!zalo) return 'Máy này chưa có tính năng trợ lý Zalo.';
+          return zalo.command(String(cmd[3] || ''));
         }
         case 'fb': {
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /fb.';
@@ -557,6 +563,7 @@ function createBot({ db, worker, allowed, profiles, isAdmin, approvals, fullAcce
     if (ketnoi && ketnoi.isCallback(cq.data)) return ketnoi.answer(cq.data, cq.from.id, isAdmin);
     if (fanpage && fanpage.isCallback(cq.data)) return isAdmin(String(cq.from.id)) ? fanpage.answerCallback(cq.data) : 'Chỉ chủ máy duyệt được.';
     if (facebook && facebook.isCallback(cq.data)) return isAdmin(String(cq.from.id)) ? facebook.answerCallback(cq.data) : 'Chỉ chủ máy duyệt được.';
+    if (zalo && zalo.isCallback(cq.data)) return isAdmin(String(cq.from.id)) ? zalo.answerCallback(cq.data) : 'Chỉ chủ máy duyệt được.';
     if (!approvals) return null;
     if (!/^ap:/.test(String(cq.data || ''))) return null;
     const r = await approvals.answer(cq.data, cq.from.id);

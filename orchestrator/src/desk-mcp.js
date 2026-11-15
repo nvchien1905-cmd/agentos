@@ -12,6 +12,8 @@
 const fs = require('fs');
 const { createDeskClient } = require('./desk');
 const { MONEY_RE } = require('./policy');
+const zalo = require('./zalo');
+const ZALO_RE = /zalo/i;
 
 const SENSITIVE_RE = new RegExp(MONEY_RE.source + '|momo|zalopay|ví điện tử|vi dien tu|ngân hàng|ngan hang|\\bbank|visa|mastercard|thẻ tín dụng|the tin dung|cvv|mật khẩu|mat khau|password|passcode|đăng nhập|dang nhap|sign.?in|log.?in|xác minh|xac minh|captcha|otp|2fa|two.factor', 'i');
 const CHAT_RE = /zalo|messenger|telegram|whatsapp|viber|skype|gmail|outlook|thunderbird|mail|thư điện tử|slack|discord|facebook|instagram/i;
@@ -50,6 +52,8 @@ function createHandler(deps) {
   const sleep = deps.sleep || wait;
   const maxActions = deps.maxActions || Number(process.env.DESK_MAX_ACTIONS) || 80;
   const settleMs = deps.settleMs === undefined ? 700 : deps.settleMs;
+  const zaloFile = deps.zaloFile || process.env.ZALO_FILE || '/var/lib/agentos/data/zalo.json';
+  const rand = deps.rand || Math.random;
   let actions = 0;
 
   const text = (t) => ({ type: 'text', text: String(t) });
@@ -74,7 +78,16 @@ function createHandler(deps) {
   async function act(name, a) {
     const title = await activeTitle();
     if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là trang ngân hàng/thanh toán/đăng nhập/mật khẩu. Không được gõ hay bấm ở đây — hãy báo chủ máy tự làm bước này, rồi dừng.');
-    if (CHAT_RE.test(title)) {
+    const zaloOn = ZALO_RE.test(title) && zalo.isEnabled(zaloFile);
+    if (zaloOn) {
+      // Trợ lý Zalo ĐANG BẬT (chủ máy cho phép): Enter / nút Gửi chỉ được khi có PHIẾU gửi (bot_command "/zalo duyet <nơi nhận> | <nội dung>"), phiếu dùng đúng 1 lần
+      const wantsSend = (name === 'screen_key' && SEND_KEY_RE.test(String(a.key || '').trim())) || (name === 'screen_click_text' && SEND_TEXT_RE.test(String(a.text || '').trim()));
+      if (wantsSend) {
+        const g = zalo.consumeGrant(zaloFile, (deps.now || Date.now)());
+        if (!g.ok) return err('DỪNG: chưa có phiếu gửi Zalo. Gọi công cụ bot_command với "/zalo duyet <người/nhóm nhận> | <nội dung>"; chỉ khi trả lời "ĐƯỢC GỬI" mới nhấn Enter/Gửi (phiếu hết hạn sau 10 phút, dùng 1 lần). Nếu trả lời TỪ CHỐI hoặc CHỜ CHỦ DUYỆT thì không gửi và báo chủ máy.');
+      }
+    } else if (CHAT_RE.test(title)) {
+      if (ZALO_RE.test(title) && ((name === 'screen_key' && SEND_KEY_RE.test(String(a.key || '').trim())) || (name === 'screen_click_text' && SEND_TEXT_RE.test(String(a.text || '').trim())))) return err('DỪNG: Zalo là ứng dụng nhắn tin và trợ lý Zalo đang TẮT nên không được tự gửi. Chủ máy bật bằng /zalo bat (có thể nhắn "bật trợ lý Zalo" cho em), hoặc tự bấm Gửi.');
       if (name === 'screen_key' && SEND_KEY_RE.test(String(a.key || '').trim())) return err('DỪNG: cửa sổ "' + title.slice(0, 80) + '" là ứng dụng nhắn tin/thư. Không tự nhấn Enter (có thể gửi tin). Chỉ được mở và đọc; việc gửi tin để chủ máy tự làm.');
       if (name === 'screen_click_text' && SEND_TEXT_RE.test(String(a.text || '').trim())) return err('DỪNG: không tự bấm "' + a.text + '" trong ứng dụng nhắn tin/thư. Việc gửi để chủ máy tự làm.');
     }
@@ -85,6 +98,19 @@ function createHandler(deps) {
       case 'screen_type': {
         const t = String(a.text == null ? '' : a.text);
         if (!t || t.length > 2000) return err('Chữ cần gõ phải dài 1-2000 ký tự.');
+        if (zaloOn) {                                                       // Zalo: gõ như người thật — nghĩ 1–3 giây, rồi từng cụm 2–3 từ, mỗi phím chậm, nghỉ giữa các cụm
+          await sleep(1000 + Math.floor(rand() * 2000));
+          const words = t.split(/(?<=\s)/), chunks = [];
+          for (let i = 0; i < words.length;) { const n = 2 + Math.floor(rand() * 2); chunks.push(words.slice(i, i + n).join('')); i += n; }
+          for (let i = 0; i < chunks.length; i++) {
+            const r = await desk.call({ cmd: 'type', text: chunks[i], delay: 60 + Math.floor(rand() * 90) }, 90000);
+            if (!r.ok) return err('Không làm được: ' + r.error);
+            if (i < chunks.length - 1) await sleep(120 + Math.floor(rand() * 380));
+          }
+          const out = [text('Đã gõ chậm vào Zalo (' + chunks.length + ' cụm). Chưa gửi — đọc lại rồi mới nhấn Enter khi đã có phiếu.')];
+          if (a.screenshot !== false) { await sleep(settleMs); const s = await snapshot(); if (!s.isError) out.push(s.content[0]); }
+          return { content: out };
+        }
         req = { cmd: 'type', text: t }; break;
       }
       case 'screen_key': req = { cmd: 'key', key: String(a.key || '') }; break;

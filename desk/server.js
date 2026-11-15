@@ -406,7 +406,7 @@ function createDesk(o) {
       if (!text || text.length > MAX_TYPE) return fail('Chữ cần gõ phải dài 1-' + MAX_TYPE + ' ký tự');
       const s = await session(); if (!s) return fail('Không có ai đang đăng nhập màn hình chính.');
       if (!live(s)) return fail(LOCKED);
-      const r = await xrun(s, 'xdotool', ['type', '--delay', '12', '--', text], { timeoutMs: 60000 });
+      const r = await xrun(s, 'xdotool', ['type', '--delay', String(Math.min(250, Math.max(12, Math.round(Number(req.delay)) || 12))), '--', text], { timeoutMs: 60000 });
       return r.code === 0 ? { ok: true } : fail(String(r.err).trim().slice(0, 200));
     },
 

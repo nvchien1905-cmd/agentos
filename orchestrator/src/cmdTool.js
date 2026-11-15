@@ -9,7 +9,7 @@
 //   - lệnh NHẠY CẢM (danger: bật/tắt toàn quyền, tắt/khởi động lại máy, chạy lệnh dòng lệnh, cập nhật phần mềm, xóa bot, phân quyền, hoàn tác tệp...) LUÔN hỏi chủ máy bằng nút bấm, kể cả khi việc đến từ chính chủ máy.
 const SAFE = new Set(['help', 'id', 'start', 'menu', 'trangthai', 'viec', 'tim', 'nhatky', 'phien', 'cuaso', 'manhinh', 'doanhso', 'ton', 'hanghoa', 'maytinh', 'trinho', 'log', 'chiphi', 'phancung', 'gia', 'canhbao', 'sukien', 'camera', 'dichvu']);
 const NORMAL = new Set(['mo', 'dong', 'go', 'phim', 'bam', 'timchu', 'bamchu', 'chuyen', 'dan', 'nho', 'quen', 'hen', 'baocao', 'moi', 'huy', 'dung', 'nen', 'tieptuc', 'ai', 'cheodo', 'quyen', 'kynang', 'skill', 'cho', 'plugin', 'duan', 'project',
-  'ghepdoi', 'onedrive', 'tailscale', 'dongbo', 'fanpage', 'facebook', 'fb', 'google', 'may', 'ketnoi', 'dien', 'bat', 'in', 'doc', 'doi', 'thay', 'lay', 'guilen', 'saoluu', 'saoluudia', 'hoidong', 'bacsi', 'anh', 'giao', 'daily', 'agent', 'deepseek', 'vao', 'nhaman', 'claude', 'codex', 'gemini', 'deepseekapi']);
+  'ghepdoi', 'onedrive', 'tailscale', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'google', 'may', 'ketnoi', 'dien', 'bat', 'in', 'doc', 'doi', 'thay', 'lay', 'guilen', 'saoluu', 'saoluudia', 'hoidong', 'bacsi', 'anh', 'giao', 'daily', 'agent', 'deepseek', 'vao', 'nhaman', 'claude', 'codex', 'gemini', 'deepseekapi']);
 // luôn nhạy cảm (kèm vì sao, hiện cho chủ máy trong nút duyệt)
 const DANGER = {
   toanquyen: 'Bật chế độ TOÀN QUYỀN (AI tự làm không hỏi, có sudo)', baove: 'Đổi chế độ bảo vệ của AI', tatmay: 'TẮT máy', khoimay: 'Khởi động lại máy', khoamay: 'Khóa màn hình máy', mokhoa: 'Mở khóa máy',
@@ -18,7 +18,8 @@ const DANGER = {
 };
 // lệnh bình thường nhưng một số cách dùng là nhạy cảm
 const DANGER_ARG = { capnhat: [/^(co|xacnhan|ok|tudong\b.*)/i, 'Cập nhật phần mềm AgentOS / đổi cập nhật tự động'], daily: [/^(xoa|chu|sudo|quyen)\b/i, 'Xóa bot phụ / đổi chủ / cấp quyền bot phụ'], agent: [/^(xoa|chu|sudo|quyen)\b/i, 'Xóa bot phụ / đổi chủ / cấp quyền bot phụ'],
-  chiphi: [/^tran\b/i, 'Đổi trần chi phí AI'], nhaman: [/./, 'Đổi quyền màn hình'] };
+  chiphi: [/^tran\b/i, 'Đổi trần chi phí AI'], nhaman: [/./, 'Đổi quyền màn hình'],
+  zalo: [/^gui\b/i, 'GỬI tin Zalo trực tiếp (bỏ qua chế độ nháp)'] };
 
 // text: "/doanhso hôm nay". Trả { ok:true, name, arg, level, why, text } hoặc { ok:false, error }
 function classify(text) {
@@ -30,6 +31,7 @@ function classify(text) {
   if (DANGER[name]) return { ok: true, name, arg, level: 'danger', why: DANGER[name], text: '/' + name + (arg ? ' ' + arg : '') };
   if (DANGER_ARG[name] && DANGER_ARG[name][0].test(arg)) return { ok: true, name, arg, level: 'danger', why: DANGER_ARG[name][1], text: '/' + name + (arg ? ' ' + arg : '') };
   if (name === 'capnhat') return { ok: true, name, arg, level: 'safe', why: '', text: '/capnhat' + (arg ? ' ' + arg : '') };                // chỉ xem có bản mới không
+  if (name === 'zalo' && /^duyet\b/i.test(arg)) return { ok: true, name, arg, level: 'safe', why: '', text: '/zalo ' + arg };     // xin phiếu gửi: hạn mức/khung giờ/nháp do zalo.js kiểm bằng mã, không cần hỏi lại
   if (SAFE.has(name)) return { ok: true, name, arg, level: 'safe', why: '', text: '/' + name + (arg ? ' ' + arg : '') };
   if (NORMAL.has(name)) return { ok: true, name, arg, level: 'normal', why: '', text: '/' + name + (arg ? ' ' + arg : '') };
   return { ok: false, error: 'Không có lệnh "/' + name + '". Dùng bot_help để xem danh sách; bộ công cụ có sẵn (/nghiencuu, /ve, /taodoc, /web...) thì giao việc bình thường, không qua công cụ này.' };

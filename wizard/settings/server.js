@@ -129,6 +129,19 @@ function createSettings(o) {
   // Danh sách bot để tích quyền dùng khóa KiotViet (bot quản lý + các bot phụ) và đồng bộ khóa xuống cấu hình của bot phụ (agentctl update viết lại tệp cấu hình riêng rồi khởi động lại bot đó)
   const kvBotList = async () => { const l = await botsLib().list().catch(() => ({ agents: [] })); return [{ key: 'main', name: 'Bot quản lý' }].concat((l.agents || []).map((a) => ({ key: a.id, name: a.name, username: (a.bot && a.bot.username) || '' }))); };
   const kvSyncAgents = async (ids) => { const warn = []; for (const id of [...new Set(ids)]) { if (id === 'main') continue; try { await botsLib().update({ id }); } catch (e) { warn.push(id + ': ' + String(e.message || e).slice(0, 160)); } } return warn; };
+  // DÙNG CHUNG AI CHO MỌI BOT: chủ máy đăng nhập/đăng xuất AI hoặc dán khóa ở đây → bot phụ nhận theo (agentctl 'sync'); thêm vòng 3 phút để bắt cả đăng nhập qua điện thoại và token tự làm mới
+  const aiSyncOn = o.aiSync !== undefined ? o.aiSync : !o.homeDir;
+  const AI_SYNC_PATHS = /^(POST \/api\/ai\/(key|key\/clear|login|login\/phone|logout|order|claude-only|install)|GET \/api\/ai\/login\/state)$/;
+  let aiSyncTimer = null, aiSyncBusy = false, aiSyncAgain = false;
+  const runAiSync = async () => {
+    if (aiSyncBusy) { aiSyncAgain = true; return; }
+    aiSyncBusy = true;
+    try { const r = await botsLib().syncAi(); if (r && r.changed && r.changed.length) console.log('[ai-sync] ' + r.msg); } catch (e) { console.log('[ai-sync] lỗi: ' + String(e && e.message || e).slice(0, 200)); }
+    aiSyncBusy = false; if (aiSyncAgain) { aiSyncAgain = false; scheduleAiSync(); }
+  };
+  const scheduleAiSync = () => { if (!aiSyncOn) return; if (aiSyncTimer) clearTimeout(aiSyncTimer); aiSyncTimer = setTimeout(() => { aiSyncTimer = null; runAiSync(); }, o.aiSyncDelayMs === undefined ? 2500 : o.aiSyncDelayMs); if (aiSyncTimer.unref) aiSyncTimer.unref(); };
+  let aiSyncLoop = null;
+  if (aiSyncOn && o.aiSyncEveryMs !== 0) { aiSyncLoop = setInterval(runAiSync, o.aiSyncEveryMs || 180000); if (aiSyncLoop.unref) aiSyncLoop.unref(); setTimeout(runAiSync, 20000).unref(); }
   // Bot quản lý cũng có đủ chế độ/quyền hạn riêng như mọi bot: giá trị nằm trong tệp cấu hình của bộ điều phối (cùng khóa với agent, xem agentctl.SETTINGS)
   const AC = () => require('../../orchestrator/src/agentctl');
   const mainSettings = (t) => {
@@ -476,6 +489,27 @@ function createSettings(o) {
     async 'GET /api/ai/login/state'() { return loginView(phoneLogin().get()); },
     async 'POST /api/ai/login/input'(b) { return loginView(phoneLogin().input(String(b.text || ''))); },
     async 'POST /api/ai/login/cancel'() { return loginView(phoneLogin().cancel()); },
+    // ĐĂNG XUẤT AI: xóa đăng nhập tài khoản của đúng AI đó (tệp đăng nhập của CLI trong thư mục agentos + token dài hạn Claude). KHÔNG đụng khóa API (có nút "Xóa khóa" riêng).
+    async 'POST /api/ai/logout'(b) {
+      const eng = String(b.engine);
+      if (!['claude', 'codex', 'gemini'].includes(eng)) throw new Error('AI này dùng khóa API, không có tài khoản để đăng xuất');
+      const home = o.homeDir || engines.HOME;
+      const rm = (p) => { try { fs.rmSync(p, { force: true }); } catch (x) { throw new Error('Không xóa được ' + p + ': ' + x.message); } };
+      let text = readEnv();
+      if (eng === 'claude') {
+        rm(home + '/.claude/.credentials.json');
+        const cj = home + '/.claude.json';
+        try { const c = JSON.parse(fs.readFileSync(cj, 'utf8')); if (c && c.oauthAccount) { delete c.oauthAccount; fs.writeFileSync(cj, JSON.stringify(c, null, 2), { mode: 0o600 }); } } catch (x) { /* chưa có hoặc hỏng: không còn gì để bỏ */ }
+        if (text != null && envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN')) saveEnv(setEnvLine(text, 'CLAUDE_CODE_OAUTH_TOKEN', null));
+      } else if (eng === 'codex') {
+        rm(home + '/.codex/auth.json');
+      } else {
+        rm(home + '/.gemini/oauth_creds.json'); rm(home + '/.gemini/google_accounts.json');
+      }
+      try { if (phoneLoginInst) { const v = phoneLoginInst.get(); if (v && v.status === 'running' && v.engine === eng) phoneLoginInst.cancel(); } } catch (x) { /* không chặn */ }
+      if (text != null) await restart('agentos-orchestrator');
+      return { loggedOut: true, login: engineLogin(eng, readEnv() || '') };
+    },
     async 'POST /api/ai/login/phone'() {
       const v = phoneLogin().get(); if (v.status !== 'running' || !v.url) throw new Error('Chưa có đường dẫn đăng nhập để gửi (bấm đăng nhập trước).');
       const text = readEnv() || '', token = envVal(text, 'TELEGRAM_TOKEN'), owner = envVal(text, 'ADMIN_USER_IDS').split(',')[0].trim();
@@ -1090,14 +1124,17 @@ function createSettings(o) {
         for await (const c of req) { n += c.length; if (n > lim) return json(res, 413, { error: 'Dữ liệu quá lớn' }); chunks.push(c); }
         try { body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}; } catch (e) { return json(res, 400, { error: 'JSON không hợp lệ' }); }
       }
-      json(res, 200, await handler(body, { uid, query: url.searchParams }));
+      const out = await handler(body, { uid, query: url.searchParams });
+      if (AI_SYNC_PATHS.test(req.method + ' ' + url.pathname)) scheduleAiSync();             // đổi đăng nhập/khóa/thứ tự AI → mọi bot phụ dùng theo
+      json(res, 200, out);
     } catch (e) { json(res, 400, { error: e.message || String(e) }); }
   });
 
   return {
     server, jobs,
     listen() { return new Promise((resolve) => server.listen(o.port, o.host, () => resolve(server.address().port))); },
-    close() { odStop(); return new Promise((r) => server.close(r)); },
+    close() { odStop(); if (aiSyncLoop) clearInterval(aiSyncLoop); if (aiSyncTimer) clearTimeout(aiSyncTimer); return new Promise((r) => server.close(r)); },
+    syncAi: runAiSync,
   };
 }
 

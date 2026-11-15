@@ -147,6 +147,29 @@ test('trang AI và khóa API: hiện AI nào đang đăng nhập bằng tài kho
   } finally { await S.s.close(); }
 });
 
+test('Đăng xuất AI: xóa đúng đăng nhập của AI đó, giữ khóa API và AI khác; AI chỉ có khóa bị từ chối; trang có nút Đăng xuất', async () => {
+  const S = await boot(); const home = path.join(S.dir, 'home');
+  try {
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true }); fs.writeFileSync(path.join(home, '.claude', '.credentials.json'), '{"x":1}');
+    fs.writeFileSync(path.join(home, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'chien.nguyen@gmail.com' }, theme: 'dark' }));
+    fs.appendFileSync(S.dir + '/orchestrator.env', 'CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-' + 'Q'.repeat(30) + '\n');
+    const eng = async () => Object.fromEntries((await S.call('GET', 'ai')).body.engines.map((x) => [x.id, x]));
+    assert.equal((await eng()).claude.login.loggedIn, true);
+    assert.equal((await S.call('POST', 'ai/logout', { engine: 'deepseekapi' })).status, 400);
+    assert.equal((await S.call('POST', 'ai/logout', { engine: 'claude' })).status, 200);
+    let e = await eng();
+    assert.equal(e.claude.login.loggedIn, false); assert.ok(e.claude.key, 'khóa API Claude giữ nguyên'); assert.equal(e.claude.using, 'key');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(home, '.claude.json'), 'utf8')).theme, 'dark', 'giữ cài đặt khác trong .claude.json');
+    assert.ok(!/CLAUDE_CODE_OAUTH_TOKEN/.test(fs.readFileSync(S.dir + '/orchestrator.env', 'utf8')));
+    assert.equal(e.codex.login.loggedIn, true, 'AI khác không bị đụng');
+    assert.equal((await S.call('POST', 'ai/logout', { engine: 'codex' })).status, 200);
+    assert.equal((await S.call('POST', 'ai/logout', { engine: 'gemini' })).status, 200);
+    e = await eng(); assert.equal(e.codex.login.loggedIn, false); assert.equal(e.gemini.login.loggedIn, false);
+    assert.equal((await S.call('POST', 'ai/logout', { engine: 'codex' })).status, 200, 'đăng xuất lần nữa không lỗi');
+    assert.match(await (await fetch('http://127.0.0.1:' + S.port + '/')).text(), /data-lo=/);
+  } finally { await S.s.close(); }
+});
+
 test('OneDrive đồng bộ chọn lọc: kết nối mới mặc định chỉ /AgentOS; đổi danh sách thì ghi sync_list và đồng bộ lại (--resync); đầu vào xấu bị từ chối; "tất cả" cần xác nhận', async () => {
   const synclist = require('../lib/synclist');
   assert.deepEqual(synclist.clean(['Kế toán', '/Kho/', '//Dữ liệu//báo cáo', '/kho']), ['/AgentOS', '/Kế toán', '/Kho', '/Dữ liệu/báo cáo', '/kho'].filter((x, i, a) => a.indexOf(x) === i));
@@ -329,5 +352,21 @@ test('Cài đặt: điều khiển việc thả tệp yêu cầu cho bộ điề
     const f = fs.readdirSync(ctl); assert.equal(f.length, 1); assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ctl, f[0]), 'utf8')), { action: 'job.cancel', id });
     assert.equal((await S.call('POST', 'control', { action: 'rm -rf' })).status, 400); assert.equal((await S.call('POST', 'control', { action: 'job.cancel', id: 'x' })).status, 400);
     assert.equal(fs.readdirSync(ctl).length, 1);
+  } finally { await S.s.close(); }
+});
+
+test('đăng nhập/đăng xuất/khóa/thứ tự AI ở trang Cài đặt → tự đồng bộ xuống MỌI bot phụ (agentctl sync, gộp nhiều lần thành một); trang khác không kích hoạt', async () => {
+  const calls = [];
+  const agentCtl = { handle: async (req) => { calls.push(req.action); return { ok: true, msg: 'xong', changed: ['a1'] }; } };
+  const S = await boot({ aiSync: true, aiSyncDelayMs: 20, aiSyncEveryMs: 0, agentCtl, agentsFile: path.join(tmp(), 'agents.json') });
+  const wait = async () => { for (let i = 0; i < 60 && !calls.includes('sync'); i++) await new Promise((r) => setTimeout(r, 25)); };
+  try {
+    await S.call('GET', 'ai'); await new Promise((r) => setTimeout(r, 80)); assert.deepEqual(calls, [], 'xem trang không đồng bộ');
+    assert.equal((await S.call('POST', 'ai/logout', { engine: 'codex' })).status, 200);
+    await S.call('POST', 'ai/logout', { engine: 'gemini' });                      // hai lần liên tiếp → gộp
+    await wait(); await new Promise((r) => setTimeout(r, 120));
+    assert.deepEqual(calls, ['sync'], 'đồng bộ đúng một lần');
+    await S.call('POST', 'ai/order', { order: ['claude'] }); await new Promise((r) => setTimeout(r, 200));
+    assert.equal(calls.filter((c) => c === 'sync').length, 2, 'đổi thứ tự AI cũng đồng bộ');
   } finally { await S.s.close(); }
 });

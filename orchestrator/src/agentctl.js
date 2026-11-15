@@ -75,7 +75,7 @@ function validateSettings(s) {
 }
 const settingEnv = (k, v) => { const d = SETTINGS[k]; const val = d.kind === 'bool' ? (d.env === 'MEMORY_ENABLED' || d.tf ? String(!!v) : (v ? '1' : '0')) : d.kind === 'int' ? String(v * (d.mul || 1)) : String(v); return d.env + '=' + val; };
 
-const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update', 'logs', 'pool', 'balance'];
+const ACTIONS = ['init', 'create', 'remove', 'start', 'stop', 'restart', 'update', 'logs', 'pool', 'balance', 'sync'];
 
 const PATHS = {
   ctl: '/var/lib/agentos-agentctl',            // gốc do root sở hữu; req/ và res/ nằm trong (agentos không đổi được thư mục cha)
@@ -110,7 +110,7 @@ function validate(req) {
   if (!RID_RE.test(String(req.rid || ''))) throw new Error('Mã yêu cầu sai');
   if (!ACTIONS.includes(req.action)) throw new Error('Việc không hợp lệ: ' + req.action);
   const out = { rid: req.rid, action: req.action };
-  if (req.action === 'init' || req.action === 'balance') return out;
+  if (req.action === 'init' || req.action === 'balance' || req.action === 'sync') return out;
   if (req.action === 'pool') {                                        // tài nguyên chung: bật/tắt + phần RAM để lại cho hệ thống (0 = tự động)
     if (req.enabled !== undefined) { if (typeof req.enabled !== 'boolean') throw new Error('enabled phải là true/false'); out.enabled = req.enabled; }
     if (req.reserveMb !== undefined) { const n = Number(req.reserveMb); if (!Number.isInteger(n) || n < 0 || n > 65536) throw new Error('reserveMb phải từ 0 đến 65536'); out.reserveMb = n; }
@@ -205,9 +205,10 @@ function unitText(id, meta, pool) {
 }
 
 // Các dòng được chép từ cấu hình của bot quản lý sang agent: CHỈ khóa đăng nhập Claude. Không chép token bot quản lý, khóa KiotViet, Google...
-const SHARED_KEYS = /^(CLAUDE_CODE_OAUTH_TOKEN|AGENTOS_KEY_CLAUDE)=/;
+// Khóa API của MỌI AI (chủ máy dán ở Cài đặt → AI và khóa API) cũng dùng chung cho mọi bot.
+const SHARED_KEYS = /^(CLAUDE_CODE_OAUTH_TOKEN|AGENTOS_KEY_CLAUDE|AGENTOS_KEY_CODEX|AGENTOS_KEY_GEMINI|AGENTOS_KEY_DEEPSEEK)=/;
 
-function envText(id, meta, token, mainEnvText) {
+function envText(id, meta, token, mainEnvText, ai) {
   const home = PATHS.homes + '/' + id;
   const owners = meta.owners.join(',');
   const lines = [
@@ -218,11 +219,13 @@ function envText(id, meta, token, mainEnvText) {
     'AGENT_ID=' + id,
     'AGENT_NAME=' + String(meta.name).replace(/[\r\n]/g, ' '),
     'MAIL_ROOT=' + PATHS.mail,
-    'ENGINE_ORDER=claude',
+    'ENGINE_ORDER=' + ((ai && ai.order && ai.order.length) ? ai.order.join(',') : 'claude'),
     'WORKDIR=' + home + '/work',
     'DB_PATH=' + home + '/data/agentos.db',
     'TOOLS_FILE=' + PATHS.appDir + '/tools.json',
     'CLAUDE_BIN=' + PATHS.bin + '/claude',
+    ...(ai && ai.bins && ai.bins.codex ? ['CODEX_BIN=' + PATHS.bin + '/codex'] : []),
+    ...(ai && ai.bins && ai.bins.gemini ? ['GEMINI_BIN=' + PATHS.bin + '/gemini'] : []),
     'DISABLE_AUTOUPDATER=1',
     'SANDBOX=auto',
     'FULL_ACCESS=0',
@@ -298,6 +301,112 @@ function createAgentCtl(deps) {
     // Chủ phải là root: bot quản lý (agentos) mà thay được tệp này thì chạy được mã tùy ý trong mọi bot thường
     await sh('chown', ['root:root', dst]);
     return { ok: true };
+  }
+
+  // ===== DÙNG CHUNG AI CHO MỌI BOT =====
+  // Chủ máy đăng nhập AI (hoặc dán khóa API) MỘT lần ở bot quản lý → mọi bot phụ dùng được ngay: chép tệp đăng nhập sang thư mục riêng của từng bot,
+  // chép chương trình Codex/Gemini vào chỗ dùng chung (bot không vào được thư mục của bot quản lý), đặt ENGINE_ORDER giống bot quản lý.
+  // Đăng xuất ở bot quản lý → thu lại tệp đăng nhập ở mọi bot. Token Claude/Codex tự làm mới trong bản sao của bot: bản mới hơn được chép ngược về.
+  const readJson = (f) => { try { return JSON.parse(F.readFileSync(f, 'utf8')); } catch (e) { return null; } };
+  const mtime = (f) => { try { return F.statSync(f).mtimeMs; } catch (e) { return 0; } };
+  const same = (a, b) => { try { return F.readFileSync(a, 'utf8') === F.readFileSync(b, 'utf8'); } catch (e) { return false; } };
+  const CRED = { claude: [['.claude/.credentials.json']], codex: [['.codex/auth.json']], gemini: [['.gemini/oauth_creds.json'], ['.gemini/google_accounts.json']] };
+  function mainHas(engine, mainParsed) {
+    const k = { claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'AGENTOS_KEY_CLAUDE'], codex: ['AGENTOS_KEY_CODEX'], gemini: ['AGENTOS_KEY_GEMINI'], deepseekapi: ['AGENTOS_KEY_DEEPSEEK'] }[engine] || [];
+    if (k.some((x) => mainParsed[x])) return true;
+    return (CRED[engine] || []).some((l) => F.existsSync(P.mainHome + '/' + l[0]));
+  }
+  function pkgRoot(real) {                                      // thư mục gói npm chứa tệp chạy (có package.json)
+    let d = path.dirname(real);
+    for (let i = 0; i < 6 && d && d !== path.dirname(d); i++, d = path.dirname(d)) { if (F.existsSync(d + '/package.json')) return d; }
+    return null;
+  }
+  // Chép chương trình Codex/Gemini vào P.bin (chủ root: bot quản lý mà sửa được thì chạy được mã tùy ý trong mọi bot thường). Trả đường dẫn lệnh hoặc null.
+  async function ensureCliBin(engine, mainParsed) {
+    const name = engine, envKey = engine.toUpperCase() + '_BIN';
+    const src = mainParsed[envKey] && mainParsed[envKey].includes('/') ? mainParsed[envKey] : P.mainHome + '/.local/bin/' + name;
+    let real; try { real = F.realpathSync(src); } catch (e) { return null; }
+    const dst = P.bin + '/' + name;
+    F.mkdirSync(P.bin, { recursive: true, mode: 0o755 }); try { F.chmodSync(P.bin, 0o755); } catch (e) { /* bỏ qua */ }
+    const root = pkgRoot(real);
+    if (!root) {                                                // tệp chạy đơn lẻ
+      if (!same(real, dst)) { F.copyFileSync(real, dst + '.new'); F.chmodSync(dst + '.new', 0o755); F.renameSync(dst + '.new', dst); await sh('chown', ['root:root', dst]); }
+      return dst;
+    }
+    const rel = path.relative(root, real), pj = readJson(root + '/package.json') || {};
+    const pkgDst = P.bin + '/pkg/' + name, pjDst = readJson(pkgDst + '/package.json') || {};
+    if (pj.version !== pjDst.version || !F.existsSync(pkgDst + '/' + rel)) {
+      F.mkdirSync(P.bin + '/pkg', { recursive: true }); F.rmSync(pkgDst + '.new', { recursive: true, force: true });
+      F.cpSync(root, pkgDst + '.new', { recursive: true });
+      F.rmSync(pkgDst, { recursive: true, force: true }); F.renameSync(pkgDst + '.new', pkgDst);
+      await sh('chown', ['-R', 'root:root', pkgDst]); await sh('chmod', ['-R', 'a+rX', pkgDst]);
+    }
+    try { F.rmSync(dst, { force: true }); } catch (e) { /* bỏ qua */ }
+    try { F.symlinkSync('pkg/' + name + '/' + rel, dst); }       // liên kết tương đối: node tự theo về tệp thật
+    catch (e) { F.copyFileSync(pkgDst + '/' + rel, dst); }       // hệ thống không cho tạo liên kết: chép tệp chạy
+    return dst;
+  }
+  // Kế hoạch dùng chung: AI nào có đăng nhập/khóa ở bot quản lý, dùng thứ tự của bot quản lý
+  async function aiPlan(mainText) {
+    const m = parseEnv(mainText);
+    const want = (/^(1|true|yes|on)$/i.test(String(m.CLAUDE_ONLY || '').trim()) ? 'claude' : (m.ENGINE_ORDER === undefined ? 'claude' : m.ENGINE_ORDER)).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+    const bins = {};
+    for (const e of ['codex', 'gemini']) { if (want.includes(e) && mainHas(e, m)) { const b = await ensureCliBin(e, m).catch(() => null); if (b) bins[e] = b; } }
+    const order = want.filter((e) => (e === 'claude' || e === 'deepseekapi') ? (e === 'claude' || mainHas(e, m)) : !!bins[e]);
+    return { order: order.length ? order : ['claude'], bins, main: m };
+  }
+  function sameAccount(engine, home) {
+    if (engine === 'claude') { const a = readJson(P.mainHome + '/.claude.json'), b = readJson(home + '/.claude.json'); return !!(a && b && a.oauthAccount && b.oauthAccount && a.oauthAccount.accountUuid && a.oauthAccount.accountUuid === b.oauthAccount.accountUuid); }
+    if (engine === 'codex') { const a = readJson(P.mainHome + '/.codex/auth.json'), b = readJson(home + '/.codex/auth.json'); const id = (x) => x && x.tokens && x.tokens.account_id; return !!(id(a) && id(a) === id(b)); }
+    return false;
+  }
+  // Đồng bộ tệp đăng nhập giữa bot quản lý và một bot. Trả true nếu có thay đổi.
+  function syncCreds(id, plan) {
+    const home = P.homes + '/' + id, m = plan.main;
+    let changed = false;
+    const put = (src, dst) => { F.mkdirSync(path.dirname(dst), { recursive: true }); if (!same(src, dst)) { F.copyFileSync(src, dst); try { F.chmodSync(dst, 0o600); } catch (e) { /* bỏ qua */ } changed = true; } };
+    const drop = (dst) => { if (F.existsSync(dst)) { F.rmSync(dst, { force: true }); changed = true; } };
+    for (const engine of ['claude', 'codex', 'gemini']) {
+      const has = (CRED[engine] || []).some((l) => F.existsSync(P.mainHome + '/' + l[0]));
+      for (const [rel] of CRED[engine]) {
+        const ms = P.mainHome + '/' + rel, as = home + '/' + rel;
+        if (!has || !F.existsSync(ms)) { drop(as); continue; }
+        // bản của bot MỚI hơn và cùng tài khoản (token vừa tự làm mới) → chép ngược về bot quản lý để hai bên không lệch
+        if (F.existsSync(as) && mtime(as) > mtime(ms) && !same(as, ms) && sameAccount(engine, home)) { try { F.copyFileSync(as, ms); } catch (e) { /* bỏ qua */ } continue; }
+        put(ms, as);
+      }
+    }
+    // Claude: thông tin tài khoản (oauthAccount) nằm trong ~/.claude.json — chỉ chép phần đó, giữ nguyên phần còn lại của bot
+    const mcj = readJson(P.mainHome + '/.claude.json'), acj = home + '/.claude.json';
+    const cur = readJson(acj) || {};
+    const wantAcc = F.existsSync(P.mainHome + '/.claude/.credentials.json') && mcj && mcj.oauthAccount ? mcj.oauthAccount : null;
+    if (wantAcc && JSON.stringify(cur.oauthAccount) !== JSON.stringify(wantAcc)) { cur.oauthAccount = wantAcc; writeSecure(acj, JSON.stringify(cur, null, 2), 0o600); changed = true; }
+    else if (!wantAcc && cur.oauthAccount) { delete cur.oauthAccount; writeSecure(acj, JSON.stringify(cur, null, 2), 0o600); changed = true; }
+    return changed;
+  }
+  // Dùng chung cho TẤT CẢ bot: viết lại cấu hình bot nào khác đi (chép đăng nhập, ENGINE_ORDER, khóa API), khởi động lại bot đó
+  async function syncAll() {
+    const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
+    let files = []; try { files = F.readdirSync(P.etc + '/agents'); } catch (e) { /* chưa có bot phụ */ }
+    const ids = files.map((f) => (f.match(/^(a\d{1,3})\.meta\.json$/) || [])[1]).filter(Boolean).sort();
+    if (!ids.length) return ok('Chưa có bot phụ nào.', { changed: [] });
+    await ensureClaudeBin().catch(() => {});
+    const plan = await aiPlan(mainText), changed = [];
+    for (const id of ids) {
+      const meta = readMeta(id); if (!meta) continue;
+      const envFile = P.etc + '/agents/' + id + '.env';
+      let oldEnv = ''; try { oldEnv = F.readFileSync(envFile, 'utf8'); } catch (e) { continue; }
+      const token = parseEnv(oldEnv).TELEGRAM_TOKEN;
+      const credChanged = syncCreds(id, plan);
+      if (credChanged) { try { await sh('chown', ['-R', userName(id) + ':' + userName(id), P.homes + '/' + id]); } catch (e) { /* bỏ qua */ } }
+      const env = withPaths(() => envText(id, meta, token, mainText, plan));
+      const keep = env.shared ? '' : oldEnv.split(/\r?\n/).filter((l) => SHARED_KEYS.test(l)).join('\n');
+      const text = env.text + (keep ? keep + '\n' : '');
+      const envChanged = text !== oldEnv;
+      if (envChanged) writeSecure(envFile, text, 0o600);
+      if (envChanged || credChanged) { changed.push(id); const a = await sc('is-active', unitName(id)); if (a.code === 0) await sc('restart', unitName(id)); }
+    }
+    return ok(changed.length ? 'Đã đồng bộ AI cho: ' + changed.join(', ') + '.' : 'Mọi bot đã dùng đúng AI của bot quản lý.', { changed, order: plan.order });
   }
 
   // Hộp thư giao việc của agent: in = agentos ghi / agent đọc+xóa; out = agent ghi / agentos đọc+xóa; agent khác không vào được (mục 711 chỉ cho đi qua)
@@ -438,17 +547,14 @@ function createAgentCtl(deps) {
     await ensureDeskGroup(user);
     for (const d of [home, home + '/data', home + '/work', home + '/onedrive']) F.mkdirSync(d, { recursive: true });
     const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
-    const env = withPaths(() => envText(id, meta, r.token, mainText));
+    const plan = await aiPlan(mainText);
+    const env = withPaths(() => envText(id, meta, r.token, mainText, plan));
     let warn = '';
+    try { syncCreds(id, plan); } catch (e) { /* bỏ qua: xử lý ở dưới */ }
     if (!env.shared) {
-      // Chưa có token/khóa Claude dùng chung: chép tệp đăng nhập hiện có (bản riêng của agent)
-      const cred = P.mainHome + '/.claude/.credentials.json', cj = P.mainHome + '/.claude.json';
-      if (F.existsSync(cred)) {
-        F.mkdirSync(home + '/.claude', { recursive: true });
-        F.copyFileSync(cred, home + '/.claude/.credentials.json');
-        if (F.existsSync(cj)) F.copyFileSync(cj, home + '/.claude.json');
-        warn = 'Agent dùng BẢN SAO phiên đăng nhập Claude của máy. Nếu agent báo hết phiên, đăng nhập riêng cho agent hoặc đặt token dài hạn (claude setup-token) trong Cài đặt.';
-      } else warn = 'Chưa tìm thấy đăng nhập Claude để chia sẻ: agent sẽ chưa trả lời được cho tới khi có token/khóa Claude.';
+      // Chưa có token/khóa Claude dùng chung: bản đăng nhập đã chép ở trên là BẢN SAO riêng của agent
+      if (F.existsSync(home + '/.claude/.credentials.json')) warn = 'Agent dùng BẢN SAO phiên đăng nhập Claude của máy (tự đồng bộ lại khi bot quản lý đăng nhập/đăng xuất).';
+      else warn = 'Chưa tìm thấy đăng nhập Claude để chia sẻ: agent sẽ chưa trả lời được cho tới khi có token/khóa Claude.';
     }
     await sh('chown', ['-R', user + ':' + user, home]);
     F.chmodSync(home, 0o700);
@@ -501,7 +607,9 @@ function createAgentCtl(deps) {
     if (!(meta.settings && meta.settings.full === true)) meta.sudo = false;
     try { await applySudo(id, meta.sudo === true); } catch (e) { return fail('Không cấp được sudo: ' + maskTokens(e && e.message).slice(0, 200)); }
     const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
-    const env = withPaths(() => envText(id, meta, token, mainText));
+    const plan = await aiPlan(mainText);
+    try { syncCreds(id, plan); await sh('chown', ['-R', userName(id) + ':' + userName(id), P.homes + '/' + id]); } catch (e) { /* bỏ qua */ }
+    const env = withPaths(() => envText(id, meta, token, mainText, plan));
     // Giữ nguyên khóa Claude đã có trong env cũ nếu cấu hình chung không còn
     const keep = env.shared ? '' : oldEnv.split(/\r?\n/).filter((l) => SHARED_KEYS.test(l)).join('\n');
     writeSecure(envFile, env.text + (keep ? keep + '\n' : ''), 0o600);
@@ -539,6 +647,7 @@ function createAgentCtl(deps) {
         case 'start': case 'stop': case 'restart': return await ctl(r.action, r);
         case 'logs': return await logs(r);
         case 'balance': return await balance();
+        case 'sync': return await syncAll();
         case 'pool': {
           const cur = readPool(), next = { enabled: r.enabled === undefined ? cur.enabled : r.enabled, reserveMb: r.reserveMb === undefined ? cur.reserveMb : r.reserveMb };
           F.mkdirSync(P.etc, { recursive: true }); writeSecure(P.poolFile, JSON.stringify(next), 0o644);
@@ -582,7 +691,7 @@ function createAgentCtl(deps) {
     return n;
   }
 
-  return { handle, drain, init, validate, unitText: (id, meta, pool) => withPaths(() => unitText(id, meta, pool)), poolStatus, balance, applyPool, readPool };
+  return { handle, drain, init, syncAll, validate, unitText: (id, meta, pool) => withPaths(() => unitText(id, meta, pool)), poolStatus, balance, applyPool, readPool };
 }
 
 function realRun(bin, args) {

@@ -65,7 +65,9 @@ function createBots(o) {
     const r = await ctl.handle(req); if (!r.ok) throw new Error(r.msg);
     return Object.assign({ msg: r.msg }, await pool());
   }
-  return { list, add, control, update, logs, remove, spec, pool, setPool };
+  // Đồng bộ AI (đăng nhập, khóa API, thứ tự) từ bot quản lý xuống MỌI bot phụ; bot nào đổi mới khởi động lại
+  async function syncAi() { const r = await ctl.handle({ rid: crypto.randomBytes(8).toString('hex'), action: 'sync' }); if (!r.ok) throw new Error(r.msg); return r; }
+  return { list, add, control, update, logs, remove, spec, pool, setPool, syncAi };
 }
 
 module.exports = { createBots, spec };

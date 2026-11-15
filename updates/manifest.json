@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.4",
-  "file": "agentos-update-2026.11.13.4.tar.gz",
-  "size": 624630,
-  "sha256": "85c0377b4d3375cc026a4b19bb96cc12cbe0bf122b31a332630be596c1e7682d",
-  "date": "2026-11-12",
-  "notes": "Nhắn bằng lời, AI tự chạy mọi lệnh của bot (công cụ bot_command): xem/làm chạy luôn, lệnh nhạy cảm hỏi chủ máy bằng nút"
+  "version": "2026.11.13.5",
+  "file": "agentos-update-2026.11.13.5.tar.gz",
+  "size": 624555,
+  "sha256": "276cb47221118330020bf1a0641bce3afb6aedf77dcede0b005019f8cf417e3f",
+  "date": "2026-11-15",
+  "notes": "Nút Đăng xuất cho từng AI trong Cài đặt; đăng nhập AI một lần, mọi bot Telegram phụ dùng được ngay (Claude, Codex, Gemini, khóa API), đăng xuất thì thu lại"
 }

@@ -163,6 +163,19 @@ test('apply: dịch vụ không chạy ổn sau khi cập nhật -> khôi phục
   assert.ok(log.filter((x) => x === 'restart agentos-orchestrator.service').length >= 2);                  // một lần bản mới, một lần bản cũ khôi phục
 });
 
+test('apply: sau khi cập nhật khởi động lại cả các bot phụ đang chạy (agentos-agent-aN)', async () => {
+  const k = keys(), m = machine(k, '1.0');
+  const p = publish({ 'opt/agentos/VERSION': '2.0\n' }, '2.0', k);
+  const log = [];
+  const real = (cmd, args, opts) => new Promise((res) => cp.execFile(cmd, args, Object.assign({ maxBuffer: 1 << 24 }, opts || {}), (e, o, er) => res({ code: e ? (typeof e.code === 'number' ? e.code : 1) : 0, out: String(o || ''), err: String(er || '') })));
+  const listing = 'agentos-agent-a1.service loaded active running AgentOS - agent a1\nagentos-agent-a12.service loaded active running x\n';
+  const sys = async (args) => { log.push(args.join(' ')); return args[0] === 'list-units' ? { code: 0, out: listing, err: '' } : { code: 0, out: '', err: '' }; };
+  const r = await upd(m, p.dir, { systemd: true, healthWaitsMs: [1], sleep: async () => {}, run: (c, a, o) => (c === 'systemctl' ? sys(a) : real(c === 'tar' ? TAR : c, a, o)) }).apply();
+  assert.equal(r.ok, true);
+  assert.ok(log.includes('restart agentos-agent-a1.service')); assert.ok(log.includes('restart agentos-agent-a12.service'));
+  assert.ok(log.indexOf('restart agentos-orchestrator.service') < log.indexOf('restart agentos-agent-a1.service'), 'bot chính trước, bot phụ sau khi kiểm sức khỏe');
+});
+
 test('apply: đang có lần cập nhật khác (khóa) -> báo bận, không chạy song song', async () => {
   const k = keys(), m = machine(k, '1.0');
   const p = publish({ 'opt/agentos/VERSION': '2.0\n' }, '2.0', k);

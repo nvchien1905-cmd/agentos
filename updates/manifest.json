@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.7",
-  "file": "agentos-update-2026.11.13.7.tar.gz",
-  "size": 632984,
-  "sha256": "5a0a22d90e1adfc848ab79313c59fd690803a6d75365f5513bc4ce74432bfa19",
+  "version": "2026.11.13.8",
+  "file": "agentos-update-2026.11.13.8.tar.gz",
+  "size": 633210,
+  "sha256": "a5a8b988280c1560b63d60d604445a9f570d9c3959690da68a4844cd3974673d",
   "date": "2026-11-15",
-  "notes": "Bot phụ (như Zalo Chien) dùng được /zalo; /zalo bat tudong bật và chọn chế độ trong một lệnh"
+  "notes": "Sửa: bản cập nhật khởi động lại cả các bot Telegram phụ (trước đó bot phụ vẫn chạy mã cũ nên chưa có /zalo)"
 }

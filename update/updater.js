@@ -83,6 +83,15 @@ function createUpdater(o) {
     return { ok: true };
   }
 
+  // Bot phụ (agentos-agent-aN) chạy cùng mã nguồn: khởi động lại để dùng bản mới (không làm hỏng cập nhật nếu lỗi — chỉ ghi nhật ký)
+  async function restartAgents() {
+    if (!systemd) return [];
+    const r = await run('systemctl', ['list-units', 'agentos-agent-a*.service', '--state=active', '--no-legend', '--plain']).catch(() => ({ out: '' }));
+    const names = String(r.out || '').split('\n').map((l) => (/^(agentos-agent-a\d+)\.service/.exec(l.trim()) || [])[1]).filter(Boolean);
+    for (const n of names) { const x = await sctl('restart', n + '.service'); if (x.code !== 0) log('Không khởi động lại được ' + n + ': ' + String(x.err || '').trim().slice(0, 120)); }
+    return names;
+  }
+
   function copyAtomic(src, rel) {
     const dest = P(rel);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -148,6 +157,7 @@ function createUpdater(o) {
     }
     const h = await restartAndCheck(ctx.active);
     if (!h.ok) { const rb = await rollback(ctx); return fail('health', h.error + (rb ? ' — đã khôi phục bản ' + from : ' — KHÔI PHỤC CŨNG LỖI, cần kiểm tra tay'), { rolledBack: rb }); }
+    try { await restartAgents(); } catch (e) { log('restartAgents: ' + e.message); }
     // giữ 2 bản sao lưu gần nhất
     try { fs.readdirSync(stateDir).filter((x) => /^backup-.*\.tar\.gz$/.test(x)).map((x) => [x, fs.statSync(path.join(stateDir, x)).mtimeMs]).sort((a, b) => b[1] - a[1]).slice(2).forEach(([x]) => fs.rmSync(path.join(stateDir, x), { force: true })); } catch (e) { /* bỏ qua */ }
     fs.rmSync(dl, { recursive: true, force: true });

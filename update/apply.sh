@@ -88,6 +88,11 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 for u in agentos-settings agentos-wizard agentos-deskd; do
   systemctl is-active --quiet $u.service && systemd-run --on-active=45 --unit=$u-restart-$(date +%s) systemctl restart $u.service >/dev/null 2>&1 || true
 done
+# Bot Telegram phụ (agentos-agent-aN) chạy cùng mã nguồn nhưng bộ cập nhật cũ không khởi động lại chúng → cứ chạy mã cũ (bot phụ không thấy lệnh/tính năng mới). Khởi động lại sau 60 giây, từng bot cách nhau.
+i=0
+for u in $(systemctl list-units 'agentos-agent-a*.service' --state=active --no-legend --plain 2>/dev/null | awk '{print $1}'); do
+  i=$((i+1)); systemd-run --on-active=$((60+i*5)) --unit=agents-restart-$i-$(date +%s) systemctl restart $u >/dev/null 2>&1 || true
+done
 
 # Nâng Node của hệ điều hành lên 22 (chạy nền, không chặn cập nhật; lỗi thì tự lùi về Node 20 và chỉ ghi /var/log/agentos-node22.log)
 if [ -x /usr/local/sbin/agentos-node22 ]; then

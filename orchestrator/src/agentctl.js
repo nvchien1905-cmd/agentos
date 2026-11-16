@@ -390,6 +390,22 @@ function createAgentCtl(deps) {
     else if (!wantAcc && cur.oauthAccount) { delete cur.oauthAccount; writeSecure(acj, JSON.stringify(cur, null, 2), 0o600); changed = true; }
     return changed;
   }
+  // KHO TÀI KHOẢN WEB (weblogin.js) dùng chung: chủ máy lưu ở bot quản lý, mọi bot phụ nhận bản sao (tệp mã hóa + khóa) để /dangnhap ở bất kỳ bot nào. Một chiều: bot quản lý là nơi sửa.
+  // Không cần khởi động lại bot (weblogin đọc lại khi tệp đổi). Bot quản lý chưa có kho → xóa bản sao ở bot phụ cho khớp.
+  async function syncWebLogin(id) {
+    const home = P.homes + '/' + id, user = userName(id);
+    const pairs = [[P.mainHome + '/data/weblogin.enc', home + '/data/weblogin.enc'], [P.mainHome + '/weblogin.key', home + '/weblogin.key']];
+    const has = pairs.every(([m]) => F.existsSync(m));
+    for (const [m, a] of pairs) {
+      try {
+        if (!has) { if (F.existsSync(a)) F.rmSync(a, { force: true }); continue; }
+        let b = null; try { b = F.readFileSync(m); } catch (e) { continue; }
+        let cur = null; try { cur = F.readFileSync(a); } catch (e) { /* chưa có */ }
+        if (cur && cur.equals(b)) continue;
+        F.mkdirSync(path.dirname(a), { recursive: true }); writeSecure(a, b, 0o600); await sh('chown', [user + ':' + user, a]);
+      } catch (e) { /* bỏ qua: lần sau thử lại */ }
+    }
+  }
   // Dùng chung cho TẤT CẢ bot: viết lại cấu hình bot nào khác đi (chép đăng nhập, ENGINE_ORDER, khóa API), khởi động lại bot đó
   async function syncAll() {
     const mainText = F.existsSync(P.mainEnv) ? F.readFileSync(P.mainEnv, 'utf8') : '';
@@ -410,6 +426,7 @@ function createAgentCtl(deps) {
       const envFile = P.etc + '/agents/' + id + '.env';
       let oldEnv = ''; try { oldEnv = F.readFileSync(envFile, 'utf8'); } catch (e) { continue; }
       const token = parseEnv(oldEnv).TELEGRAM_TOKEN;
+      await syncWebLogin(id);
       const credChanged = syncCreds(id, plan);
       if (credChanged) { try { await sh('chown', ['-R', userName(id) + ':' + userName(id), P.homes + '/' + id]); } catch (e) { /* bỏ qua */ } }
       const env = withPaths(() => envText(id, meta, token, mainText, plan));

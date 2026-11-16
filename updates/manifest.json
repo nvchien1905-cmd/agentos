@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.10",
-  "file": "agentos-update-2026.11.13.10.tar.gz",
-  "size": 633534,
-  "sha256": "a9719ad9b00fbf80d045de8dd49273685659a4ed0cb3d21a95fd6797c1a88643",
+  "version": "2026.11.13.11",
+  "file": "agentos-update-2026.11.13.11.tar.gz",
+  "size": 638109,
+  "sha256": "611e426dbb5a0c554d68845b01001baed5cb85294cd09af8bc76d88c89d33525",
   "date": "2026-11-16",
-  "notes": "Chống tự đăng xuất Claude: so giờ hết hạn token, gom bản mới nhất về bot quản lý, đồng bộ 1 phút/lần"
+  "notes": "Kho tai khoan web dung chung: /taikhoan, /dangnhap - bot tu dang nhap ho cac trang, AI khong thay mat khau"
 }

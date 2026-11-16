@@ -138,6 +138,19 @@ test('token Claude: so GIỜ HẾT HẠN, không so giờ sửa tệp (bản là
   for (const f of [ms, a1, a2]) assert.match(fs.readFileSync(f, 'utf8'), /MAIN-NEWER/);
 });
 
+test('kho tài khoản web: bot quản lý lưu → mọi bot phụ nhận bản sao (tệp + khóa, 0600); bot quản lý xóa kho → bot phụ bị rút', async () => {
+  const w = world(); w.loginClaude();
+  await w.create('a1'); await w.create('a2');
+  fs.mkdirSync(w.p.mainHome + '/data', { recursive: true });
+  fs.writeFileSync(w.p.mainHome + '/data/weblogin.enc', Buffer.from('ENC1')); fs.writeFileSync(w.p.mainHome + '/weblogin.key', Buffer.from('KEY1'));
+  await w.sync();
+  for (const id of ['a1', 'a2']) { assert.equal(fs.readFileSync(w.p.homes + '/' + id + '/data/weblogin.enc', 'utf8'), 'ENC1'); assert.equal(fs.readFileSync(w.p.homes + '/' + id + '/weblogin.key', 'utf8'), 'KEY1'); }
+  fs.writeFileSync(w.p.mainHome + '/data/weblogin.enc', Buffer.from('ENC2')); await w.sync();
+  assert.equal(fs.readFileSync(w.p.homes + '/a1/data/weblogin.enc', 'utf8'), 'ENC2');
+  fs.rmSync(w.p.mainHome + '/data/weblogin.enc'); await w.sync();
+  assert.equal(fs.existsSync(w.p.homes + '/a1/data/weblogin.enc'), false); assert.equal(fs.existsSync(w.p.homes + '/a2/weblogin.key'), false);
+});
+
 test('sync không có bot phụ: không lỗi; cập nhật Codex mới (phiên bản đổi) thì chép lại chương trình', async () => {
   const w0 = world(); const r0 = await w0.sync(); assert.equal(r0.ok, true);
   const w = world(); w.loginClaude(); w.loginCodex(); await w.create('a1');

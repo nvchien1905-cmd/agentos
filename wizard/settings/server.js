@@ -141,7 +141,7 @@ function createSettings(o) {
   };
   const scheduleAiSync = () => { if (!aiSyncOn) return; if (aiSyncTimer) clearTimeout(aiSyncTimer); aiSyncTimer = setTimeout(() => { aiSyncTimer = null; runAiSync(); }, o.aiSyncDelayMs === undefined ? 2500 : o.aiSyncDelayMs); if (aiSyncTimer.unref) aiSyncTimer.unref(); };
   let aiSyncLoop = null;
-  if (aiSyncOn && o.aiSyncEveryMs !== 0) { aiSyncLoop = setInterval(runAiSync, o.aiSyncEveryMs || 180000); if (aiSyncLoop.unref) aiSyncLoop.unref(); setTimeout(runAiSync, 20000).unref(); }
+  if (aiSyncOn && o.aiSyncEveryMs !== 0) { aiSyncLoop = setInterval(runAiSync, o.aiSyncEveryMs || 60000); if (aiSyncLoop.unref) aiSyncLoop.unref(); setTimeout(runAiSync, 20000).unref(); }
   // Bot quản lý cũng có đủ chế độ/quyền hạn riêng như mọi bot: giá trị nằm trong tệp cấu hình của bộ điều phối (cùng khóa với agent, xem agentctl.SETTINGS)
   const AC = () => require('../../orchestrator/src/agentctl');
   const mainSettings = (t) => {

@@ -120,6 +120,24 @@ test('token Claude tự làm mới trong bot (bản mới hơn, cùng tài kho�
   assert.equal(JSON.parse(fs.readFileSync(w.p.homes + '/a1/.claude.json', 'utf8')).oauthAccount.accountUuid, 'U2');
 });
 
+test('token Claude: so GIỜ HẾT HẠN, không so giờ sửa tệp (bản làm mới thắng dù tệp có giờ sửa cũ; bản cũ không đè bản mới)', async () => {
+  const w = world(); w.loginClaude();
+  await w.create('a1'); await w.create('a2');
+  const ms = w.p.mainHome + '/.claude/.credentials.json', a1 = w.p.homes + '/a1/.claude/.credentials.json', a2 = w.p.homes + '/a2/.claude/.credentials.json';
+  const tok = (name, exp) => JSON.stringify({ claudeAiOauth: { accessToken: name, expiresAt: exp } });
+  fs.writeFileSync(ms, tok('MAIN-OLD', 1000));
+  // a1 vừa làm mới (hết hạn muộn hơn) nhưng giờ sửa tệp CŨ HƠN bot quản lý → vẫn phải thắng và chia cho a2
+  fs.writeFileSync(a1, tok('A1-NEW', 9000)); fs.utimesSync(a1, new Date(Date.now() - 600000), new Date(Date.now() - 600000));
+  fs.writeFileSync(a2, tok('A2-STALE', 1000));
+  await w.sync();
+  for (const f of [ms, a1, a2]) assert.match(fs.readFileSync(f, 'utf8'), /A1-NEW/);
+  // bot quản lý làm mới (hết hạn muộn hơn) còn a1 có giờ sửa mới hơn nhưng hết hạn sớm → bot quản lý thắng, không bị đè bản cũ
+  fs.writeFileSync(ms, tok('MAIN-NEWER', 20000));
+  fs.writeFileSync(a1, tok('A1-OLDER', 9000)); fs.utimesSync(a1, new Date(Date.now() + 90000), new Date(Date.now() + 90000));
+  await w.sync();
+  for (const f of [ms, a1, a2]) assert.match(fs.readFileSync(f, 'utf8'), /MAIN-NEWER/);
+});
+
 test('sync không có bot phụ: không lỗi; cập nhật Codex mới (phiên bản đổi) thì chép lại chương trình', async () => {
   const w0 = world(); const r0 = await w0.sync(); assert.equal(r0.ok, true);
   const w = world(); w.loginClaude(); w.loginCodex(); await w.create('a1');

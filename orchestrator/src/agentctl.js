@@ -310,6 +310,12 @@ function createAgentCtl(deps) {
   const readJson = (f) => { try { return JSON.parse(F.readFileSync(f, 'utf8')); } catch (e) { return null; } };
   const mtime = (f) => { try { return F.statSync(f).mtimeMs; } catch (e) { return 0; } };
   const same = (a, b) => { try { return F.readFileSync(a, 'utf8') === F.readFileSync(b, 'utf8'); } catch (e) { return false; } };
+  // Token Claude: bản nào HẾT HẠN muộn hơn là bản vừa được làm mới (so giờ hết hạn, không so giờ sửa tệp — tệp bị chép đi chép lại nên giờ sửa không đáng tin). Codex/Gemini vẫn so giờ sửa.
+  const expiresOf = (f) => { const j = readJson(f); const e = j && j.claudeAiOauth && Number(j.claudeAiOauth.expiresAt); return Number.isFinite(e) ? e : 0; };
+  function newerCred(engine, a, b) {
+    if (engine === 'claude') { const ea = expiresOf(a), eb = expiresOf(b); if (ea || eb) return ea > eb; }
+    return mtime(a) > mtime(b);
+  }
   const CRED = { claude: [['.claude/.credentials.json']], codex: [['.codex/auth.json']], gemini: [['.gemini/oauth_creds.json'], ['.gemini/google_accounts.json']] };
   function mainHas(engine, mainParsed) {
     const k = { claude: ['CLAUDE_CODE_OAUTH_TOKEN', 'AGENTOS_KEY_CLAUDE'], codex: ['AGENTOS_KEY_CODEX'], gemini: ['AGENTOS_KEY_GEMINI'], deepseekapi: ['AGENTOS_KEY_DEEPSEEK'] }[engine] || [];
@@ -372,7 +378,7 @@ function createAgentCtl(deps) {
         const ms = P.mainHome + '/' + rel, as = home + '/' + rel;
         if (!has || !F.existsSync(ms)) { drop(as); continue; }
         // bản của bot MỚI hơn và cùng tài khoản (token vừa tự làm mới) → chép ngược về bot quản lý để hai bên không lệch
-        if (F.existsSync(as) && mtime(as) > mtime(ms) && !same(as, ms) && sameAccount(engine, home)) { try { F.copyFileSync(as, ms); } catch (e) { /* bỏ qua */ } continue; }
+        if (F.existsSync(as) && newerCred(engine, as, ms) && !same(as, ms) && sameAccount(engine, home)) { try { F.copyFileSync(as, ms); } catch (e) { /* bỏ qua */ } continue; }
         put(ms, as);
       }
     }
@@ -392,6 +398,13 @@ function createAgentCtl(deps) {
     if (!ids.length) return ok('Chưa có bot phụ nào.', { changed: [] });
     await ensureClaudeBin().catch(() => {});
     const plan = await aiPlan(mainText), changed = [];
+    // Bước 1: gom bản token MỚI NHẤT (của bất kỳ bot nào, cùng tài khoản) về bot quản lý TRƯỚC khi chia lại — tránh chép bản cũ đè lên bản vừa làm mới
+    for (const id of ids) {
+      for (const engine of ['claude', 'codex']) {
+        const rel = CRED[engine][0][0], ms = P.mainHome + '/' + rel, as = P.homes + '/' + id + '/' + rel;
+        if (F.existsSync(ms) && F.existsSync(as) && newerCred(engine, as, ms) && !same(as, ms) && sameAccount(engine, P.homes + '/' + id)) { try { F.copyFileSync(as, ms); } catch (e) { /* bỏ qua */ } }
+      }
+    }
     for (const id of ids) {
       const meta = readMeta(id); if (!meta) continue;
       const envFile = P.etc + '/agents/' + id + '.env';

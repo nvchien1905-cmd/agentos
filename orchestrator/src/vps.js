@@ -77,16 +77,13 @@ function createVps(o) {
     return { ok: r.code === 0, text: (r.code === 0 ? '' : '⚠️ Lệnh trả mã ' + r.code + '\n') + (out || '(không có kết quả)') };
   }
 
+  // MỘT lệnh duy nhất để dán vào VPS: cài khóa cho tài khoản đủ quyền + tạo tài khoản chỉ-đọc (không sudo)
   function setupText(name, s) {
-    const f = pub(keyFull), r = pub(keyRo);
-    return '🔑 Cài khóa cho VPS "' + name + '" (' + s.host + ':' + s.port + '). Anh đăng nhập VPS bằng tài khoản quản trị của anh rồi chạy:\n\n' +
-      '① Tài khoản ĐỦ QUYỀN cho bot quản lý (' + s.fullUser + '):\n' +
-      'mkdir -p ~' + s.fullUser + '/.ssh && echo \'' + f + '\' >> ~' + s.fullUser + '/.ssh/authorized_keys && chmod 700 ~' + s.fullUser + '/.ssh && chmod 600 ~' + s.fullUser + '/.ssh/authorized_keys\n\n' +
-      '② Tài khoản CHỈ ĐỌC cho bot thường (' + s.roUser + ', không sudo):\n' +
-      'id ' + s.roUser + ' >/dev/null 2>&1 || adduser --disabled-password --gecos "" ' + s.roUser + '\n' +
-      'mkdir -p /home/' + s.roUser + '/.ssh && echo \'' + r + '\' >> /home/' + s.roUser + '/.ssh/authorized_keys && chown -R ' + s.roUser + ':' + s.roUser + ' /home/' + s.roUser + '/.ssh && chmod 700 /home/' + s.roUser + '/.ssh && chmod 600 /home/' + s.roUser + '/.ssh/authorized_keys\n\n' +
-      '③ Cho tài khoản chỉ-đọc xem được dữ liệu cần xem: tạo người dùng cơ sở dữ liệu CHỈ SELECT (vd MySQL: GRANT SELECT ON tên_csdl.* TO \'' + s.roUser + '\'@\'localhost\'), và cho đọc thư mục báo cáo/nhật ký cần thiết (setfacl -R -m u:' + s.roUser + ':rX <thư mục>). Quyền chỉ-đọc do CHÍNH VPS giữ, nên đừng cho ' + s.roUser + ' vào nhóm sudo/docker.\n\n' +
-      'Xong gõ: /vps thu ' + name;
+    const f = pub(keyFull), r = pub(keyRo), u = s.fullUser, ro = s.roUser;
+    const cmd = "mkdir -p ~" + u + "/.ssh && echo '" + f + "' >> ~" + u + "/.ssh/authorized_keys && chmod 700 ~" + u + "/.ssh && chmod 600 ~" + u + "/.ssh/authorized_keys; " +
+      "id " + ro + " >/dev/null 2>&1 || adduser --disabled-password --gecos '' " + ro + "; " +
+      "mkdir -p /home/" + ro + "/.ssh && echo '" + r + "' >> /home/" + ro + "/.ssh/authorized_keys && chown -R " + ro + ":" + ro + " /home/" + ro + "/.ssh && chmod 700 /home/" + ro + "/.ssh && chmod 600 /home/" + ro + "/.ssh/authorized_keys";
+    return '🔑 Anh dán ĐÚNG MỘT dòng này vào VPS "' + name + '" (đăng nhập bằng ' + u + '):\n\n' + cmd + '\n\nDán xong gõ: /vps thu ' + name;
   }
 
   async function command(argText) {
@@ -97,13 +94,13 @@ function createVps(o) {
         const l = list();
         return role === 'ro'
           ? (l.length ? '🖥️ VPS có thể XEM (chỉ-đọc):\n' + l.map((x) => '• ' + x.name + ' — ' + x.host).join('\n') + '\nXem: /vps chay <tên> <lệnh> (vd /vps chay ' + l[0].name + ' df -h)' : '🖥️ Chưa có VPS nào (cấu hình ở bot quản lý: /vps them).')
-          : (l.length ? '🖥️ VPS đã lưu:\n' + l.map((x) => '• ' + x.name + ' — ' + x.host + ':' + x.port + ' — đủ quyền: ' + x.fullUser + ' · chỉ đọc: ' + x.roUser).join('\n') + '\n/vps chay <tên> <lệnh> · /vps thu <tên> · /vps khoa <tên> · /vps xoa <tên>' : '🖥️ Chưa có VPS nào.\nThêm: /vps them <tên> <địa chỉ> <cổng SSH> <tài khoản đủ quyền> [tài khoản chỉ-đọc, mặc định agentos-ro]\nVí dụ: /vps them sv1 203.0.113.5 22 root');
+          : (l.length ? '🖥️ VPS đã lưu:\n' + l.map((x) => '• ' + x.name + ' — ' + x.host + ':' + x.port + ' — đủ quyền: ' + x.fullUser + ' · chỉ đọc: ' + x.roUser).join('\n') + '\n/vps chay <tên> <lệnh> · /vps thu <tên> · /vps khoa <tên> · /vps xoa <tên>' : '🖥️ Chưa có VPS nào.\nThêm: /vps them <tên> <địa chỉ VPS>\nVí dụ: /vps them sv1 203.0.113.5');
       }
       if (verb === 'them') {
-        const p = rest.split(/\s+/); if (p.length < 4) return 'Cú pháp: /vps them <tên> <địa chỉ> <cổng> <tài khoản đủ quyền> [tài khoản chỉ-đọc]';
-        const r = put(p[0], p[1], p[2], p[3], p[4]);
+        const p = rest.split(/\s+/); if (!p[0] || !p[1]) return 'Cú pháp: /vps them <tên> <địa chỉ VPS> [cổng, mặc định 22] [tài khoản, mặc định root]';
+        const r = put(p[0], p[1], p[2] || 22, p[3] || 'root', p[4]);
         await ensureKey(keyFull, 'full'); await ensureKey(keyRo, 'ro');
-        return '✅ Đã lưu VPS "' + r.name + '". Bước tiếp: /vps khoa ' + r.name + ' (em đưa lệnh để anh dán vào VPS).';
+        return setupText(r.name, read()[r.name]);
       }
       if (verb === 'khoa' || verb === 'key') {
         if (role === 'ro') return 'Khóa do bot quản lý lo; bot này tự nhận khóa chỉ-đọc.';

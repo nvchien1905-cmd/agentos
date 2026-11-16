@@ -21,11 +21,11 @@ function mk(role, dir) {
 
 test('bot quản lý: thêm VPS, sinh 2 khóa, /vps khoa đưa lệnh cài (chỉ khóa CÔNG KHAI, không lộ khóa riêng)', async () => {
   const { v, calls, d } = mk('full');
-  assert.match(await v.command('them sv1 203.0.113.5 2222 root'), /Đã lưu/);
+  const out = await v.command('them sv1 203.0.113.5 2222 root'); assert.match(out, /ĐÚNG MỘT dòng/);
   assert.ok(fs.existsSync(d + '/vps-full.key') && fs.existsSync(d + '/vps-ro.key'));
-  const t = await v.command('khoa sv1');
-  assert.match(t, /PUB-vps-full\.key/); assert.match(t, /PUB-vps-ro\.key/); assert.ok(!t.includes('PRIV-')); assert.match(t, /agentos-ro/); assert.match(t, /SELECT/);
-  assert.equal(v.list()[0].port, 2222);
+  const t = out;
+  assert.match(t, /PUB-vps-full\.key/); assert.match(t, /PUB-vps-ro\.key/); assert.ok(!t.includes('PRIV-')); assert.match(t, /agentos-ro/); assert.equal(t.split('authorized_keys').length - 1, 4);
+  assert.equal(v.list()[0].port, 2222); assert.match(await v.command('them sv2 1.2.3.4'), /root/); assert.equal(v.list().find((x) => x.name === 'sv2').port, 22); assert.match(await v.command('khoa sv1'), /ĐÚNG MỘT dòng/);
   assert.match(await v.command('them sv1 bad_host! 22 root'), /Địa chỉ/);
   assert.match(await v.command('them x 1.2.3.4 99999 root'), /Cổng/);
 });

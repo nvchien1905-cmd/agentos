@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.12",
-  "file": "agentos-update-2026.11.13.12.tar.gz",
-  "size": 642468,
-  "sha256": "dd75b593a88b89a3783d4a90739952c1191401f1edfc3ed5100509bdcedae64c",
+  "version": "2026.11.13.13",
+  "file": "agentos-update-2026.11.13.13.tar.gz",
+  "size": 642263,
+  "sha256": "25702b3beebbb0bae2f6ba9168efe031498b5d2c2724eb68d44f89475907d6ae",
   "date": "2026-11-16",
-  "notes": "VPS qua khoa SSH: /vps - bot quan ly du quyen, bot thuong chi xem"
+  "notes": "VPS: chi can /vps them <ten> <IP>, bot dua mot dong lenh de dan vao VPS"
 }

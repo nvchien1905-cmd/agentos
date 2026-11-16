@@ -37,6 +37,7 @@ function helpText(profiles) {
     '📘 /fanpage - AI trả lời tin nhắn FANPAGE qua API chính thức (nháp có nút ✅/❌ hoặc tự động) · /fanpage ketnoi nhờ AI tự lấy khóa · /fanpage tudong · /fanpage chidan <nội dung>\n' +
     '👤 /facebook - TRỢ LÝ TRỰC Messenger cá nhân: may [tên máy Windows] (MỘT LỆNH — dùng Chrome thật của máy Windows, khuyên dùng) · dangnhap (chỉ cách cũ, Chrome của bot) · bat · nhap (chỉ soạn nháp) · tudong [tên] (AI tự trả lời tin đơn giản, nhạy cảm vẫn chờ duyệt) · khong <tên> · chidan · chuky · nhatky · /fb tra <số> <nội dung>\n' +
     '🔑 /taikhoan - lưu tài khoản + mật khẩu các trang web (mã hóa, tin có mật khẩu tự xóa) · /dangnhap <tên> - bot mở Chrome điền hộ, AI không thấy mật khẩu\n' +
+    '🖥️ /vps - truy cập VPS của anh bằng khóa SSH: bot quản lý đủ quyền, bot thường CHỈ XEM · /vps them · khoa · thu · chay <tên> <lệnh>\n' +
     '💬 /zalo - TRỢ LÝ ZALO cá nhân qua Chrome (gõ chậm như người thật, tự soạn + tự gửi): bat · tat · dangnhap · tudong (AI tự gửi) · nhap (anh bấm ✅) · gui <nơi nhận> | <nội dung> · chan <tên> · gioihan · nhip · gio · chidan · nhatky\n' +
     '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
@@ -72,8 +73,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'taikhoan', 'dangnhap', 'camera', 'dien', 'vao']);
-function createBot({ weblogin, db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'taikhoan', 'dangnhap', 'vps', 'camera', 'dien', 'vao']);
+function createBot({ vps, weblogin, db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -270,6 +271,11 @@ function createBot({ weblogin, db, worker, allowed, profiles, isAdmin, approvals
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /facebook.';
           if (!facebook) return 'Máy này chưa có tính năng Facebook.';
           return facebook.command(String(cmd[3] || ''));
+        }
+        case 'vps': {                                       // VPS của chủ máy qua khóa SSH: bot quản lý đủ quyền, bot thường chỉ đọc (vps.js)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /vps.';
+          if (!vps) return 'Máy này chưa có tính năng VPS.';
+          return vps.command(String(cmd[3] || ''));
         }
         case 'taikhoan': case 'dangnhap': {                 // Kho tài khoản web + đăng nhập hộ trong Chrome dùng chung (weblogin.js); mật khẩu không bao giờ tới AI
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /' + name + '.';

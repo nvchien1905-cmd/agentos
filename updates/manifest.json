@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.13.11",
-  "file": "agentos-update-2026.11.13.11.tar.gz",
-  "size": 638109,
-  "sha256": "611e426dbb5a0c554d68845b01001baed5cb85294cd09af8bc76d88c89d33525",
+  "version": "2026.11.13.12",
+  "file": "agentos-update-2026.11.13.12.tar.gz",
+  "size": 642468,
+  "sha256": "dd75b593a88b89a3783d4a90739952c1191401f1edfc3ed5100509bdcedae64c",
   "date": "2026-11-16",
-  "notes": "Kho tai khoan web dung chung: /taikhoan, /dangnhap - bot tu dang nhap ho cac trang, AI khong thay mat khau"
+  "notes": "VPS qua khoa SSH: /vps - bot quan ly du quyen, bot thuong chi xem"
 }

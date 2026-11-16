@@ -151,6 +151,18 @@ test('kho tài khoản web: bot quản lý lưu → mọi bot phụ nhận bản
   assert.equal(fs.existsSync(w.p.homes + '/a1/data/weblogin.enc'), false); assert.equal(fs.existsSync(w.p.homes + '/a2/weblogin.key'), false);
 });
 
+test('VPS: bot quản lý sync danh sách VPS + khóa CHỈ-ĐỌC sang bot phụ; khóa ĐỦ QUYỀN không bao giờ chép sang', async () => {
+  const w = world(); w.loginClaude();
+  await w.create('a1');
+  fs.mkdirSync(w.p.mainHome + '/data', { recursive: true });
+  fs.writeFileSync(w.p.mainHome + '/data/vps.json', '{"sv1":{"host":"1.2.3.4"}}'); fs.writeFileSync(w.p.mainHome + '/vps-ro.key', 'RO-PRIV'); fs.writeFileSync(w.p.mainHome + '/vps-full.key', 'FULL-PRIV'); fs.writeFileSync(w.p.mainHome + '/vps-full.key.pub', 'FULL-PUB');
+  await w.sync();
+  assert.equal(fs.readFileSync(w.p.homes + '/a1/vps-ro.key', 'utf8'), 'RO-PRIV'); assert.match(fs.readFileSync(w.p.homes + '/a1/data/vps.json', 'utf8'), /sv1/);
+  assert.equal(fs.existsSync(w.p.homes + '/a1/vps-full.key'), false); assert.equal(fs.existsSync(w.p.homes + '/a1/vps-full.key.pub'), false);
+  fs.rmSync(w.p.mainHome + '/data/vps.json'); await w.sync();
+  assert.equal(fs.existsSync(w.p.homes + '/a1/vps-ro.key'), false);
+});
+
 test('sync không có bot phụ: không lỗi; cập nhật Codex mới (phiên bản đổi) thì chép lại chương trình', async () => {
   const w0 = world(); const r0 = await w0.sync(); assert.equal(r0.ok, true);
   const w = world(); w.loginClaude(); w.loginCodex(); await w.create('a1');

@@ -394,16 +394,23 @@ function createAgentCtl(deps) {
   // Không cần khởi động lại bot (weblogin đọc lại khi tệp đổi). Bot quản lý chưa có kho → xóa bản sao ở bot phụ cho khớp.
   async function syncWebLogin(id) {
     const home = P.homes + '/' + id, user = userName(id);
-    const pairs = [[P.mainHome + '/data/weblogin.enc', home + '/data/weblogin.enc'], [P.mainHome + '/weblogin.key', home + '/weblogin.key']];
-    const has = pairs.every(([m]) => F.existsSync(m));
-    for (const [m, a] of pairs) {
-      try {
-        if (!has) { if (F.existsSync(a)) F.rmSync(a, { force: true }); continue; }
-        let b = null; try { b = F.readFileSync(m); } catch (e) { continue; }
-        let cur = null; try { cur = F.readFileSync(a); } catch (e) { /* chưa có */ }
-        if (cur && cur.equals(b)) continue;
-        F.mkdirSync(path.dirname(a), { recursive: true }); writeSecure(a, b, 0o600); await sh('chown', [user + ':' + user, a]);
-      } catch (e) { /* bỏ qua: lần sau thử lại */ }
+    // mỗi nhóm: tất cả tệp nguồn (bot quản lý) phải có thì mới chép; không có → xóa bản ở bot phụ.
+    // VPS: chỉ chép danh sách VPS + khóa CHỈ-ĐỌC (khóa đủ quyền vps-full.key KHÔNG bao giờ chép sang bot thường)
+    const groups = [
+      [[P.mainHome + '/data/weblogin.enc', home + '/data/weblogin.enc'], [P.mainHome + '/weblogin.key', home + '/weblogin.key']],
+      [[P.mainHome + '/data/vps.json', home + '/data/vps.json'], [P.mainHome + '/vps-ro.key', home + '/vps-ro.key']],
+    ];
+    for (const pairs of groups) {
+      const has = pairs.every(([m]) => F.existsSync(m));
+      for (const [m, a] of pairs) {
+        try {
+          if (!has) { if (F.existsSync(a)) F.rmSync(a, { force: true }); continue; }
+          let b = null; try { b = F.readFileSync(m); } catch (e) { continue; }
+          let cur = null; try { cur = F.readFileSync(a); } catch (e) { /* chưa có */ }
+          if (cur && cur.equals(b)) continue;
+          F.mkdirSync(path.dirname(a), { recursive: true }); writeSecure(a, b, 0o600); await sh('chown', [user + ':' + user, a]);
+        } catch (e) { /* bỏ qua: lần sau thử lại */ }
+      }
     }
   }
   // Dùng chung cho TẤT CẢ bot: viết lại cấu hình bot nào khác đi (chép đăng nhập, ENGINE_ORDER, khóa API), khởi động lại bot đó

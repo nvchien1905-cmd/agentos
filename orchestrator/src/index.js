@@ -58,6 +58,7 @@ const { isSysJob, isQuietJob, skipAnswer, isFacebookCheck } = require('./quiet')
 const { createFacebook } = require('./facebook');
 const { createZalo } = require('./zalo');
 const { createWebLogin } = require('./weblogin');
+const { createVps } = require('./vps');
 const { createProbe } = require('./fbprobe');
 const { createFullAccessCtl } = require('./fullaccessctl');
 const { createDevices } = require('./devices');
@@ -177,7 +178,7 @@ async function main() {
     'BẠN LÀM VIỆC ĐỘC LẬP: dùng được MỌI lệnh của bot (hẹn giờ /hen, báo cáo, nhớ/quên, Zalo /zalo, doanh số...) qua công cụ bot_command; KHÔNG bảo chủ máy sang bot quản lý để đặt lịch hay làm việc thay. Chỉ có việc chỉ đạo bot khác (/giao, /daily, /agent) là của bot quản lý.';
   const CMD_HINT = 'LỆNH CỦA BOT: chủ máy KHÔNG phải gõ lệnh. Khi họ nhờ bằng lời một việc mà bot có lệnh (xem doanh số/tồn kho, mở/đóng ứng dụng, hẹn giờ, nhớ/quên, quản lý bot phụ, trạng thái, cập nhật, camera, ổ cắm...), bạn gọi công cụ bot_command với đúng lệnh (ví dụ "/doanhso hôm nay"; không rõ cú pháp thì gọi bot_help) rồi báo kết quả bằng lời. Lệnh nhạy cảm tự hỏi chủ máy bằng nút bấm. TUYỆT ĐỐI không trả lời "anh gõ lệnh /…" hay bảo họ tự làm.';
   const BRAIN_HINT = THINK_HINT + ' ' + kiotvietHint(KV_ON) + ' ' + TODO_HINT + ' ' + (cfg.agentId ? AGENT_HINT : OS_HINT) + ' ' + CMD_HINT;
-  const LOGIN_HINT ='TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập: TRƯỚC HẾT chạy bot_command `/taikhoan` xem trang đó có tài khoản đã lưu không; có thì chạy bot_command `/dangnhap <tên>` (hệ thống tự điền hộ, bạn KHÔNG thấy và KHÔNG gõ mật khẩu), rồi tải lại trang. Chưa lưu, hoặc thấy mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
+  const LOGIN_HINT ='DỮ LIỆU TRÊN VPS CỦA CHỦ MÁY (Sổ quỹ, GS, báo cáo...): đọc thẳng từ VPS bằng bot_command `/vps` (xem VPS nào có) rồi `/vps chay <tên VPS> <lệnh>` (vd `/vps chay sv1 ls /var/www`, hoặc truy vấn SELECT vào cơ sở dữ liệu) — nhanh và chắc hơn đăng nhập qua web; bot quản lý có đủ quyền, bot thường CHỈ XEM (lệnh ghi/xóa bị chặn). Có VPS thì dùng VPS trước, chỉ mở web khi VPS không có dữ liệu đó. TRÌNH DUYỆT & ĐĂNG NHẬP: chỉ dùng công cụ trình duyệt (Google Chrome) đã có. Mở một trang mà thấy màn hình đăng nhập: TRƯỚC HẾT chạy bot_command `/taikhoan` xem trang đó có tài khoản đã lưu không; có thì chạy bot_command `/dangnhap <tên>` (hệ thống tự điền hộ, bạn KHÔNG thấy và KHÔNG gõ mật khẩu), rồi tải lại trang. Chưa lưu, hoặc thấy mã xác minh/OTP hoặc CAPTCHA: DỪNG NGAY, không chờ, không thử lại, không tự nhập mật khẩu, không đoán đường vòng; trả lời đúng một dòng đầu `CẦN ĐĂNG NHẬP: <tên trang> <địa chỉ>` rồi nói ngắn đã làm được gì. Hệ thống sẽ hướng dẫn chủ máy đăng nhập. ';
   const fullHint = (canCli) => 'Bạn đang chạy trên máy Linux cá nhân của chính chủ máy (Debian), với quyền sudo không cần mật khẩu, và được chủ máy giao toàn quyền. ' +
     'Hãy tự làm trọn vẹn việc được giao, một mạch, không hỏi xin phép vụn vặt giữa chừng (chỉ hỏi lại khi thiếu thông tin thật sự không thể đoán, hoặc trước việc không hoàn tác được). ' +
     'Được cài phần mềm, sửa cấu hình, quản lý dịch vụ, dùng sudo, thao tác trên toàn bộ hệ thống. ' +
@@ -654,6 +655,7 @@ async function main() {
     getJob: (id) => db.getJob(id),
   });
   const weblogin = createWebLogin({ file: path.join(dataDir, 'weblogin.enc'), keyFile: path.join(dataDir, '..', 'weblogin.key'), log, endpoint: () => browserHost.ensure('admin', browserProfile) });
+  const vps = createVps({ role: cfg.agentId ? 'ro' : 'full', file: path.join(dataDir, 'vps.json'), keyFull: path.join(dataDir, '..', 'vps-full.key'), keyRo: path.join(dataDir, '..', 'vps-ro.key'), known: path.join(dataDir, '..', 'vps-known-hosts'), log });
   zaloRef.v = createZalo({
     file: path.join(dataDir, 'zalo.json'), log, admin: adminChat,
     notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons),
@@ -786,7 +788,7 @@ async function main() {
   if (agentsReg) { const bal = () => agentsReg.call({ action: 'balance' }).catch(() => {}); const t1 = setTimeout(bal, 90 * 1000), t2 = setInterval(bal, 5 * 60 * 1000); if (t1.unref) t1.unref(); if (t2.unref) t2.unref(); }
   const bot = botRef = createBot({
     db, worker: crew, allowed: cfg.allowedUserIds, profiles: tools.selectable(), isAdmin, approvals,
-    fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo: zaloRef.v, weblogin, deleteMessage: (c, m) => tg.deleteMessage(c, m),
+    fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo: zaloRef.v, weblogin, vps, deleteMessage: (c, m) => tg.deleteMessage(c, m),
     sandboxLine: () => sandbox.statusText(), checkpoints: cfg.checkpoints.enabled ? checkpoints : null, journal,
     diagnose: async () => {
       const res = await selftest.full(), bad = res.filter((r) => r.status === 'fail' || r.status === 'warn');

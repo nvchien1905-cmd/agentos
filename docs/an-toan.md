@@ -757,3 +757,9 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Cấm cứng không đổi: khóa/token/biến môi trường, điện thoại.
 - Chưa phân biệt được người nhận khi bot tự bấm "Gửi" trên màn hình Zalo/Gmail/Messenger (không biết người nhận là khách hay chủ máy) nên vẫn để bot bấm được (bản 18.3). Trợ lý Zalo bật thì vẫn có phiếu gửi + duyệt tin nhạy cảm.
 - Đã thử trên máy ảo: 103/103 (safety, creative-suite, zalo, desk, gate, social, bot, phase1).
+
+## Bản 2026.11.18.5 — NÚT "Đăng nhập lâu dài (1 năm)" trong Cài đặt → AI và khóa API → Claude
+- Bấm nút → máy chạy `claude setup-token` trong nền (pty rộng, wizard/lib/login.js plan `claudelong`) → hiện link đăng nhập → người dùng đăng nhập, dán MÃ trang hiện ra → máy tự đọc token, thử LẦN LƯỢT các cách đọc (đúng 108 ký tự, bản dài nhất...) bằng cách hỏi Claude thật, chỉ lưu bản được chấp nhận (CLAUDE_CODE_OAUTH_TOKEN, mọi bot dùng chung) rồi khởi động lại bộ điều phối. Không phải chép token tay (ô dán tay vẫn còn làm dự phòng).
+- Lỗi đã sửa trên đường: màn hình dòng lệnh đặt từng chữ bằng lệnh nhảy cột; bỏ hết lệnh này làm chữ dính vào nhau → đọc sai token. Nay nhảy cột = khoảng trắng, nhảy dòng/xóa = xuống dòng.
+- ĐÃ THỬ THẬT trên máy ảo AgentOS-Test (đăng nhập tài khoản Claude thật, mã đăng nhập thật): lưu thành công, màn hình ghi "token dài hạn". Lần thử đầu (trước khi sửa) token bị đọc sai (401) → đó là lý do sửa. Lệnh đăng nhập tự hết giờ sau 15 phút.
+- Test: phone.test.js (đọc token từ màn hình dòng lệnh thật, chữ dính, vẽ lại), settings.test.js (nút → lưu).

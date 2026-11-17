@@ -287,3 +287,32 @@ test('settings: nút bật/tắt "chỉ dùng Claude" trên trang AI ghi CLAUDE_
     assert.ok((await S.call('GET', 'ai')).body.engines.length >= 3);
   } finally { await S.s.close(); }
 });
+
+test('settings: NÚT "Đăng nhập lâu dài" — bắt đầu setup-token, dán mã, máy tự lấy token → kiểm thật → lưu vào env cho mọi bot; chưa xong thì không lưu', async () => {
+  const { createLogin } = require('../lib/login');
+  const FAKE = path.join(__dirname, 'fake-login.js'), GOOD = 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789';
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (fn) => { for (let i = 0; i < 160; i++) { const v = await fn(); if (v) return v; await sleep(25); } return null; };
+  let seenTok = null; const seen = [];
+  const login = createLogin({ wrap: (argv) => ({ cmd: process.execPath, args: [FAKE, argv[1] === 'setup-token' ? 'claude-token' : 'fail'] }) });
+  const S = await boot({ login, run: async (cmd, args, opts) => {
+    seen.push([cmd].concat(args));
+    if (cmd === 'runuser' && args.join(' ').includes('--version')) return { code: 0, out: '2.1.0\n', err: '' };
+    if (cmd === 'runuser' && args.join(' ').includes('--max-turns')) { seenTok = opts && opts.env && opts.env.CLAUDE_CODE_OAUTH_TOKEN; return { code: 0, out: '{"result":"OK"}', err: '' }; }
+    return { code: 0, out: '', err: '' };
+  } });
+  try {
+    assert.equal((await S.call('POST', 'ai/claude-longlogin/apply')).status, 400);                       // chưa đăng nhập: không lưu gì
+    assert.equal((await S.call('POST', 'ai/login/start', { engine: 'claudelong' })).status, 200);
+    assert.equal((await S.call('POST', 'ai/claude-longlogin/apply')).status, 400);                       // đang chạy, chưa nhập mã: vẫn không lưu
+    await until(async () => (await S.call('GET', 'ai/login/state')).body.url);
+    assert.equal((await S.call('POST', 'ai/login/input', { text: 'MA-DUNG' })).status, 200);
+    await until(async () => (await S.call('GET', 'ai/login/state')).body.status === 'done');
+    const st = (await S.call('GET', 'ai/login/state')).body; assert.equal(st.engine, 'claudelong'); assert.doesNotMatch(JSON.stringify(st), /AbCdEfGhIjKl/);   // token không lộ qua API
+    const ap = await S.call('POST', 'ai/claude-longlogin/apply');
+    assert.equal(ap.status, 200); assert.equal(ap.body.saved, true); assert.equal(seenTok, GOOD, 'đã hỏi thử Claude bằng đúng token vừa lấy');
+    assert.match(S.env(), new RegExp('^CLAUDE_CODE_OAUTH_TOKEN=' + GOOD + '$', 'm'));
+    assert.doesNotMatch(JSON.stringify(ap.body), /AbCdEfGhIjKl/);
+    assert.ok(seen.some((c) => c[0] === 'systemctl' && c[1] === 'restart' && c[2] === 'agentos-orchestrator.service'));
+  } finally { await S.s.close(); }
+});

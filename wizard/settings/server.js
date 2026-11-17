@@ -509,9 +509,22 @@ function createSettings(o) {
     // ĐĂNG NHẬP AI QUA ĐIỆN THOẠI (không mở cửa sổ dòng lệnh): chạy lệnh đăng nhập chính thức trong nền, trang này hiện link + mã (Codex: mã thiết bị; Claude/Gemini: dán mã lại);
     // nút "Gửi vào Telegram" đưa link + mã sang điện thoại, người dùng bấm link trên điện thoại (đã đăng nhập sẵn, dùng được khóa bảo mật/ứng dụng xác thực của họ).
     async 'POST /api/ai/login/start'(b) {
-      const eng = String(b.engine); if (!['claude', 'codex', 'gemini'].includes(eng)) throw new Error('AI này dùng khóa API, không đăng nhập tài khoản');
-      if (!(await engines.installed(run, eng))) throw new Error('Chưa cài phần mềm ' + eng + ': bấm "Cài phần mềm" trước.');
+      const eng = String(b.engine); if (!['claude', 'claudelong', 'codex', 'gemini'].includes(eng)) throw new Error('AI này dùng khóa API, không đăng nhập tài khoản');
+      if (!(await engines.installed(run, eng === 'claudelong' ? 'claude' : eng))) throw new Error('Chưa cài phần mềm ' + (eng === 'claudelong' ? 'claude' : eng) + ': bấm "Cài phần mềm" trước.');
       return loginView(phoneLogin().start(eng));
+    },
+    // ĐĂNG NHẬP LÂU DÀI (1 nút): sau khi `claude setup-token` chạy xong, lấy token máy đã đọc được → kiểm với Claude → lưu cho mọi bot (cùng đường với dán tay).
+    async 'POST /api/ai/claude-longlogin/apply'() {
+      const v = phoneLogin().get();
+      if (!v || v.engine !== 'claudelong' || v.status !== 'done') throw new Error('Chưa đăng nhập xong. Bấm "Đăng nhập lâu dài", đăng nhập rồi dán mã vào.');
+      const cands = phoneLogin().takeTokens ? phoneLogin().takeTokens() : [phoneLogin().takeToken()].filter(Boolean);
+      if (!cands.length) throw new Error('Máy chưa đọc được token từ lần đăng nhập này, hãy bấm đăng nhập lại.');
+      // Màn hình dòng lệnh có thể làm token đọc sai (dính chữ, mất chữ) → thử LẦN LƯỢT từng cách đọc với Claude thật, lưu cách được chấp nhận.
+      let lastErr = null;
+      for (const t of cands.slice(0, 4)) {
+        try { return await A['POST /api/ai/claude-token']({ token: t }); } catch (e) { lastErr = e; if (!/Token không dùng được/.test(String(e.message))) throw e; }
+      }
+      throw new Error(String(lastErr && lastErr.message || 'Token không dùng được').replace(/\(.*\)\. Chạy lại[^]*$/, '') + '(máy đọc được ' + cands.length + ' cách đọc, độ dài ' + cands.slice(0, 4).map((x) => x.length).join('/') + ' ký tự; token đúng dài 108). Hãy bấm "Đăng nhập lâu dài" lại, hoặc chạy claude setup-token ở máy khác rồi dán vào ô bên dưới.');
     },
     async 'GET /api/ai/login/state'() { return loginView(phoneLogin().get()); },
     async 'POST /api/ai/login/input'(b) { return loginView(phoneLogin().input(String(b.text || ''))); },

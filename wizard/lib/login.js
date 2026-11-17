@@ -17,6 +17,9 @@ const PLANS = {
   // 'auth login' (KHÔNG dùng 'setup-token'): CLI tự lưu đăng nhập vào thư mục của agentos nên trình hướng dẫn không phải đọc/giữ token.
   // (Đã thử thật 20/10/2026: đọc token từ giao diện của setup-token bị MẤT chữ vì TUI vẽ lại màn hình từng phần -> token sai -> 'Not logged in'.)
   claude: { argv: () => [engines.BIN.claude, 'auth', 'login', '--claudeai'], needsInput: true, wantsToken: false },
+  // 'claudelong' = ĐĂNG NHẬP LÂU DÀI (1 năm): `claude setup-token`, máy tự đọc token in ra rồi (settings/server.js) kiểm bằng cách hỏi thử Claude trước khi lưu — token đọc sai/thiếu chữ bị từ chối, không lưu bậy.
+  // Chạy trong pty rộng 4000 cột + TERM=dumb nên token không bị ngắt dòng; bestToken lấy bản dài nhất trong các lần in.
+  claudelong: { argv: () => [engines.BIN.claude, 'setup-token'], needsInput: true, wantsToken: true },
   codex: { argv: () => [engines.BIN.codex, 'login', '--device-auth'], needsInput: false, wantsToken: false },
   // Gemini: chạy `gemini` trong pty với NO_BROWSER=true (kiểu đăng nhập Google đã đặt sẵn trong settings.json) -> in "Please visit the following URL to authorize"
   // rồi chờ "Enter the authorization code:" (dán mã, như Claude). Gemini KHÔNG tự thoát sau khi đăng nhập xong (vào giao diện hỏi đáp), nên xong khi
@@ -35,13 +38,29 @@ function defaultWrap(argv, extraEnv) {
   return { cmd: c.cmd, args: c.args };
 }
 
-function clean(s) { return String(s).replace(ANSI, ''); }
+// Giao diện dòng lệnh của Claude đặt TỪNG CHỮ bằng lệnh nhảy cột (ESC[<n>G / ESC[<n>C) và vẽ lại màn hình bằng lệnh nhảy dòng/xóa. Bỏ hết các lệnh này
+// làm các chữ DÍNH vào nhau (kể cả đuôi token) → đổi nhảy cột thành khoảng trắng, nhảy dòng/xóa thành xuống dòng, rồi mới bỏ phần còn lại.
+function clean(s) {
+  return String(s)
+    .replace(/\u001b\[[0-9;?]*[CG]/g, ' ')
+    .replace(/\u001b\[[0-9;?]*[ABDEFHJKSTfd]/g, '\n')
+    .replace(/\u001b[78]/g, '')
+    .replace(ANSI, '');
+}
 
 // Token Claude: CLI in ra từng đoạn/in lại nhiều lần, nên KHÔNG lấy lần khớp đầu tiên (có thể mới in nửa chừng -> token thiếu chữ -> bị từ chối).
 // Lấy bản DÀI NHẤT trong mọi lần xuất hiện.
-function bestToken(buf) {
-  const all = clean(buf).match(new RegExp(CLAUDE_TOKEN_RE.source, 'g'));
-  return all ? all.reduce((a, b) => (b.length > a.length ? b : a)) : null;
+function bestToken(buf) { const c = tokenCandidates(buf); return c.length ? c[0] : null; }
+// Mọi cách đọc có thể của token, thứ tự thử: đúng 108 ký tự (token setup-token luôn dài 108: nếu chữ phía sau dính vào đuôi thì cắt đúng độ dài) → bản dài nhất → các bản còn lại.
+// Người dùng không bao giờ thấy các bản này; settings/server.js thử LẦN LƯỢT từng bản bằng cách hỏi Claude thật và chỉ lưu bản được chấp nhận.
+const TOKEN_LEN = 108;
+function tokenCandidates(buf) {
+  const all = clean(buf).match(new RegExp(CLAUDE_TOKEN_RE.source, 'g')) || [];
+  const out = [];
+  const add = (t) => { if (t && !out.includes(t)) out.push(t); };
+  for (const m of all.slice().sort((a, b) => b.length - a.length)) if (m.length >= TOKEN_LEN) add(m.slice(0, TOKEN_LEN));
+  for (const m of all.slice().sort((a, b) => b.length - a.length)) add(m);
+  return out;
 }
 
 function createLogin(opts) {
@@ -137,9 +156,11 @@ function createLogin(opts) {
     },
     // Token Claude đã nhận (chỉ dùng nội bộ để ghi cấu hình); không bao giờ trả ra API.
     takeToken() { return cur && cur.token ? cur.token : null; },
+    // Các cách đọc token (xem tokenCandidates); chỉ dùng nội bộ, không bao giờ trả ra API.
+    takeTokens() { return cur && cur.engine === 'claudelong' ? tokenCandidates(cur.buf) : []; },
     cancel() { if (cur) stop(cur, 'Đã hủy'); return view(cur); },
     _current: () => cur,
   };
 }
 
-module.exports = { createLogin, defaultWrap, clean, URL_RE, CLAUDE_TOKEN_RE };
+module.exports = { createLogin, defaultWrap, clean, tokenCandidates, URL_RE, CLAUDE_TOKEN_RE };

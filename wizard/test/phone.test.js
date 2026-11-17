@@ -369,3 +369,42 @@ test('khởi động lại giữa chừng: đọc lại token đã lưu và ti�
   } finally { await S.w.close(); }
 });
 
+
+test('login Claude LÂU DÀI (setup-token): bắt đúng token dù lệnh in từng đoạn, che token trong nội dung hiển thị, mã sai thì không có token', async () => {
+  const wrapLong = (kind) => (argv) => ({ cmd: process.execPath, args: [FAKE, argv[1] === 'setup-token' ? kind : 'fail'] });
+  const L = createLogin({ wrap: wrapLong('claude-token') });
+  assert.equal(L.start('claudelong').status, 'running');
+  const v1 = await until(() => { const v = L.get(); return v.url ? v : null; });
+  assert.equal(v1.needsInput, true);
+  L.input('MA-DUNG');
+  const done = await until(() => { const v = L.get(); return v.status === 'done' ? v : null; });
+  assert.equal(done.hasToken, true); assert.equal(L.takeToken(), 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789');
+  assert.doesNotMatch(done.tail, /sk-ant-oat01-AbCdEf/); assert.match(done.tail, /\[đã nhận token\]/);
+  // lệnh in token từng đoạn nhỏ: phải lấy BẢN ĐẦY ĐỦ, không phải lần khớp đầu
+  const S = createLogin({ wrap: wrapLong('claude-split') });
+  S.start('claudelong'); await until(() => S.get().needsInput); S.input('x');
+  await until(() => { const v = S.get(); return v.status === 'done' ? v : null; });
+  assert.equal(S.takeToken(), 'sk-ant-oat01-AbCdEfGhIjKlMnOpQrStUvWx_yz-0123456789-FULLTOKEN');
+  // mã sai: lỗi, không có token
+  const B = createLogin({ wrap: wrapLong('claude-token') });
+  B.start('claudelong'); await until(() => B.get().url); B.input('SAI');
+  const bad = await until(() => { const v = B.get(); return v.status === 'error' ? v : null; });
+  assert.equal(bad.hasToken, false); assert.equal(B.takeToken(), null);
+});
+
+test('login Claude lâu dài: đọc token từ màn hình dòng lệnh thật — nhảy cột thành khoảng trắng, chữ dính vào đuôi thì cắt đúng 108 ký tự, vẽ lại nhiều lần vẫn ra đúng', () => {
+  const { tokenCandidates, clean } = require('../lib/login');
+  const ESC = '\u001b', TOK = 'sk-ant-oat01-' + 'Q77bJT6o1KKUrJd75FC3TzFGS1lhPo2oUMqSTC6u1NurIMPFTn9EWJ4azo_fGsW9SvaAfV3PQFXH5MZD2bPLHQ-tuXr1gAA'.slice(0, 95);
+  assert.equal(TOK.length, 108);
+  // 1) kiểu thật: từng chữ đặt bằng ESC[nG, token nằm trên dòng riêng
+  const screen = ESC + '7' + ESC + '[2GYour' + ESC + '[7GOAuth' + ESC + '[13Gtoken\r\r\n' + ESC + '[2G' + ESC + '[1m' + TOK + ESC + '[0m\r\r\n' + ESC + '[2GStore' + ESC + '[8Gthis' + ESC + '[13Gtoken' + ESC + '[19Gsecurely\r\n';
+  assert.match(clean(screen), /Your OAuth token/); assert.deepEqual(tokenCandidates(screen), [TOK]);
+  // 2) chữ phía sau dính liền vào đuôi token (mất xuống dòng): vẫn cắt đúng độ dài
+  const glued = tokenCandidates('xx ' + TOK + 'Storethistokensecurely yy');
+  assert.equal(glued[0], TOK); assert.ok(glued.includes(TOK + 'Storethistokensecurely'));
+  // 3) màn hình vẽ lại nhiều lần (bản cũ bị xóa bằng ESC[2K ESC[1A): không ghép bản cũ với bản mới
+  const redraw = ESC + '[2G' + TOK + '\r\n' + ESC + '[2K' + ESC + '[1A' + ESC + '[2G' + TOK + '\r\n';
+  assert.deepEqual(tokenCandidates(redraw), [TOK]);
+  // 4) không có token
+  assert.deepEqual(tokenCandidates('Paste code here if prompted >'), []);
+});

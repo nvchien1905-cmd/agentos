@@ -316,3 +316,19 @@ test('settings: NÚT "Đăng nhập lâu dài" — bắt đầu setup-token, dá
     assert.ok(seen.some((c) => c[0] === 'systemctl' && c[1] === 'restart' && c[2] === 'agentos-orchestrator.service'));
   } finally { await S.s.close(); }
 });
+
+test('settings: cập nhật lên bản mới → Cài đặt TỰ thoát để systemd dựng lại bằng mã mới (không thoát khi cùng bản, hoặc đang có việc nền chạy)', async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let exits = 0;
+  const S = await boot({ exit: () => { exits++; }, versionWatchMs: 15, versionRestartDelayMs: 40 });
+  try {
+    await sleep(120); assert.equal(exits, 0, 'cùng bản thì không thoát');
+    fs.writeFileSync(path.join(S.dir, 'VERSION'), '2026.10.21.3\n');                 // vừa cập nhật
+    for (let i = 0; i < 60 && !exits; i++) await sleep(20);
+    assert.equal(exits, 1, 'bản đổi → thoát đúng 1 lần để dựng lại');
+    await sleep(120); assert.equal(exits, 1, 'không thoát lặp lại');
+  } finally { await S.s.close(); }
+  // tắt theo dõi
+  let ex2 = 0; const S2 = await boot({ exit: () => { ex2++; }, versionWatchMs: 0 });
+  try { fs.writeFileSync(path.join(S2.dir, 'VERSION'), '9.9.9\n'); await sleep(150); assert.equal(ex2, 0); } finally { await S2.s.close(); }
+});

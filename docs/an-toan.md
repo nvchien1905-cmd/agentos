@@ -763,3 +763,9 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Lỗi đã sửa trên đường: màn hình dòng lệnh đặt từng chữ bằng lệnh nhảy cột; bỏ hết lệnh này làm chữ dính vào nhau → đọc sai token. Nay nhảy cột = khoảng trắng, nhảy dòng/xóa = xuống dòng.
 - ĐÃ THỬ THẬT trên máy ảo AgentOS-Test (đăng nhập tài khoản Claude thật, mã đăng nhập thật): lưu thành công, màn hình ghi "token dài hạn". Lần thử đầu (trước khi sửa) token bị đọc sai (401) → đó là lý do sửa. Lệnh đăng nhập tự hết giờ sau 15 phút.
 - Test: phone.test.js (đọc token từ màn hình dòng lệnh thật, chữ dính, vẽ lại), settings.test.js (nút → lưu).
+
+## Bản 2026.11.18.6 — SỬA GỐC: bản cập nhật không khởi động lại Cài đặt (thiếu apply.sh trong gói từ 2026.11.13.5)
+- Nguyên nhân: các bản từ 2026.11.13.5 tới 18.5 đóng gói KHÔNG kèm `apply.sh` (thiếu `--apply update/apply.sh`) → sau cập nhật không có bước khởi động lại Cài đặt/trình hướng dẫn/trợ lý màn hình/bot phụ, không nạp lại dịch vụ, không chạy việc hậu kỳ. Trang Cài đặt (đọc từ đĩa) thành bản mới nhưng mã máy chủ trong bộ nhớ vẫn bản cũ → nút mới báo "AI này dùng khóa API…" / "Không có".
+- Đã tái hiện và kiểm trên máy ảo bằng trình cập nhật thật (`agentos-update apply`, máy chủ tĩnh trên Windows): gói THIẾU apply.sh → 2 phút sau Cài đặt vẫn mã cũ; gói CÓ apply.sh → Cài đặt tự khởi động lại sau ~25 giây và nút "Đăng nhập lâu dài" chạy.
+- Sửa: build-bundle.js MẶC ĐỊNH đóng gói update/apply.sh (bỏ bằng `--apply none`); update.test.js bắt buộc gói có apply.sh. Thêm lớp bảo vệ thứ hai: Cài đặt tự thoát (systemd dựng lại) khi thấy tệp VERSION đổi và không có việc nền chạy.
+- Cập nhật lên bản này sẽ chạy lại apply.sh (mấy bản trước chưa chạy): khởi động lại dịch vụ, nâng Node 22 nền... Cài đặt/bot phụ có thể khởi động lại trong vòng ~1–2 phút sau khi cập nhật.

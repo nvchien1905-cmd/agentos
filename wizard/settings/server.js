@@ -1170,10 +1170,27 @@ function createSettings(o) {
     } catch (e) { json(res, 400, { error: e.message || String(e) }); }
   });
 
+  // TỰ KHỞI ĐỘNG LẠI SAU KHI CẬP NHẬT: trang (index.html) đọc lại từ đĩa mỗi lần nên thành bản mới ngay, còn MÃ máy chủ này đã nạp trong bộ nhớ vẫn là bản cũ
+  // → nút mới gọi vào chức năng chưa có ("AI này dùng khóa API…", "Không có"). Thấy tệp VERSION đổi thì thoát (systemd Restart=always dựng lại bằng mã mới), khi không có việc nền đang chạy.
+  let verTimer = null;
+  function watchVersion() {
+    if (o.versionWatchMs === 0) return;
+    const readVer = () => { try { return fs.readFileSync(o.versionFile, 'utf8').trim(); } catch (e) { return null; } };
+    const boot = readVer(); if (boot == null) return;
+    let seenAt = 0;
+    verTimer = setInterval(() => {
+      const now = readVer();
+      if (now == null || now === boot) { seenAt = 0; return; }
+      if (busy()) return;                                   // đang cài/cập nhật dở: đợi xong
+      if (!seenAt) seenAt = Date.now();
+      if (Date.now() - seenAt >= (o.versionRestartDelayMs == null ? 20000 : o.versionRestartDelayMs)) { clearInterval(verTimer); (o.exit || process.exit)(0); }
+    }, o.versionWatchMs || 10000);
+    if (verTimer.unref) verTimer.unref();
+  }
   return {
     server, jobs,
-    listen() { return new Promise((resolve) => server.listen(o.port, o.host, () => resolve(server.address().port))); },
-    close() { odStop(); if (aiSyncLoop) clearInterval(aiSyncLoop); if (aiSyncTimer) clearTimeout(aiSyncTimer); return new Promise((r) => server.close(r)); },
+    listen() { return new Promise((resolve) => server.listen(o.port, o.host, () => { watchVersion(); resolve(server.address().port); })); },
+    close() { if (verTimer) clearInterval(verTimer); odStop(); if (aiSyncLoop) clearInterval(aiSyncLoop); if (aiSyncTimer) clearTimeout(aiSyncTimer); return new Promise((r) => server.close(r)); },
     syncAi: runAiSync,
   };
 }

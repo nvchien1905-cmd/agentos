@@ -196,4 +196,5 @@ test('build-bundle: gói thật từ kho mã có chữ ký hợp lệ, chỉ ch�
   assert.deepEqual(lib.checkEntries(names), { ok: true, bad: [] });
   assert.ok(names.includes('opt/agentos/VERSION') && names.includes('opt/agentos/orchestrator/src/index.js') && names.includes('usr/local/bin/agentos-update') && names.includes('opt/agentos/update/updater.js'));
   assert.ok(!names.some((n) => /\/test\/|node_modules|\.pem$/.test(n)), 'có tệp không nên đóng gói');
+  assert.ok(names.includes('apply.sh'), 'gói PHẢI có apply.sh (không có thì dịch vụ không được khởi động lại sau cập nhật)');
 });

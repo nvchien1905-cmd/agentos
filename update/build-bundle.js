@@ -64,7 +64,11 @@ function main() {
 
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'agentos-bundle-'));
   try {
-    const map = plan(version, arg('apply'));
+    // apply.sh (khởi động lại Cài đặt/trợ lý màn hình/bot phụ, nạp lại dịch vụ, việc hậu kỳ) MẶC ĐỊNH luôn được đóng gói: từ 2026.11.13.5 tới 18.5 thiếu --apply nên máy khách
+    // cập nhật xong vẫn chạy mã cũ trong bộ nhớ (nút mới báo "AI này dùng khóa API…"). Muốn bỏ hẳn: --apply none.
+    const applyArg = arg('apply');
+    const applyFile = applyArg === 'none' ? undefined : (applyArg || path.join(__dirname, 'apply.sh'));
+    const map = plan(version, applyFile);
     for (const [src, dest] of map) {
       const to = path.join(stage, ...dest.split('/'));
       fs.mkdirSync(path.dirname(to), { recursive: true });

@@ -481,7 +481,21 @@ function createSettings(o) {
       if (!/^sk-ant-oat\d*-[A-Za-z0-9_-]{20,}$/.test(token)) throw new Error('Đây không phải token dài hạn của Claude (dạng sk-ant-oat01-…). Chạy lệnh  claude setup-token  rồi sao chép nguyên chuỗi token.');
       const text = needEnv();
       if (!(await engines.installed(run, 'claude').catch(() => null))) throw new Error('Chưa cài phần mềm Claude: bấm "Cài phần mềm" trước.');
-      const v = await engines.verifyLogin(run, 'claude', { CLAUDE_CODE_OAUTH_TOKEN: token });
+      // defaultRun (execFile) bỏ qua `input` (câu hỏi thử gửi vào stdin) và THAY cả môi trường bằng riêng token → lệnh treo/không tìm thấy chương trình → báo "lỗi" dù token đúng.
+      // Nên kiểm bằng runWithInput: gộp môi trường hiện có + token, ghi câu hỏi vào stdin, có hạn giờ.
+      const runWithInput = o.run ? o.run : (cmd, args, ro) => new Promise((resolve) => {
+        let out = '', err = '', done = false, c;
+        const fin = (code) => { if (done) return; done = true; clearTimeout(t); resolve({ code, out, err }); };
+        let t = null;
+        try { c = cp.spawn(cmd, args, { env: Object.assign({}, process.env, (ro && ro.env) || {}), stdio: ['pipe', 'pipe', 'pipe'] }); }
+        catch (e) { return resolve({ code: 127, out: '', err: String(e.message || e) }); }
+        t = setTimeout(() => { try { c.kill('SIGKILL'); } catch (e) { /* đã thoát */ } err += ' (quá thời gian chờ)'; fin(124); }, (ro && ro.timeoutMs) || 120000);
+        c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { err += d; });
+        c.on('error', (e) => { err += String(e.message || e); fin(127); });
+        c.on('close', (k) => fin(k === null ? 1 : k));
+        try { c.stdin.on('error', () => {}); c.stdin.end(String((ro && ro.input) || '')); } catch (e) { /* bỏ qua */ }
+      });
+      const v = await engines.verifyLogin(runWithInput, 'claude', { CLAUDE_CODE_OAUTH_TOKEN: token });
       if (!v.ok) throw new Error('Token không dùng được (' + v.detail + '). Chạy lại  claude setup-token  và dán lại, nhớ dán đủ cả chuỗi.');
       saveEnv(setEnvLine(text, 'CLAUDE_CODE_OAUTH_TOKEN', token));
       await restart('agentos-orchestrator');

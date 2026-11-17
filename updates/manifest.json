@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.17.1",
-  "file": "agentos-update-2026.11.17.1.tar.gz",
-  "size": 643267,
-  "sha256": "072453dbcd03a256cbb8dbf529eed25bcdd7f11b8bd675500bfa919b46ec9884",
+  "version": "2026.11.17.2",
+  "file": "agentos-update-2026.11.17.2.tar.gz",
+  "size": 643753,
+  "sha256": "86dfec2a89510f540178c49a54a8f3f3b2f5d42ab19f665b98ece306456100c8",
   "date": "2026-11-17",
-  "notes": "Token dai han Claude dung chung moi bot: het loi Not logged in"
+  "notes": "Sửa lưu token dài hạn Claude báo lỗi dù token đúng"
 }

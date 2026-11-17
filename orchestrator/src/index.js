@@ -57,6 +57,7 @@ const { createFanpage } = require('./fanpage');
 const { isSysJob, isQuietJob, skipAnswer, isFacebookCheck } = require('./quiet');
 const { createFacebook } = require('./facebook');
 const { createZalo } = require('./zalo');
+const { createZaloWatch } = require('./zaloWatch');
 const { createWebLogin } = require('./weblogin');
 const { createVps } = require('./vps');
 const { createProbe } = require('./fbprobe');
@@ -665,6 +666,14 @@ async function main() {
   fbHook.onResult = (job, text) => facebook.onResult(job, text);
   fbAllow.fn = (job, tool, input) => facebook.allowInteract(job, tool, input);
   fbRelease.fn = () => facebook.release().catch(() => {});
+  // Tự canh tin Zalo mới (zaloWatch.js): đọc huy hiệu chưa đọc trong Chrome của bot bằng mã thường (0 token); có tin mới mới báo chủ máy + nhờ AI đọc/soạn
+  const zaloWatch = createZaloWatch({
+    zalo: zaloRef.v, log, endpoint: () => browserHost.ensure('admin', browserProfile),
+    notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : null; },
+    submit: (prompt) => { if (!cfg.engineOrder.includes('claude')) throw new Error('máy này chưa bật Claude'); const id = db.addJob(adminChat(), prompt, 'claude', 'web', 'event'); setImmediate(() => crew.wake()); return id; },
+    jobActive: (id) => { const j = db.getJob(id); return !!j && ['queued', 'running', 'waiting'].includes(j.status); },
+  });
+  zaloWatch.start();
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();

@@ -21,7 +21,7 @@ const DANGER_ARG = { capnhat: [/^(co|xacnhan|ok|tudong\b.*)/i, 'Cập nhật ph�
   chiphi: [/^tran\b/i, 'Đổi trần chi phí AI'], nhaman: [/./, 'Đổi quyền màn hình'],
   vps: [/^(them|xoa|del)\b|^(chay|run)\s+\S+\s+[\s\S]*(\brm\b|\bdd\b|mkfs|\bdrop\b|\btruncate\b|\bdelete\b|\bkill|shutdown|reboot|\bhalt\b|poweroff|\bsudo\b|chmod\s+-R|chown\s+-R|systemctl\s+(stop|disable|mask)|pm2\s+(delete|kill|stop)|>\s*\/|git\s+(reset|clean|push))/i, 'Thêm/xóa VPS hoặc chạy lệnh có thể XÓA/SỬA/DỪNG dịch vụ trên VPS'],
   taikhoan: [/^(them|add|xoa|del|rm)\b/i, 'Lưu/xóa tài khoản + mật khẩu trang web (mật khẩu không nên đi qua AI)'],
-  zalo: [/^gui\b/i, 'GỬI tin Zalo trực tiếp (bỏ qua chế độ nháp)'] };
+  zalo: [/^(gui|canh)\b/i, 'GỬI tin Zalo trực tiếp (bỏ qua chế độ nháp) / bật-tắt tự canh Zalo'] };
 
 // text: "/doanhso hôm nay". Trả { ok:true, name, arg, level, why, text } hoặc { ok:false, error }
 function classify(text) {
@@ -33,7 +33,7 @@ function classify(text) {
   if (DANGER[name]) return { ok: true, name, arg, level: 'danger', why: DANGER[name], text: '/' + name + (arg ? ' ' + arg : '') };
   if (DANGER_ARG[name] && DANGER_ARG[name][0].test(arg)) return { ok: true, name, arg, level: 'danger', why: DANGER_ARG[name][1], text: '/' + name + (arg ? ' ' + arg : '') };
   if (name === 'capnhat') return { ok: true, name, arg, level: 'safe', why: '', text: '/capnhat' + (arg ? ' ' + arg : '') };                // chỉ xem có bản mới không
-  if (name === 'zalo' && /^duyet\b/i.test(arg)) return { ok: true, name, arg, level: 'safe', why: '', text: '/zalo ' + arg };     // xin phiếu gửi: hạn mức/khung giờ/nháp do zalo.js kiểm bằng mã, không cần hỏi lại
+  if (name === 'zalo' && /^(duyet|traloi)\b/i.test(arg)) return { ok: true, name, arg, level: 'safe', why: '', text: '/zalo ' + arg };     // xin phiếu gửi: hạn mức/khung giờ/nháp do zalo.js kiểm bằng mã, không cần hỏi lại
   if (SAFE.has(name)) return { ok: true, name, arg, level: 'safe', why: '', text: '/' + name + (arg ? ' ' + arg : '') };
   if (NORMAL.has(name)) return { ok: true, name, arg, level: 'normal', why: '', text: '/' + name + (arg ? ' ' + arg : '') };
   return { ok: false, error: 'Không có lệnh "/' + name + '". Dùng bot_help để xem danh sách; bộ công cụ có sẵn (/nghiencuu, /ve, /taodoc, /web...) thì giao việc bình thường, không qua công cụ này.' };

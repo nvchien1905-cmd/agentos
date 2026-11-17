@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.6",
-  "file": "agentos-update-2026.11.18.6.tar.gz",
-  "size": 650249,
-  "sha256": "b2c953fe6aab2217cc4fd440312fabae5b19f7b72e30ee95a38c3aff98ee16c2",
+  "version": "2026.11.18.7",
+  "file": "agentos-update-2026.11.18.7.tar.gz",
+  "size": 656247,
+  "sha256": "dc78a0b24860dddfce123fe99a57fb0eabb6c216df20ed15e41e3e6022d681df",
   "date": "2026-11-17",
-  "notes": "Sửa lỗi cập nhật không khởi động lại Cài đặt; nút Đăng nhập lâu dài (1 năm) dùng được ngay sau cập nhật"
+  "notes": "Tự canh tin Zalo mới (không tốn token): /zalo canh bat"
 }

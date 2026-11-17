@@ -167,7 +167,7 @@ function decide(ctx) {
 // ---- HÀNG RÀO cho chế độ TOÀN QUYỀN: AI vẫn tự làm mọi việc, riêng ba nhóm sau không tự làm được:
 //  1. CẤM CỨNG: đọc khóa/token/biến môi trường (chứa API key) và cấu hình bí mật của AgentOS.
 //  2. HỎI CHỦ MÁY (nút bấm trên Telegram): gửi thông tin/tin nhắn ra ngoài (email, Telegram/Zalo/Slack API, POST/upload, scp/rsync, git push...).
-//  3. HỎI CHỦ MÁY: việc dính tiền (ngân hàng, thanh toán, ví điện tử, tiền mã hóa, "chuyển khoản").
+//  3. (MẶC ĐỊNH TẮT từ 2026.11.18) việc dính tiền (ngân hàng, thanh toán, ví điện tử, "chuyển khoản"): chỉ HỎI chủ máy khi đặt GUARD_MONEY=ask trong orchestrator.env. Lý do: chữ "thanh toán" xuất hiện trong báo cáo/lệnh bình thường (KiotViet, sổ quỹ) nên bot cứ xin duyệt oan.
 // Đây là "hàng rào chặn thói quen xấu và chặn bị lừa qua nội dung web/email", KHÔNG phải bức tường tuyệt đối: AI đã có sudo nên người cố tình vẫn vòng được.
 const GUARD_DENY_CMD = [
   [/\b(printenv|export\s+-p|declare\s+-x|compgen\s+-e)\b|(^|[;&|(]\s*)env\s*($|[|;&>)])|\/proc\/[^\s]*\/environ/, 'đọc biến môi trường (chứa khóa API)'],
@@ -184,6 +184,7 @@ const GUARD_SEND_CMD = [
 const CONNECTOR_SIDE_EFFECT = new Set(['send', 'post', 'reply', 'forward', 'publish', 'create', 'update', 'delete', 'remove', 'trash', 'move', 'upload', 'share', 'write', 'append', 'insert', 'modify', 'patch', 'invite', 'cancel', 'import', 'label', 'archive', 'add', 'set', 'edit', 'rename', 'duplicate', 'copy', 'draft', 'comment', 'notify', 'run', 'execute', 'trigger', 'schedule', 'book', 'pay', 'transfer', 'put', 'clear', 'empty', 'unsubscribe', 'mark']);
 const MONEY_RE =/(vietcombank|vcbdigibank|techcombank|bidv|vietinbank|mbbank|tpbank|vpbank|sacombank|agribank|hdbank|ocb\.com|momo\.vn|zalopay|vnpay|paypal|stripe\.com|payoneer|binance|coinbase|e-?banking|internet banking|chuyển khoản|chuyen khoan|chuyển tiền|chuyen tien|thanh toán|thanh toan|wire transfer)/i;
 
+const moneyAsk = () => String(process.env.GUARD_MONEY || '').toLowerCase() === 'ask';
 function decideGuard(ctx) {
   const tool = ctx.tool, input = ctx.input || {};
   const cls = classify(tool, input);
@@ -196,7 +197,7 @@ function decideGuard(ctx) {
     if (SECRET_RE.test(cmd)) return deny('lệnh đụng vào file chứa khóa/token/dữ liệu hệ thống');
     for (const [re, why] of GUARD_DENY_CMD) if (re.test(cmd)) return deny('không được ' + why);
     for (const [re, why] of GUARD_SEND_CMD) if (re.test(cmd)) return ask('Việc nhạy cảm: ' + why + '. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
-    if (MONEY_RE.test(cmd)) return ask('Việc dính tới tiền (ngân hàng/thanh toán/chuyển khoản). Chỉ cho phép nếu chính anh yêu cầu.');
+    if (moneyAsk() && MONEY_RE.test(cmd)) return ask('Việc dính tới tiền (ngân hàng/thanh toán/chuyển khoản). Chỉ cho phép nếu chính anh yêu cầu.');
   }
   // Kết nối dịch vụ (connectors.js, máy chủ MCP "c_<mã>"): công cụ có tác dụng GHI/GỬI/XÓA ra dịch vụ bên ngoài luôn hỏi chủ máy; công cụ chỉ đọc/tìm thì để qua
   const conn = /^mcp__c_([a-z0-9]+)__(.+)$/.exec(tool);
@@ -205,7 +206,7 @@ function decideGuard(ctx) {
     const hit = words.find((w) => CONNECTOR_SIDE_EFFECT.has(w));
     if (hit) return ask('Kết nối "' + conn[1] + '" muốn làm việc có tác dụng ra ngoài: ' + conn[2] + '. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
   }
-  if (input.url !== undefined && (cls === 'browse' || cls === 'interact' || cls === 'other') && MONEY_RE.test(String(input.url))) return ask('Trang ngân hàng/thanh toán: thao tác ở đây có thể liên quan tới tiền. Chỉ cho phép nếu chính anh yêu cầu.');
+  if (moneyAsk() && input.url !== undefined && (cls === 'browse' || cls === 'interact' || cls === 'other') && MONEY_RE.test(String(input.url))) return ask('Trang ngân hàng/thanh toán: thao tác ở đây có thể liên quan tới tiền. Chỉ cho phép nếu chính anh yêu cầu.');
   return out;
 }
 

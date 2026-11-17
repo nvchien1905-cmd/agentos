@@ -50,7 +50,7 @@ function helpText(profiles) {
     '-----\n' +
     '/nhatky [tuan] - nhật ký các lần AI xin dùng công cụ và các lệnh điều khiển máy anh đã gõ; /nhatky tuan = báo cáo 7 ngày (ai nhắn, AI làm gì, bị từ chối gì); xem chi tiết trên Cài đặt → Nhật ký\n' +
     '/tuchan [nhanh|ai] - tự chẩn đoán cả máy (bot, AI, đăng nhập, ổ đĩa, màn hình, mạng...) và báo chỗ nào hỏng · /menu - MENU NÚT BẤM (khỏi nhớ lệnh) · /google - kết nối và hỏi nhanh Lịch/Gmail · /daily - quản lý agent (bot Telegram phụ chạy độc lập) · /phancung - kiểm tra phần cứng máy (RAM, ổ đĩa, card mạng/Wi-Fi, đồ họa, firmware) và chỉ cách xử lý · /log [số dòng] - xem nhật ký bộ điều phối (đã che khóa)\n' +
-    '/hangrao [bat|tat] - hàng rào cho AI toàn quyền (cấm đọc khóa, hỏi trước khi gửi ra ngoài/dính tiền)\n' +
+    '/hangrao [bat|tat] - hàng rào cho AI toàn quyền (cấm đọc khóa, hỏi trước khi gửi ra ngoài; việc dính tiền mặc định không hỏi)\n' +
     '/nen <việc> - giao việc NỀN chạy song song (không chờ hàng đợi), xong báo riêng · /tieptuc [số việc] - làm tiếp việc bị ngắt/lỗi · /sukien - AI tự làm khi có hóa đơn mới, hàng sắp hết, hoặc webhook\n' +
     '/vaitro - phân vai cho nhân viên/kế toán (chỉ chủ máy); họ nhắn bot được nhưng việc luôn ở chế độ bảo vệ\n' +
     '/dung - NÚT DỪNG KHẨN CẤP: hủy mọi việc và ngắt điều khiển từ xa ngay\n' +

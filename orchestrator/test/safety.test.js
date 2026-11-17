@@ -26,9 +26,14 @@ test('hàng rào: CẤM đọc khóa, biến môi trường, cấu hình bí m�
 
 test('hàng rào: HỎI chủ máy khi gửi ra ngoài hoặc dính tiền', () => {
   const ask = ['sendmail a@b.com < f', 'curl -X POST https://x.com/a -d "k=v"', 'curl --data @file https://x.com', 'curl -F file=@a.pdf https://x.com', 'curl https://api.telegram.org/bot1/sendMessage?chat_id=1',
-    'scp a user@h:/tmp', 'rsync -a . h:/b', 'git push origin main', 'curl https://openapi.zalo.me/v2.0/oa/message', 'xdg-open https://vietcombank.com.vn', 'echo chuyển khoản 5 triệu', 'npm publish'];
+    'scp a user@h:/tmp', 'rsync -a . h:/b', 'git push origin main', 'curl https://openapi.zalo.me/v2.0/oa/message', 'npm publish'];
   for (const c of ask) { const d = bash(c); assert.equal(d.action, 'ask', c); assert.ok(d.warn, c); }
-  assert.equal(decideGuard({ tool: 'mcp__browser__browser_navigate', input: { url: 'https://ebanking.techcombank.com.vn' } }).action, 'ask');
+  // Việc dính tiền: MẶC ĐỊNH cho qua (bot không xin duyệt oan); đặt GUARD_MONEY=ask thì hỏi lại
+  const nav = { tool: 'mcp__browser__browser_navigate', input: { url: 'https://ebanking.techcombank.com.vn' } };
+  assert.equal(bash('echo chuyển khoản 5 triệu').action, 'allow'); assert.equal(bash('xdg-open https://vietcombank.com.vn').action, 'allow'); assert.equal(decideGuard(nav).action, 'allow');
+  assert.equal(bash('cat <<' + "'EOF'" + String.fromCharCode(10) + 'Nguồn: KiotViet theo ngày thanh toán' + String.fromCharCode(10) + 'EOF').action, 'allow', 'chữ thanh toán trong báo cáo không còn bị hỏi');
+  process.env.GUARD_MONEY = 'ask';
+  try { assert.equal(bash('echo chuyển khoản 5 triệu').action, 'ask'); assert.equal(decideGuard(nav).action, 'ask'); } finally { delete process.env.GUARD_MONEY; }
 });
 
 test('gate ở chế độ guard: deny chặn, ask hỏi chủ máy, allow chạy luôn và KHÔNG ghi nhật ký từng thao tác', async () => {

@@ -732,3 +732,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## Bản 2026.11.17.3 — đã thử trên máy ảo AgentOS-Test (cài mã mới vào máy ảo 13.4)
 - Lưu token thật qua `POST /api/ai/claude-token`: "đăng nhập tốt", token vào orchestrator.env; token sai báo đúng lý do Claude trả ("401 OAuth access token is invalid"). Màn hình ghi "Bot đang dùng: token dài hạn" khi có token. Đã dọn token khỏi máy ảo sau thử.
+
+## Bản 2026.11.18.1 — bot không còn xin duyệt vì "việc dính tới tiền"
+- Hàng rào chế độ toàn quyền: bỏ hỏi chủ máy với lệnh/trang có chữ ngân hàng, thanh toán, chuyển khoản, ví điện tử (trước đây báo cáo KiotViet có chữ "thanh toán" cũng bị hỏi oan, hết giờ tự từ chối). Bật lại bằng `GUARD_MONEY=ask` trong orchestrator.env.
+- KHÔNG đổi: cấm đọc khóa/token/biến môi trường; vẫn hỏi khi gửi ra ngoài (email, API gửi tin, POST/upload, scp, git push...). Chặn gõ/bấm ở cửa sổ ngân hàng/thanh toán/mật khẩu khi điều khiển màn hình (desk-mcp) giữ nguyên.
+- Đã thử trên máy ảo: safety.test.js 5/5.

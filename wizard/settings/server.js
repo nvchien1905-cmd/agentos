@@ -131,7 +131,7 @@ function createSettings(o) {
   const kvSyncAgents = async (ids) => { const warn = []; for (const id of [...new Set(ids)]) { if (id === 'main') continue; try { await botsLib().update({ id }); } catch (e) { warn.push(id + ': ' + String(e.message || e).slice(0, 160)); } } return warn; };
   // DÙNG CHUNG AI CHO MỌI BOT: chủ máy đăng nhập/đăng xuất AI hoặc dán khóa ở đây → bot phụ nhận theo (agentctl 'sync'); thêm vòng 3 phút để bắt cả đăng nhập qua điện thoại và token tự làm mới
   const aiSyncOn = o.aiSync !== undefined ? o.aiSync : !o.homeDir;
-  const AI_SYNC_PATHS = /^(POST \/api\/ai\/(key|key\/clear|login|login\/phone|logout|order|claude-only|install)|GET \/api\/ai\/login\/state)$/;
+  const AI_SYNC_PATHS = /^(POST \/api\/ai\/(key|key\/clear|claude-token|login|login\/phone|logout|order|claude-only|install)|GET \/api\/ai\/login\/state)$/;
   let aiSyncTimer = null, aiSyncBusy = false, aiSyncAgain = false;
   const runAiSync = async () => {
     if (aiSyncBusy) { aiSyncAgain = true; return; }
@@ -448,7 +448,7 @@ function createSettings(o) {
       for (const e of (claudeOnly ? apikeys.ENGINES.filter((x) => x === 'claude') : apikeys.ENGINES)) {
         const ver = await engines.installed(run, e).catch(() => null);
         const lg = engineLogin(e, text);
-        out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, installed: ver, enabled: order.includes(e), login: lg, using: keys[e] ? 'key' : (lg.loggedIn ? 'account' : 'none') });
+        out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, longToken: e === 'claude' && envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN') ? mask.secret(envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN')) : null, installed: ver, enabled: order.includes(e), login: lg, using: keys[e] ? 'key' : (lg.loggedIn ? 'account' : 'none') });
       }
       return { engines: out, order: claudeOnly ? ['claude'] : order, claudeOnly, configured: readEnv() != null };
     },
@@ -473,6 +473,19 @@ function createSettings(o) {
       saveEnv(apikeys.applyToEnv(needEnv(), eng, null));
       await restart('agentos-orchestrator');
       return { cleared: true };
+    },
+    // TOKEN DÀI HẠN CỦA CLAUDE (lấy bằng `claude setup-token` ở máy bất kỳ, hiệu lực 1 năm): MỘT token dùng chung cho MỌI bot, KHÔNG phải làm mới
+    // → hết lỗi "Not logged in" do các bot giẫm chân nhau khi làm mới phiên đăng nhập. Có token này, bot phụ không giữ bản sao phiên đăng nhập nữa (agentctl.syncCreds).
+    async 'POST /api/ai/claude-token'(b) {
+      const token = String(b.token || '').replace(/\s+/g, '');                  // dán từ cửa sổ dòng lệnh hay dính xuống dòng/dấu cách
+      if (!/^sk-ant-oat\d*-[A-Za-z0-9_-]{20,}$/.test(token)) throw new Error('Đây không phải token dài hạn của Claude (dạng sk-ant-oat01-…). Chạy lệnh  claude setup-token  rồi sao chép nguyên chuỗi token.');
+      const text = needEnv();
+      if (!(await engines.installed(run, 'claude').catch(() => null))) throw new Error('Chưa cài phần mềm Claude: bấm "Cài phần mềm" trước.');
+      const v = await engines.verifyLogin(run, 'claude', { CLAUDE_CODE_OAUTH_TOKEN: token });
+      if (!v.ok) throw new Error('Token không dùng được (' + v.detail + '). Chạy lại  claude setup-token  và dán lại, nhớ dán đủ cả chuỗi.');
+      saveEnv(setEnvLine(text, 'CLAUDE_CODE_OAUTH_TOKEN', token));
+      await restart('agentos-orchestrator');
+      return { saved: true, detail: v.detail, masked: mask.secret(token) };
     },
     async 'POST /api/ai/install'(b) {
       const eng = String(b.engine);

@@ -138,6 +138,29 @@ test('token Claude: so GIỜ HẾT HẠN, không so giờ sửa tệp (bản là
   for (const f of [ms, a1, a2]) assert.match(fs.readFileSync(f, 'utf8'), /MAIN-NEWER/);
 });
 
+test('TOKEN DÀI HẠN Claude: mọi bot nhận cùng token qua cấu hình, bot phụ KHÔNG giữ bản sao phiên đăng nhập (hết giẫm chân khi làm mới); gỡ token thì chia lại như cũ', async () => {
+  const LT = 'sk-ant-oat01-' + 'Zz9_'.repeat(10);
+  const w = world(); w.loginClaude();
+  await w.create('a1'); await w.create('a2');
+  const a1 = w.p.homes + '/a1/.claude/.credentials.json', a2 = w.p.homes + '/a2/.claude/.credentials.json', ms = w.p.mainHome + '/.claude/.credentials.json';
+  assert.ok(fs.existsSync(a1) && fs.existsSync(a2), 'chưa có token dài hạn: vẫn chia bản sao như cũ');
+  // chủ máy dán token dài hạn ở Cài đặt; bot phụ đang giữ bản sao (một bản đã "làm mới" muộn hơn) → phải bị thu, KHÔNG chép ngược về bot quản lý
+  fs.writeFileSync(a1, JSON.stringify({ claudeAiOauth: { accessToken: 'A1-NEWER', expiresAt: 99999999999999 } }));
+  w.setEnv(['ENGINE_ORDER=claude', 'CLAUDE_CODE_OAUTH_TOKEN=' + LT]);
+  const r = await w.sync(); assert.equal(r.ok, true, r.msg);
+  for (const id of ['a1', 'a2']) {
+    assert.match(w.agentEnv(id), new RegExp('^CLAUDE_CODE_OAUTH_TOKEN=' + LT + '$', 'm'), id + ' nhận token dài hạn');
+    assert.equal(fs.existsSync(w.p.homes + '/' + id + '/.claude/.credentials.json'), false, id + ' không còn bản sao phiên đăng nhập');
+    assert.equal(JSON.parse(fs.readFileSync(w.p.homes + '/' + id + '/.claude.json', 'utf8')).oauthAccount, undefined);
+  }
+  assert.doesNotMatch(fs.readFileSync(ms, 'utf8'), /A1-NEWER/, 'không chép ngược bản của bot phụ về bot quản lý');
+  assert.match(fs.readFileSync(ms, 'utf8'), /AT1/);
+  // gỡ token dài hạn → quay về chia phiên đăng nhập của bot quản lý
+  w.setEnv(['ENGINE_ORDER=claude']);
+  await w.sync();
+  assert.match(fs.readFileSync(a1, 'utf8'), /AT1/); assert.doesNotMatch(w.agentEnv('a1'), /CLAUDE_CODE_OAUTH_TOKEN/);
+});
+
 test('kho tài khoản web: bot quản lý lưu → mọi bot phụ nhận bản sao (tệp + khóa, 0600); bot quản lý xóa kho → bot phụ bị rút', async () => {
   const w = world(); w.loginClaude();
   await w.create('a1'); await w.create('a2');

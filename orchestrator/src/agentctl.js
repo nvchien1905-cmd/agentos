@@ -372,8 +372,11 @@ function createAgentCtl(deps) {
     let changed = false;
     const put = (src, dst) => { F.mkdirSync(path.dirname(dst), { recursive: true }); if (!same(src, dst)) { F.copyFileSync(src, dst); try { F.chmodSync(dst, 0o600); } catch (e) { /* bỏ qua */ } changed = true; } };
     const drop = (dst) => { if (F.existsSync(dst)) { F.rmSync(dst, { force: true }); changed = true; } };
+    // Chủ máy đã dán TOKEN DÀI HẠN (claude setup-token): mọi bot dùng chung token đó qua biến CLAUDE_CODE_OAUTH_TOKEN, không làm mới → bot phụ KHÔNG giữ bản sao phiên đăng nhập nữa
+    // (nhiều bot cùng làm mới một phiên đăng nhập sẽ làm cái này vô hiệu cái kia → "Not logged in").
+    const longTok = !!(m && m.CLAUDE_CODE_OAUTH_TOKEN);
     for (const engine of ['claude', 'codex', 'gemini']) {
-      const has = (CRED[engine] || []).some((l) => F.existsSync(P.mainHome + '/' + l[0]));
+      const has = !(engine === 'claude' && longTok) && (CRED[engine] || []).some((l) => F.existsSync(P.mainHome + '/' + l[0]));
       for (const [rel] of CRED[engine]) {
         const ms = P.mainHome + '/' + rel, as = home + '/' + rel;
         if (!has || !F.existsSync(ms)) { drop(as); continue; }
@@ -385,7 +388,7 @@ function createAgentCtl(deps) {
     // Claude: thông tin tài khoản (oauthAccount) nằm trong ~/.claude.json — chỉ chép phần đó, giữ nguyên phần còn lại của bot
     const mcj = readJson(P.mainHome + '/.claude.json'), acj = home + '/.claude.json';
     const cur = readJson(acj) || {};
-    const wantAcc = F.existsSync(P.mainHome + '/.claude/.credentials.json') && mcj && mcj.oauthAccount ? mcj.oauthAccount : null;
+    const wantAcc = !longTok && F.existsSync(P.mainHome + '/.claude/.credentials.json') && mcj && mcj.oauthAccount ? mcj.oauthAccount : null;
     if (wantAcc && JSON.stringify(cur.oauthAccount) !== JSON.stringify(wantAcc)) { cur.oauthAccount = wantAcc; writeSecure(acj, JSON.stringify(cur, null, 2), 0o600); changed = true; }
     else if (!wantAcc && cur.oauthAccount) { delete cur.oauthAccount; writeSecure(acj, JSON.stringify(cur, null, 2), 0o600); changed = true; }
     return changed;
@@ -424,6 +427,7 @@ function createAgentCtl(deps) {
     // Bước 1: gom bản token MỚI NHẤT (của bất kỳ bot nào, cùng tài khoản) về bot quản lý TRƯỚC khi chia lại — tránh chép bản cũ đè lên bản vừa làm mới
     for (const id of ids) {
       for (const engine of ['claude', 'codex']) {
+        if (engine === 'claude' && plan.main.CLAUDE_CODE_OAUTH_TOKEN) continue;          // dùng token dài hạn: không còn bản sao để gom
         const rel = CRED[engine][0][0], ms = P.mainHome + '/' + rel, as = P.homes + '/' + id + '/' + rel;
         if (F.existsSync(ms) && F.existsSync(as) && newerCred(engine, as, ms) && !same(as, ms) && sameAccount(engine, P.homes + '/' + id)) { try { F.copyFileSync(as, ms); } catch (e) { /* bỏ qua */ } }
       }
@@ -437,7 +441,7 @@ function createAgentCtl(deps) {
       const credChanged = syncCreds(id, plan);
       if (credChanged) { try { await sh('chown', ['-R', userName(id) + ':' + userName(id), P.homes + '/' + id]); } catch (e) { /* bỏ qua */ } }
       const env = withPaths(() => envText(id, meta, token, mainText, plan));
-      const keep = env.shared ? '' : oldEnv.split(/\r?\n/).filter((l) => SHARED_KEYS.test(l)).join('\n');
+      const keep = (env.shared || mainText.trim()) ? '' : oldEnv.split(/\r?\n/).filter((l) => SHARED_KEYS.test(l)).join('\n');
       const text = env.text + (keep ? keep + '\n' : '');
       const envChanged = text !== oldEnv;
       if (envChanged) writeSecure(envFile, text, 0o600);

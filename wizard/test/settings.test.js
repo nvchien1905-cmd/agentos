@@ -149,6 +149,28 @@ test('settings: khóa API — kiểm với hãng, lưu vào orchestrator.env (kh
   } finally { await S.s.close(); }
 });
 
+test('settings: token dài hạn Claude — kiểm dạng + thử thật, lưu vào env (không lộ), token hỏng bị từ chối', async () => {
+  const TOK = 'sk-ant-oat01-' + 'Ab9_'.repeat(10);
+  let seenEnv = null; const seen = [];
+  const S = await boot({ run: async (cmd, args, opts) => {
+    seen.push([cmd].concat(args));
+    if (cmd === 'runuser' && args.join(' ').includes('--version')) return { code: 0, out: '2.1.0\n', err: '' };
+    if (cmd === 'runuser' && args.join(' ').includes('--max-turns')) { seenEnv = opts && opts.env; return (opts.env.CLAUDE_CODE_OAUTH_TOKEN || '').includes('HONG') ? { code: 1, out: '', err: 'Not logged in · Please run /login' } : { code: 0, out: '{"result":"OK"}', err: '' }; }
+    return { code: 0, out: '', err: '' };
+  } });
+  try {
+    assert.equal((await S.call('POST', 'ai/claude-token', { token: 'khong-phai-token' })).status, 400);
+    assert.doesNotMatch(S.env(), /CLAUDE_CODE_OAUTH_TOKEN/);
+    const bad = await S.call('POST', 'ai/claude-token', { token: 'sk-ant-oat01-HONG' + 'x'.repeat(30) });
+    assert.equal(bad.status, 400); assert.match(bad.body.error, /Token không dùng được/); assert.doesNotMatch(S.env(), /CLAUDE_CODE_OAUTH_TOKEN/);
+    const ok = await S.call('POST', 'ai/claude-token', { token: TOK.slice(0, 20) + '\n  ' + TOK.slice(20) });      // dán bị xuống dòng/dấu cách vẫn nhận
+    assert.equal(ok.status, 200); assert.equal(seenEnv.CLAUDE_CODE_OAUTH_TOKEN, TOK);
+    assert.match(S.env(), new RegExp('^CLAUDE_CODE_OAUTH_TOKEN=' + TOK + '$', 'm'));
+    assert.ok(seen.some((c) => c[0] === 'systemctl' && c[1] === 'restart' && c[2] === 'agentos-orchestrator.service'));
+    const ai = await S.call('GET', 'ai'); assert.ok(ai.body.engines.find((x) => x.id === 'claude').longToken); assert.doesNotMatch(JSON.stringify(ai.body), new RegExp(TOK));
+  } finally { await S.s.close(); }
+});
+
 test('settings: bot Telegram — đổi token (kiểm getMe), ID chủ máy, chế độ bảo vệ/toàn quyền; chưa cấu hình thì báo rõ', async () => {
   const S = await boot();
   try {

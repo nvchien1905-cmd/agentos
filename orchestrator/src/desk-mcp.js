@@ -7,15 +7,15 @@
 // Vòng "nhìn → nghĩ → làm": mỗi thao tác trả kèm ảnh chụp mới (trừ khi screenshot=false) để AI thấy kết quả ngay và bước tiếp.
 // Hàng rào (ngoài cổng duyệt của bộ điều phối, policy.js: thao tác hỏi chủ máy, "cho phép cả việc này" thì cho cả nhóm):
 //   - tối đa DESK_MAX_ACTIONS thao tác mỗi lần chạy (mặc định 80), hết thì dừng và báo;
-//   - KHÔNG gõ/bấm/phím khi cửa sổ đang chọn là trang đăng nhập, mật khẩu, mã xác minh, hoặc màn hình/ứng dụng của ĐIỆN THOẠI (chủ máy tự làm);
-//   - KHÔNG tự gửi tin nhắn: phím Enter / nút "Gửi" bị chặn khi cửa sổ đang chọn là Zalo, Messenger, Telegram, Gmail... (mở và đọc thì được).
+//   - KHÔNG gõ/bấm/phím khi cửa sổ đang chọn là màn hình/ứng dụng của ĐIỆN THOẠI hoặc đang hiện CAPTCHA (chủ máy tự làm);
+//   - Tự gõ và bấm Gửi trong Zalo/Gmail/Messenger... ĐƯỢC PHÉP (chủ máy chốt 2026.11.18). Riêng khi TRỢ LÝ ZALO đang bật thì giữ quy trình phiếu gửi của trợ lý.
 const fs = require('fs');
 const { createDeskClient } = require('./desk');
 const { PHONE_WIN_RE } = require('./policy');
 const zalo = require('./zalo');
 const ZALO_RE = /zalo/i;
 
-const SENSITIVE_RE = /mật khẩu|mat khau|password|passcode|đăng nhập|dang nhap|sign.?in|log.?in|xác minh|xac minh|captcha|otp|2fa|two.factor/i;   // ngân hàng/thanh toán KHÔNG còn bị chặn (từ 2026.11.18: trên máy tính không chuyển tiền được vì cần OTP trên điện thoại)
+const SENSITIVE_RE = /captcha|i.?m not a robot|recaptcha|hcaptcha/i;   // chỉ còn CAPTCHA (máy không giải được). Ngân hàng/thanh toán/đăng nhập/mật khẩu/OTP KHÔNG còn bị chặn (chủ máy chốt 2026.11.18)
 const CHAT_RE = /zalo|messenger|telegram|whatsapp|viber|skype|gmail|outlook|thunderbird|mail|thư điện tử|slack|discord|facebook|instagram/i;
 const SEND_KEY_RE = /^(return|kp_enter|enter|ctrl\+(return|enter))$/i;
 const SEND_TEXT_RE = /^(gửi|gui|send|đăng|dang|post|chuyển|chuyen)$/i;
@@ -30,7 +30,7 @@ const TOOLS = [
   { name: 'screen_find', description: 'Tìm chữ trên màn hình (OCR), trả toạ độ giữa của từng chỗ thấy. Dùng để bấm đúng nút/menu theo tên thay vì đoán toạ độ.', inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } },
   { name: 'screen_click', description: 'Bấm chuột tại toạ độ (x, y) trên màn hình. button: 1 trái, 2 giữa, 3 phải.', inputSchema: { type: 'object', properties: { x: num, y: num, button: num, double: { type: 'boolean' }, screenshot: shot }, required: ['x', 'y'] } },
   { name: 'screen_click_text', description: 'Bấm vào chữ thấy trên màn hình (OCR), chỗ thứ nth (mặc định 1). Chính xác hơn đoán toạ độ.', inputSchema: { type: 'object', properties: { text: { type: 'string' }, nth: num, double: { type: 'boolean' }, screenshot: shot }, required: ['text'] } },
-  { name: 'screen_type', description: 'Gõ chữ vào ô đang chọn (tối đa 2000 ký tự). Không gõ mật khẩu.', inputSchema: { type: 'object', properties: { text: { type: 'string' }, screenshot: shot }, required: ['text'] } },
+  { name: 'screen_type', description: 'Gõ chữ vào ô đang chọn (tối đa 2000 ký tự). Được gõ mật khẩu/mã OTP mà chủ máy đã đưa.', inputSchema: { type: 'object', properties: { text: { type: 'string' }, screenshot: shot }, required: ['text'] } },
   { name: 'screen_key', description: 'Nhấn phím hoặc tổ hợp phím, theo tên xdotool: Return, Tab, Escape, ctrl+c, ctrl+v, alt+Tab, Page_Down...', inputSchema: { type: 'object', properties: { key: { type: 'string' }, screenshot: shot }, required: ['key'] } },
   { name: 'screen_scroll', description: 'Cuộn chuột: direction up|down|left|right, amount số nấc (mặc định 3), tại (x, y) nếu có.', inputSchema: { type: 'object', properties: { direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] }, amount: num, x: num, y: num, screenshot: shot }, required: ['direction'] } },
   { name: 'screen_drag', description: 'Kéo thả từ (x1, y1) tới (x2, y2).', inputSchema: { type: 'object', properties: { x1: num, y1: num, x2: num, y2: num, screenshot: shot }, required: ['x1', 'y1', 'x2', 'y2'] } },
@@ -78,7 +78,7 @@ function createHandler(deps) {
   async function act(name, a) {
     const title = await activeTitle();
     if (PHONE_WIN_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là màn hình/ứng dụng của ĐIỆN THOẠI. Bot không được lấy thông tin hay điều khiển điện thoại — chủ máy tự làm.');
-    if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là trang đăng nhập/mật khẩu/mã xác minh. Không được gõ hay bấm ở đây — hãy báo chủ máy tự làm bước này, rồi dừng.');
+    if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") đang hiện CAPTCHA (xác minh "không phải robot"). Máy không giải được — hãy báo chủ máy tự làm bước này, rồi dừng.');
     const zaloOn = ZALO_RE.test(title) && zalo.isEnabled(zaloFile);
     if (zaloOn) {
       // Trợ lý Zalo ĐANG BẬT (chủ máy cho phép): Enter / nút Gửi chỉ được khi có PHIẾU gửi (bot_command "/zalo duyet <nơi nhận> | <nội dung>"), phiếu dùng đúng 1 lần
@@ -87,10 +87,6 @@ function createHandler(deps) {
         const g = zalo.consumeGrant(zaloFile, (deps.now || Date.now)());
         if (!g.ok) return err('DỪNG: chưa có phiếu gửi Zalo. Gọi công cụ bot_command với "/zalo duyet <người/nhóm nhận> | <nội dung>"; chỉ khi trả lời "ĐƯỢC GỬI" mới nhấn Enter/Gửi (phiếu hết hạn sau 10 phút, dùng 1 lần). Nếu trả lời TỪ CHỐI hoặc CHỜ CHỦ DUYỆT thì không gửi và báo chủ máy.');
       }
-    } else if (CHAT_RE.test(title)) {
-      if (ZALO_RE.test(title) && ((name === 'screen_key' && SEND_KEY_RE.test(String(a.key || '').trim())) || (name === 'screen_click_text' && SEND_TEXT_RE.test(String(a.text || '').trim())))) return err('DỪNG: Zalo là ứng dụng nhắn tin và trợ lý Zalo đang TẮT nên không được tự gửi. Chủ máy bật bằng /zalo bat (có thể nhắn "bật trợ lý Zalo" cho em), hoặc tự bấm Gửi.');
-      if (name === 'screen_key' && SEND_KEY_RE.test(String(a.key || '').trim())) return err('DỪNG: cửa sổ "' + title.slice(0, 80) + '" là ứng dụng nhắn tin/thư. Không tự nhấn Enter (có thể gửi tin). Chỉ được mở và đọc; việc gửi tin để chủ máy tự làm.');
-      if (name === 'screen_click_text' && SEND_TEXT_RE.test(String(a.text || '').trim())) return err('DỪNG: không tự bấm "' + a.text + '" trong ứng dụng nhắn tin/thư. Việc gửi để chủ máy tự làm.');
     }
     let req;
     switch (name) {

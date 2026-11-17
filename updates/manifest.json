@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.2",
-  "file": "agentos-update-2026.11.18.2.tar.gz",
-  "size": 644787,
-  "sha256": "a3df60992ce222409af36bef0cdb8bea95108056f10fc91deed781f122a35284",
+  "version": "2026.11.18.3",
+  "file": "agentos-update-2026.11.18.3.tar.gz",
+  "size": 644701,
+  "sha256": "93ff57a5a56871e8f6e92ad1eb55ce4e4d5c86b36f9f467146fdbd59dc819b61",
   "date": "2026-11-17",
-  "notes": "Chỉ chặn điện thoại, ngân hàng làm thoải mái, xóa thì hỏi"
+  "notes": "Bot được dùng mật khẩu/OTP chủ máy đưa và tự bấm Gửi; chỉ dừng ở điện thoại và CAPTCHA"
 }

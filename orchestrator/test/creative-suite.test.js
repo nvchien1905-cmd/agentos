@@ -309,25 +309,21 @@ test('màn hình: thao tác gửi đúng lệnh tới trợ lý màn hình rồi
   const f = mkHandler(fakeDesk({ fail: 'Không có ai đăng nhập' })); r = await f('screen_click', { x: 1, y: 1 }); assert.equal(r.isError, true); assert.match(r.content[0].text, /Không làm được: Không có ai/);
 });
 
-test('màn hình: CHẶN gõ/bấm ở cửa sổ ngân hàng, thanh toán, đăng nhập, mật khẩu; chặn tự gửi tin nhắn trong Zalo/Gmail/Messenger', async () => {
-  for (const title of ['Đăng nhập - Google Chrome', 'Nhập mật khẩu', 'Sign in to your account', 'Xác minh OTP', 'scrcpy - Pixel 7', 'Phone Link', 'KDE Connect', 'Điện thoại của tôi']) {
+test('màn hình: CHẶN ở cửa sổ điện thoại và CAPTCHA; ngân hàng/thanh toán/đăng nhập/mật khẩu/OTP và bấm Gửi trong Zalo/Gmail/Messenger thì được phép', async () => {
+  for (const title of ['scrcpy - Pixel 7', 'Phone Link', 'KDE Connect', 'Điện thoại của tôi', 'Android Emulator', 'reCAPTCHA - Google Chrome', "I'm not a robot"]) {
     const d = fakeDesk({ active: title }); const call = mkHandler(d);
     const r = await call('screen_type', { text: 'abc' }); assert.equal(r.isError, true, title); assert.match(r.content[0].text, /DỪNG/);
     assert.ok(!d.calls.some((c) => c.cmd === 'type'), 'không được gửi lệnh gõ ở: ' + title);
     assert.equal((await call('screen_click', { x: 1, y: 1 })).isError, true);
   }
-  for (const title of ['Vietcombank - Internet Banking', 'Thanh toán đơn hàng', 'MoMo - Ví điện tử']) {          // ngân hàng/thanh toán trên máy tính: cho làm (không chuyển tiền được nếu không có OTP trên điện thoại)
+  // được phép: ngân hàng, thanh toán, đăng nhập, mật khẩu, OTP (chủ máy chốt 2026.11.18); và gõ + bấm Gửi trong ứng dụng nhắn tin/thư
+  for (const title of ['Vietcombank - Internet Banking', 'Thanh toán đơn hàng', 'MoMo - Ví điện tử', 'Đăng nhập - Google Chrome', 'Nhập mật khẩu', 'Sign in to your account', 'Xác minh OTP', 'Zalo', 'Gmail - Hộp thư đến', 'Messenger', 'Telegram']) {
     const d = fakeDesk({ active: title }); const c2 = mkHandler(d);
-    const r2 = await c2('screen_click', { x: 1, y: 1, screenshot: false }); assert.equal(r2.isError, undefined, title);
+    let r2 = await c2('screen_type', { text: 'abc', screenshot: false }); assert.equal(r2.isError, undefined, 'gõ: ' + title);
+    r2 = await c2('screen_key', { key: 'Return', screenshot: false }); assert.equal(r2.isError, undefined, 'Enter: ' + title);
+    r2 = await c2('screen_click_text', { text: 'Gửi', screenshot: false }); assert.equal(r2.isError, undefined, 'bấm Gửi: ' + title);
+    assert.ok(d.calls.some((c) => c.cmd === 'type') && d.calls.some((c) => c.cmd === 'key'), 'lệnh phải được gửi tới màn hình: ' + title);
   }
-  const z = fakeDesk({ active: 'Zalo' }); const call = mkHandler(z);
-  let r = await call('screen_key', { key: 'Return' }); assert.equal(r.isError, true); assert.match(r.content[0].text, /nhắn tin/);
-  r = await call('screen_key', { key: 'ctrl+Return' }); assert.equal(r.isError, true);
-  r = await call('screen_click_text', { text: 'Gửi' }); assert.equal(r.isError, true);
-  assert.ok(!z.calls.some((c) => c.cmd === 'key' || c.cmd === 'clicktext'));
-  r = await call('screen_key', { key: 'ctrl+f', screenshot: false }); assert.equal(r.isError, undefined);           // phím khác vẫn dùng được: mở và đọc
-  r = await call('screen_type', { text: 'tìm khách A', screenshot: false }); assert.equal(r.isError, undefined);
-  const c = mkHandler(fakeDesk({ active: 'Google Chrome' })); r = await c('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, undefined);   // Enter ở trình duyệt thường: được
 });
 
 test('màn hình: tối đa N thao tác mỗi lần chạy, chỉ XEM thì không tính', async () => {
@@ -369,7 +365,7 @@ test('bộ công cụ có sẵn: nghiencuu, ve, taodoc, dieukhien tự có dù t
   for (const n of ['nghiencuu', 've', 'taodoc', 'dieukhien']) assert.ok(t.profiles[n], n);
   assert.deepEqual(t.servers.desk.args, ['/opt/agentos/orchestrator/src/desk-mcp.js']);
   assert.equal(t.profiles.dieukhien.adminOnly, true); assert.deepEqual(t.profiles.dieukhien.engines, ['claude']); assert.deepEqual(t.profiles.dieukhien.mcp, ['desk']);
-  assert.match(t.profiles.nghiencuu.hint, /Nguồn/); assert.match(t.profiles.dieukhien.hint, /KHÔNG: nhập mật khẩu/);
+  assert.match(t.profiles.nghiencuu.hint, /Nguồn/); assert.match(t.profiles.dieukhien.hint, /ĐƯỢC PHÉP[^]*mật khẩu/); assert.match(t.profiles.dieukhien.hint, /ĐIỆN THOẠI/);
   assert.deepEqual(t.profiles.nghiencuu.engines, ['claude', 'gemini']);
   assert.ok(t.selectable().some((p) => p.name === 'nghiencuu'));
   const f = path.join(tmp(), 't.json'); fs.writeFileSync(f, JSON.stringify({ servers: {}, profiles: { chung: { allow: ['Read'] }, nghiencuu: { description: 'riêng', allow: ['Read'], hint: 'HINT RIÊNG' } }, default: 'chung' }));

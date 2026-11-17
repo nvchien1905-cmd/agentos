@@ -78,10 +78,10 @@ test('zalo: chủ máy ra lệnh /zalo gui — bỏ qua chế độ nháp và kh
   assert.match(z.command('gui thiếu dấu'), /Cách dùng/);
 });
 
-test('zalo: màn hình — Zalo TẮT: Enter/Gửi bị chặn; BẬT: cần phiếu, mỗi phiếu dùng đúng 1 lần, hết hạn thì không dùng được', async () => {
+test('zalo: màn hình — Zalo TẮT: Enter/Gửi được phép (chủ máy chốt 2026.11.18); BẬT: cần phiếu, mỗi phiếu dùng đúng 1 lần, hết hạn thì không dùng được', async () => {
   const { z, file, adv } = mk();
   const off = mkDesk(fakeDesk('Zalo'), file);
-  let r = await off('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, true); assert.match(r.content[0].text, /TẮT/);
+  let r = await off('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, undefined);          // trợ lý Zalo tắt: AI tự bấm Gửi được
   z.command('bat'); z.command('tudong');
   const d = fakeDesk('Zalo - Google Chrome'); const on = mkDesk(d, file);
   r = await on('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, true); assert.match(r.content[0].text, /phiếu gửi/);
@@ -93,15 +93,15 @@ test('zalo: màn hình — Zalo TẮT: Enter/Gửi bị chặn; BẬT: cần phi
   adv(31000); assert.match(z.request('Nhóm A', 'chào 2'), /ĐƯỢC GỬI/);
   adv(11 * 60000); r = await on('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, true, 'phiếu hết hạn sau 10 phút');
   // phiếu cũ không dùng được khi tắt trợ lý
-  adv(31000); z.request('Nhóm A', 'chào 3'); z.command('tat'); r = await on('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, true);
+  adv(31000); z.request('Nhóm A', 'chào 3'); z.command('tat'); r = await on('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, undefined);       // tắt trợ lý: không cần phiếu nữa (AI tự bấm Gửi được)
   assert.equal(consumeGrant(file, Date.now()).ok, false);
 });
 
-test('zalo: màn hình — nút "Gửi" theo chữ cũng cần phiếu; ứng dụng chat khác (Gmail/Messenger) vẫn chặn kể cả khi Zalo bật; trang đăng nhập vẫn chặn', async () => {
+test('zalo: màn hình — khi trợ lý Zalo BẬT nút "Gửi" theo chữ cũng cần phiếu; ứng dụng chat khác (Gmail/Messenger) và trang đăng nhập không bị chặn nữa', async () => {
   const { z, file } = mk(); z.command('bat'); z.command('tudong');
   let r = await mkDesk(fakeDesk('Zalo'), file)('screen_click_text', { text: 'Gửi', screenshot: false }); assert.equal(r.isError, true);
-  for (const title of ['Gmail - Google Chrome', 'Messenger']) { r = await mkDesk(fakeDesk(title), file)('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, true, title); }
-  r = await mkDesk(fakeDesk('Zalo - Đăng nhập'), file)('screen_type', { text: 'abc', screenshot: false }); assert.equal(r.isError, true);
+  for (const title of ['Gmail - Google Chrome', 'Messenger']) { r = await mkDesk(fakeDesk(title), file)('screen_key', { key: 'Return', screenshot: false }); assert.equal(r.isError, undefined, title); }
+  r = await mkDesk(fakeDesk('Zalo - Đăng nhập'), file)('screen_type', { text: 'abc', screenshot: false }); assert.equal(r.isError, undefined);
   assert.match(z.request('Nhóm', 'x'), /ĐƯỢC GỬI/);
   r = await mkDesk(fakeDesk('Zalo'), file)('screen_click_text', { text: 'Gửi', screenshot: false }); assert.equal(r.isError, undefined);
 });

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.3",
-  "file": "agentos-update-2026.11.18.3.tar.gz",
-  "size": 644701,
-  "sha256": "93ff57a5a56871e8f6e92ad1eb55ce4e4d5c86b36f9f467146fdbd59dc819b61",
+  "version": "2026.11.18.4",
+  "file": "agentos-update-2026.11.18.4.tar.gz",
+  "size": 644648,
+  "sha256": "0d9968057561fd15e8d47dce66917f10ec3d2a5e4ab477fc6c9e21145cc1dfa3",
   "date": "2026-11-17",
-  "notes": "Bot được dùng mật khẩu/OTP chủ máy đưa và tự bấm Gửi; chỉ dừng ở điện thoại và CAPTCHA"
+  "notes": "Trao đổi dữ liệu với chủ máy không hỏi; chỉ hỏi khi nhắn/gửi thư cho người khác"
 }

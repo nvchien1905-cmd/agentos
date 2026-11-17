@@ -166,7 +166,7 @@ function decide(ctx) {
 
 // ---- HÀNG RÀO cho chế độ TOÀN QUYỀN: AI vẫn tự làm mọi việc, riêng ba nhóm sau không tự làm được:
 //  1. CẤM CỨNG: đọc khóa/token/biến môi trường (chứa API key), cấu hình bí mật của AgentOS, và mọi việc lấy thông tin/điều khiển ĐIỆN THOẠI (adb, scrcpy, kdeconnect, SMS...).
-//  2. HỎI CHỦ MÁY (nút bấm trên Telegram): gửi thông tin/tin nhắn ra ngoài (email, Telegram/Zalo/Slack API, POST/upload, scp/rsync, git push...).
+//  2. HỎI CHỦ MÁY (nút bấm trên Telegram): nhắn/gửi thư cho NGƯỜI KHÁC (email, Telegram/Zalo/Slack/Facebook API). Gửi dữ liệu qua mạng (git push, scp, POST...) thì KHÔNG hỏi.
 //  3. HỎI CHỦ MÁY khi XÓA (rm, git clean, gỡ phần mềm, DROP/DELETE FROM...).
 //  4. (MẶC ĐỊNH TẮT từ 2026.11.18) việc dính tiền (ngân hàng, thanh toán, ví điện tử, "chuyển khoản"): chỉ HỎI chủ máy khi đặt GUARD_MONEY=ask trong orchestrator.env. Lý do: chữ "thanh toán" xuất hiện trong báo cáo/lệnh bình thường (KiotViet, sổ quỹ) nên bot cứ xin duyệt oan.
 // Đây là "hàng rào chặn thói quen xấu và chặn bị lừa qua nội dung web/email", KHÔNG phải bức tường tuyệt đối: AI đã có sudo nên người cố tình vẫn vòng được.
@@ -177,15 +177,13 @@ const GUARD_DENY_CMD = [
 // ĐIỆN THOẠI: bot không được lấy thông tin hay điều khiển điện thoại (cầu Android/iPhone, nhắn SMS, kết nối điện thoại với máy)
 GUARD_DENY_CMD.push([/(^|[\s;&|(\/])(adb|fastboot|scrcpy|kdeconnect-cli|kdeconnect-app|kdeconnectd|gammu|gammu-smsd|mmcli|idevice[a-z_]*|ifuse|ideviceinstaller|pymobiledevice3?|jmtpfs|go-mtpfs|simple-mtpfs|mtp-[a-z]+|termux-[a-z-]+|airdroid|vysor)(\s|$)|gvfs\/mtp|mtp:\/\/|gio\s+mount\s+[^\n]*(mtp|gphoto)/i, 'đụng vào điện thoại (lấy thông tin hoặc điều khiển điện thoại)']);
 // XÓA: hỏi chủ máy trước (chỉ rm tệp trong /tmp thì cho qua)
-const DELETE_CMD = /(^|[\s;&|(])(rm|rmdir|unlink|shred|trash|trash-put|gio\s+trash)(\s|$)|\bfind\b[^\n]*(\s-delete\b|-exec\s+rm\b)|\bgit\s+(clean|branch\s+-D|reset\s+--hard|checkout\s+--\s)|\btruncate\b|\bdocker\s+(rm|rmi|system\s+prune|volume\s+rm)\b|\bsystemctl\s+(disable|mask)\b|\bapt(-get)?\s+(remove|purge|autoremove)\b|\b(DROP\s+(TABLE|DATABASE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b|\bnpm\s+(uninstall|rm)\b|\bpip3?\s+uninstall\b/i;
+const DELETE_CMD = /(^|[\s;&|(])(rm|rmdir|unlink|shred|trash|trash-put|gio\s+trash)(\s|$)|\bfind\b[^\n]*(\s-delete\b|-exec\s+rm\b)|\bgit\s+(clean|branch\s+-D|reset\s+--hard|checkout\s+--\s)|\btruncate\b|\bdocker\s+(rm|rmi|system\s+prune|volume\s+rm)\b|\bsystemctl\s+(disable|mask)\b|\bapt(-get)?\s+(remove|purge|autoremove)\b|\b(DROP\s+(TABLE|DATABASE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b|\bnpm\s+(uninstall|rm)\b|\bcurl\b[^|;&\n]*\s-X\s*DELETE\b|\bpip3?\s+uninstall\b/i;
 const DELETE_TMP_OK = /^\s*rm\s+(-[a-zA-Z]+\s+)*(\/tmp\/[^\s;&|<>$`()]+\s*)+$/;
 const PHONE_WIN_RE = /scrcpy|phone\s*link|your\s*phone|kde\s*connect|điện thoại|dien thoai|android|iphone|airdroid|vysor|mtp\b/i;
+// CHỈ hỏi chủ máy khi NHẮN/GỬI THƯ cho người khác (khách). Trao đổi DỮ LIỆU với chủ máy/hệ thống (git push, scp, rsync, curl POST, upload, publish) KHÔNG bị hỏi (chủ máy chốt 2026.11.18).
 const GUARD_SEND_CMD = [
   [/\b(sendmail|mailx?|mutt|msmtp|swaks|ssmtp)\b/, 'gửi email'],
   [/api\.telegram\.org|openapi\.zalo\.me|oauth\.zaloapp\.com|graph\.facebook\.com|hooks\.slack\.com|discord(app)?\.com\/api|api\.line\.me|api\.twilio\.com|api\.sendgrid\.com|smtp\./i, 'gửi tin nhắn/thư qua dịch vụ bên ngoài'],
-  [/\b(curl|wget|http|https|xh)\b[^|;&\n]*(\s-X\s*(POST|PUT|PATCH|DELETE)\b|\s--data\S*|\s-d\s|\s-F\s|\s--form\b|\s-T\s|--upload-file|--json\b)/i, 'gửi dữ liệu lên mạng (POST/upload)'],
-  [/\b(scp|rsync|sftp|rclone|nc|ncat|netcat|socat)\b/, 'chuyển dữ liệu qua mạng'],
-  [/\bgit\s+push\b|\bnpm\s+publish\b|\bgh\s+(pr|release|repo|gist)\b|\btwine\s+upload\b|\bdocker\s+push\b/, 'đẩy mã/đăng tải ra ngoài'],
 ];
 // Từ trong tên công cụ của kết nối dịch vụ cho thấy việc ghi/gửi/xóa (so khớp theo TỪ sau khi tách snake_case/camelCase/kebab, nên "get_dataset" không bị tính là "set")
 const CONNECTOR_SIDE_EFFECT = new Set(['send', 'post', 'reply', 'forward', 'publish', 'create', 'update', 'delete', 'remove', 'trash', 'move', 'upload', 'share', 'write', 'append', 'insert', 'modify', 'patch', 'invite', 'cancel', 'import', 'label', 'archive', 'add', 'set', 'edit', 'rename', 'duplicate', 'copy', 'draft', 'comment', 'notify', 'run', 'execute', 'trigger', 'schedule', 'book', 'pay', 'transfer', 'put', 'clear', 'empty', 'unsubscribe', 'mark']);

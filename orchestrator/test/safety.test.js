@@ -24,10 +24,11 @@ test('hàng rào: CẤM đọc khóa, biến môi trường, cấu hình bí m�
   assert.equal(bash('env FOO=1 ls').action, 'allow', 'env dùng để chạy lệnh thì được');
 });
 
-test('hàng rào: HỎI chủ máy khi gửi ra ngoài hoặc dính tiền', () => {
-  const ask = ['sendmail a@b.com < f', 'curl -X POST https://x.com/a -d "k=v"', 'curl --data @file https://x.com', 'curl -F file=@a.pdf https://x.com', 'curl https://api.telegram.org/bot1/sendMessage?chat_id=1',
-    'scp a user@h:/tmp', 'rsync -a . h:/b', 'git push origin main', 'curl https://openapi.zalo.me/v2.0/oa/message', 'npm publish'];
+test('hàng rào: HỎI chủ máy khi NHẮN/GỬI THƯ cho người khác; trao đổi dữ liệu (git push, scp, POST...) không hỏi; việc dính tiền mặc định không hỏi', () => {
+  const ask = ['sendmail a@b.com < f', 'curl https://api.telegram.org/bot1/sendMessage?chat_id=1', 'curl https://openapi.zalo.me/v2.0/oa/message', 'mail -s x a@b.com', 'curl https://graph.facebook.com/v1/me/messages'];
   for (const c of ask) { const d = bash(c); assert.equal(d.action, 'ask', c); assert.ok(d.warn, c); }
+  for (const c of ['curl -X POST https://x.com/a -d "k=v"', 'curl --data @file https://x.com', 'curl -F file=@a.pdf https://x.com', 'scp a user@h:/tmp', 'rsync -a . h:/b', 'git push origin main', 'npm publish', 'rclone copy a b:']) assert.equal(bash(c).action, 'allow', c);
+  assert.equal(bash('curl -X DELETE https://x.com/item/1').action, 'ask', 'xóa trên máy chủ khác vẫn hỏi');
   // Việc dính tiền: MẶC ĐỊNH cho qua (bot không xin duyệt oan); đặt GUARD_MONEY=ask thì hỏi lại
   const nav = { tool: 'mcp__browser__browser_navigate', input: { url: 'https://ebanking.techcombank.com.vn' } };
   assert.equal(bash('echo chuyển khoản 5 triệu').action, 'allow'); assert.equal(bash('xdg-open https://vietcombank.com.vn').action, 'allow'); assert.equal(decideGuard(nav).action, 'allow');
@@ -50,9 +51,9 @@ test('gate ở chế độ guard: deny chặn, ask hỏi chủ máy, allow chạ
   gate.begin({ id: 7, chat_id: '42' }, { policy: {} }, { guard: true });
   assert.equal((await gate.evaluate({ jobId: 7, tool: 'Bash', input: { command: 'ls' } })).behavior, 'allow');
   assert.equal((await gate.evaluate({ jobId: 7, tool: 'Bash', input: { command: 'printenv' } })).behavior, 'deny');
-  const r = await gate.evaluate({ jobId: 7, tool: 'Bash', input: { command: 'git push origin main' } });      // không ai bấm -> hết giờ -> từ chối
+  const r = await gate.evaluate({ jobId: 7, tool: 'Bash', input: { command: 'sendmail a@b.com < f' } });      // không ai bấm -> hết giờ -> từ chối
   assert.equal(r.behavior, 'deny'); assert.match(r.message, /không trả lời kịp/);
-  assert.equal(asked.length, 1); assert.equal(asked[0][0], 'ADMIN'); assert.match(asked[0][1], /gửi|đẩy/i);
+  assert.equal(asked.length, 1); assert.equal(asked[0][0], 'ADMIN'); assert.match(asked[0][1], /gửi/i);
   const audit = db.recentAudit(10);
   assert.ok(audit.every((a) => a.decision !== 'allow' || a.source !== 'auto'), 'không ghi allow tự động trong chế độ guard');
   gate.end(7);

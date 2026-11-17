@@ -7,15 +7,15 @@
 // Vòng "nhìn → nghĩ → làm": mỗi thao tác trả kèm ảnh chụp mới (trừ khi screenshot=false) để AI thấy kết quả ngay và bước tiếp.
 // Hàng rào (ngoài cổng duyệt của bộ điều phối, policy.js: thao tác hỏi chủ máy, "cho phép cả việc này" thì cho cả nhóm):
 //   - tối đa DESK_MAX_ACTIONS thao tác mỗi lần chạy (mặc định 80), hết thì dừng và báo;
-//   - KHÔNG gõ/bấm/phím khi cửa sổ đang chọn là trang ngân hàng, thanh toán, đăng nhập, mật khẩu (chủ máy tự làm);
+//   - KHÔNG gõ/bấm/phím khi cửa sổ đang chọn là trang đăng nhập, mật khẩu, mã xác minh, hoặc màn hình/ứng dụng của ĐIỆN THOẠI (chủ máy tự làm);
 //   - KHÔNG tự gửi tin nhắn: phím Enter / nút "Gửi" bị chặn khi cửa sổ đang chọn là Zalo, Messenger, Telegram, Gmail... (mở và đọc thì được).
 const fs = require('fs');
 const { createDeskClient } = require('./desk');
-const { MONEY_RE } = require('./policy');
+const { PHONE_WIN_RE } = require('./policy');
 const zalo = require('./zalo');
 const ZALO_RE = /zalo/i;
 
-const SENSITIVE_RE = new RegExp(MONEY_RE.source + '|momo|zalopay|ví điện tử|vi dien tu|ngân hàng|ngan hang|\\bbank|visa|mastercard|thẻ tín dụng|the tin dung|cvv|mật khẩu|mat khau|password|passcode|đăng nhập|dang nhap|sign.?in|log.?in|xác minh|xac minh|captcha|otp|2fa|two.factor', 'i');
+const SENSITIVE_RE = /mật khẩu|mat khau|password|passcode|đăng nhập|dang nhap|sign.?in|log.?in|xác minh|xac minh|captcha|otp|2fa|two.factor/i;   // ngân hàng/thanh toán KHÔNG còn bị chặn (từ 2026.11.18: trên máy tính không chuyển tiền được vì cần OTP trên điện thoại)
 const CHAT_RE = /zalo|messenger|telegram|whatsapp|viber|skype|gmail|outlook|thunderbird|mail|thư điện tử|slack|discord|facebook|instagram/i;
 const SEND_KEY_RE = /^(return|kp_enter|enter|ctrl\+(return|enter))$/i;
 const SEND_TEXT_RE = /^(gửi|gui|send|đăng|dang|post|chuyển|chuyen)$/i;
@@ -77,7 +77,8 @@ function createHandler(deps) {
 
   async function act(name, a) {
     const title = await activeTitle();
-    if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là trang ngân hàng/thanh toán/đăng nhập/mật khẩu. Không được gõ hay bấm ở đây — hãy báo chủ máy tự làm bước này, rồi dừng.');
+    if (PHONE_WIN_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là màn hình/ứng dụng của ĐIỆN THOẠI. Bot không được lấy thông tin hay điều khiển điện thoại — chủ máy tự làm.');
+    if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là trang đăng nhập/mật khẩu/mã xác minh. Không được gõ hay bấm ở đây — hãy báo chủ máy tự làm bước này, rồi dừng.');
     const zaloOn = ZALO_RE.test(title) && zalo.isEnabled(zaloFile);
     if (zaloOn) {
       // Trợ lý Zalo ĐANG BẬT (chủ máy cho phép): Enter / nút Gửi chỉ được khi có PHIẾU gửi (bot_command "/zalo duyet <nơi nhận> | <nội dung>"), phiếu dùng đúng 1 lần

@@ -737,3 +737,10 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Hàng rào chế độ toàn quyền: bỏ hỏi chủ máy với lệnh/trang có chữ ngân hàng, thanh toán, chuyển khoản, ví điện tử (trước đây báo cáo KiotViet có chữ "thanh toán" cũng bị hỏi oan, hết giờ tự từ chối). Bật lại bằng `GUARD_MONEY=ask` trong orchestrator.env.
 - KHÔNG đổi: cấm đọc khóa/token/biến môi trường; vẫn hỏi khi gửi ra ngoài (email, API gửi tin, POST/upload, scp, git push...). Chặn gõ/bấm ở cửa sổ ngân hàng/thanh toán/mật khẩu khi điều khiển màn hình (desk-mcp) giữ nguyên.
 - Đã thử trên máy ảo: safety.test.js 5/5.
+
+## Bản 2026.11.18.2 — chỉ chặn ĐIỆN THOẠI; ngân hàng/thanh toán làm thoải mái; xóa thì hỏi
+- Chủ máy chốt: trên máy tính vào ngân hàng cũng không chuyển được tiền (cần OTP ở điện thoại) → bỏ chặn ngân hàng/thanh toán cả ở hàng rào lệnh (bản 18.1) lẫn ở điều khiển màn hình (desk-mcp không còn dừng ở cửa sổ ngân hàng/Momo/thanh toán).
+- CẤM CỨNG đụng vào điện thoại: lệnh adb, fastboot, scrcpy, kdeconnect, gammu/mmcli (SMS), idevice*, ifuse, jmtpfs/mtp, termux-*, truy cập gvfs/mtp; điều khiển màn hình dừng ở cửa sổ scrcpy, Phone Link, Your Phone, KDE Connect, "điện thoại", Android, iPhone, AirDroid, Vysor.
+- HỎI chủ máy khi XÓA: rm, rmdir, unlink, shred, trash, find -delete, git clean/reset --hard/branch -D, truncate, docker rm/prune, apt remove/purge, systemctl disable/mask, npm/pip uninstall, SQL DROP/TRUNCATE/DELETE FROM. Riêng `rm` tệp trong /tmp thì cho qua (đi vòng bằng `..` vẫn hỏi).
+- Giữ nguyên: cấm đọc khóa/token/biến môi trường; hỏi khi gửi dữ liệu ra ngoài; dừng ở trang đăng nhập/mật khẩu/OTP/CAPTCHA; không tự bấm Gửi trong Zalo/thư.
+- Đã thử trên máy ảo: safety + creative-suite + desk + gate 54/54. Giới hạn: hàng rào dựa trên chữ trong lệnh, người cố tình vẫn vòng được (sudo) — chỉ chặn thói quen xấu/bị lừa.

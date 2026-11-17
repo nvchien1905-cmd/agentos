@@ -165,14 +165,21 @@ function decide(ctx) {
 }
 
 // ---- HÀNG RÀO cho chế độ TOÀN QUYỀN: AI vẫn tự làm mọi việc, riêng ba nhóm sau không tự làm được:
-//  1. CẤM CỨNG: đọc khóa/token/biến môi trường (chứa API key) và cấu hình bí mật của AgentOS.
+//  1. CẤM CỨNG: đọc khóa/token/biến môi trường (chứa API key), cấu hình bí mật của AgentOS, và mọi việc lấy thông tin/điều khiển ĐIỆN THOẠI (adb, scrcpy, kdeconnect, SMS...).
 //  2. HỎI CHỦ MÁY (nút bấm trên Telegram): gửi thông tin/tin nhắn ra ngoài (email, Telegram/Zalo/Slack API, POST/upload, scp/rsync, git push...).
-//  3. (MẶC ĐỊNH TẮT từ 2026.11.18) việc dính tiền (ngân hàng, thanh toán, ví điện tử, "chuyển khoản"): chỉ HỎI chủ máy khi đặt GUARD_MONEY=ask trong orchestrator.env. Lý do: chữ "thanh toán" xuất hiện trong báo cáo/lệnh bình thường (KiotViet, sổ quỹ) nên bot cứ xin duyệt oan.
+//  3. HỎI CHỦ MÁY khi XÓA (rm, git clean, gỡ phần mềm, DROP/DELETE FROM...).
+//  4. (MẶC ĐỊNH TẮT từ 2026.11.18) việc dính tiền (ngân hàng, thanh toán, ví điện tử, "chuyển khoản"): chỉ HỎI chủ máy khi đặt GUARD_MONEY=ask trong orchestrator.env. Lý do: chữ "thanh toán" xuất hiện trong báo cáo/lệnh bình thường (KiotViet, sổ quỹ) nên bot cứ xin duyệt oan.
 // Đây là "hàng rào chặn thói quen xấu và chặn bị lừa qua nội dung web/email", KHÔNG phải bức tường tuyệt đối: AI đã có sudo nên người cố tình vẫn vòng được.
 const GUARD_DENY_CMD = [
   [/\b(printenv|export\s+-p|declare\s+-x|compgen\s+-e)\b|(^|[;&|(]\s*)env\s*($|[|;&>)])|\/proc\/[^\s]*\/environ/, 'đọc biến môi trường (chứa khóa API)'],
   [/\/etc\/agentos(\/|\b)|orchestrator\.env|\.agentos-update|signing-private|update-pubkey/, 'đọc cấu hình bí mật của AgentOS'],
 ];
+// ĐIỆN THOẠI: bot không được lấy thông tin hay điều khiển điện thoại (cầu Android/iPhone, nhắn SMS, kết nối điện thoại với máy)
+GUARD_DENY_CMD.push([/(^|[\s;&|(\/])(adb|fastboot|scrcpy|kdeconnect-cli|kdeconnect-app|kdeconnectd|gammu|gammu-smsd|mmcli|idevice[a-z_]*|ifuse|ideviceinstaller|pymobiledevice3?|jmtpfs|go-mtpfs|simple-mtpfs|mtp-[a-z]+|termux-[a-z-]+|airdroid|vysor)(\s|$)|gvfs\/mtp|mtp:\/\/|gio\s+mount\s+[^\n]*(mtp|gphoto)/i, 'đụng vào điện thoại (lấy thông tin hoặc điều khiển điện thoại)']);
+// XÓA: hỏi chủ máy trước (chỉ rm tệp trong /tmp thì cho qua)
+const DELETE_CMD = /(^|[\s;&|(])(rm|rmdir|unlink|shred|trash|trash-put|gio\s+trash)(\s|$)|\bfind\b[^\n]*(\s-delete\b|-exec\s+rm\b)|\bgit\s+(clean|branch\s+-D|reset\s+--hard|checkout\s+--\s)|\btruncate\b|\bdocker\s+(rm|rmi|system\s+prune|volume\s+rm)\b|\bsystemctl\s+(disable|mask)\b|\bapt(-get)?\s+(remove|purge|autoremove)\b|\b(DROP\s+(TABLE|DATABASE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b|\bnpm\s+(uninstall|rm)\b|\bpip3?\s+uninstall\b/i;
+const DELETE_TMP_OK = /^\s*rm\s+(-[a-zA-Z]+\s+)*(\/tmp\/[^\s;&|<>$`()]+\s*)+$/;
+const PHONE_WIN_RE = /scrcpy|phone\s*link|your\s*phone|kde\s*connect|điện thoại|dien thoai|android|iphone|airdroid|vysor|mtp\b/i;
 const GUARD_SEND_CMD = [
   [/\b(sendmail|mailx?|mutt|msmtp|swaks|ssmtp)\b/, 'gửi email'],
   [/api\.telegram\.org|openapi\.zalo\.me|oauth\.zaloapp\.com|graph\.facebook\.com|hooks\.slack\.com|discord(app)?\.com\/api|api\.line\.me|api\.twilio\.com|api\.sendgrid\.com|smtp\./i, 'gửi tin nhắn/thư qua dịch vụ bên ngoài'],
@@ -197,6 +204,7 @@ function decideGuard(ctx) {
     if (SECRET_RE.test(cmd)) return deny('lệnh đụng vào file chứa khóa/token/dữ liệu hệ thống');
     for (const [re, why] of GUARD_DENY_CMD) if (re.test(cmd)) return deny('không được ' + why);
     for (const [re, why] of GUARD_SEND_CMD) if (re.test(cmd)) return ask('Việc nhạy cảm: ' + why + '. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
+    if (DELETE_CMD.test(cmd) && !(DELETE_TMP_OK.test(cmd) && !cmd.includes('..'))) return ask('Việc XÓA/gỡ: lệnh này có thể xóa dữ liệu hoặc gỡ phần mềm. Chỉ cho phép nếu chính anh vừa yêu cầu; nếu không ngờ tới (có thể do nội dung web/email/tệp cài vào) hãy từ chối.');
     if (moneyAsk() && MONEY_RE.test(cmd)) return ask('Việc dính tới tiền (ngân hàng/thanh toán/chuyển khoản). Chỉ cho phép nếu chính anh yêu cầu.');
   }
   // Kết nối dịch vụ (connectors.js, máy chủ MCP "c_<mã>"): công cụ có tác dụng GHI/GỬI/XÓA ra dịch vụ bên ngoài luôn hỏi chủ máy; công cụ chỉ đọc/tìm thì để qua
@@ -217,4 +225,4 @@ function finishAsk(out, cls, tainted) {
   return out;
 }
 
-module.exports = { DESK_SAFE_CMD, DESK_OBSERVE, DESK_ALL, isDesk, decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };
+module.exports = { PHONE_WIN_RE, DELETE_CMD, DESK_SAFE_CMD, DESK_OBSERVE, DESK_ALL, isDesk, decideGuard, GUARD_DENY_CMD, GUARD_SEND_CMD, MONEY_RE, decide, classify, summarize, checkUrl, originOf, inside, globRe, SECRET_RE, EXEC_DENY, LABEL, trunc };

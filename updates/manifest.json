@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.1",
-  "file": "agentos-update-2026.11.18.1.tar.gz",
-  "size": 643976,
-  "sha256": "792cfd60291f077a8358ce9d59319d50d9243a0594d969661b74e7af05b297b7",
+  "version": "2026.11.18.2",
+  "file": "agentos-update-2026.11.18.2.tar.gz",
+  "size": 644787,
+  "sha256": "a3df60992ce222409af36bef0cdb8bea95108056f10fc91deed781f122a35284",
   "date": "2026-11-17",
-  "notes": "Bot không còn xin duyệt vì việc dính tiền (GUARD_MONEY=ask để bật lại)"
+  "notes": "Chỉ chặn điện thoại, ngân hàng làm thoải mái, xóa thì hỏi"
 }

@@ -36,6 +36,13 @@ test('hàng rào: HỎI chủ máy khi gửi ra ngoài hoặc dính tiền', () 
   try { assert.equal(bash('echo chuyển khoản 5 triệu').action, 'ask'); assert.equal(decideGuard(nav).action, 'ask'); } finally { delete process.env.GUARD_MONEY; }
 });
 
+test('hàng rào: CẤM đụng vào điện thoại; HỎI khi xóa (rm /tmp thì cho qua, đi vòng .. vẫn hỏi); việc khác tự do', () => {
+  for (const c of ['adb devices', 'sudo adb pull /sdcard/DCIM .', 'scrcpy', 'kdeconnect-cli -l', 'gammu getallsms', 'mmcli -m 0 --messaging-list-sms', 'ideviceinfo', 'ls /run/user/1000/gvfs/mtp:host=Pixel', 'termux-sms-list']) assert.equal(bash(c).action, 'deny', c);
+  for (const c of ['echo badbadb', 'cat madbus.txt', 'node build.js']) assert.notEqual(bash(c).action, 'deny', c);
+  for (const c of ['rm file.txt', 'rm -rf /srv/data', 'rm -rf /tmp/../etc', 'rmdir x', 'find . -name "*.log" -delete', 'git clean -fd', 'git reset --hard HEAD~1', 'apt remove firefox', 'sqlite3 a.db "DELETE FROM t"', 'docker rm -f x', 'ls && rm a']) assert.equal(bash(c).action, 'ask', c);
+  for (const c of ['rm /tmp/a.txt', 'rm -f /tmp/x1 /tmp/x2', 'ls -la', 'cp a b', 'mv a b', 'git commit -m x', 'git status']) assert.equal(bash(c).action, 'allow', c);
+});
+
 test('gate ở chế độ guard: deny chặn, ask hỏi chủ máy, allow chạy luôn và KHÔNG ghi nhật ký từng thao tác', async () => {
   const db = openDb(':memory:'); const asked = [];
   const approvals = createApprovals({ db, ask: async (chat, text, btn) => { asked.push([chat, text]); return 5; }, edit: async () => {}, timeoutMs: 200, askChat: () => 'ADMIN' });

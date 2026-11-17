@@ -310,11 +310,15 @@ test('màn hình: thao tác gửi đúng lệnh tới trợ lý màn hình rồi
 });
 
 test('màn hình: CHẶN gõ/bấm ở cửa sổ ngân hàng, thanh toán, đăng nhập, mật khẩu; chặn tự gửi tin nhắn trong Zalo/Gmail/Messenger', async () => {
-  for (const title of ['Vietcombank - Internet Banking', 'Đăng nhập - Google Chrome', 'Nhập mật khẩu', 'Sign in to your account', 'Thanh toán đơn hàng', 'MoMo - Ví điện tử', 'Xác minh OTP']) {
+  for (const title of ['Đăng nhập - Google Chrome', 'Nhập mật khẩu', 'Sign in to your account', 'Xác minh OTP', 'scrcpy - Pixel 7', 'Phone Link', 'KDE Connect', 'Điện thoại của tôi']) {
     const d = fakeDesk({ active: title }); const call = mkHandler(d);
     const r = await call('screen_type', { text: 'abc' }); assert.equal(r.isError, true, title); assert.match(r.content[0].text, /DỪNG/);
     assert.ok(!d.calls.some((c) => c.cmd === 'type'), 'không được gửi lệnh gõ ở: ' + title);
     assert.equal((await call('screen_click', { x: 1, y: 1 })).isError, true);
+  }
+  for (const title of ['Vietcombank - Internet Banking', 'Thanh toán đơn hàng', 'MoMo - Ví điện tử']) {          // ngân hàng/thanh toán trên máy tính: cho làm (không chuyển tiền được nếu không có OTP trên điện thoại)
+    const d = fakeDesk({ active: title }); const c2 = mkHandler(d);
+    const r2 = await c2('screen_click', { x: 1, y: 1, screenshot: false }); assert.equal(r2.isError, undefined, title);
   }
   const z = fakeDesk({ active: 'Zalo' }); const call = mkHandler(z);
   let r = await call('screen_key', { key: 'Return' }); assert.equal(r.isError, true); assert.match(r.content[0].text, /nhắn tin/);

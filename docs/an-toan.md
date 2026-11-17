@@ -729,3 +729,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 ## Bản 2026.11.17.2 — sửa lưu token dài hạn báo "Token không dùng được (lỗi)"
 - Nguyên nhân: `POST /api/ai/claude-token` kiểm token bằng hàm chạy lệnh mặc định của trang Cài đặt (execFile) — hàm này bỏ qua `input` (câu hỏi thử gửi vào stdin) và THAY cả môi trường bằng riêng token, nên lệnh kiểm treo/không tìm thấy chương trình và báo "lỗi" dù token đúng. Nay dùng hàm chạy riêng (gộp môi trường + token, ghi stdin, hạn giờ 120 giây). Đã thử hàm này bằng tiến trình thật (stdin, biến môi trường, lệnh không tồn tại, quá giờ); CHƯA thử với Claude thật trên máy.
 - Sau khi cập nhật, Cài đặt phải được khởi động lại (apply.sh làm việc này) rồi mới dán token.
+
+## Bản 2026.11.17.3 — đã thử trên máy ảo AgentOS-Test (cài mã mới vào máy ảo 13.4)
+- Lưu token thật qua `POST /api/ai/claude-token`: "đăng nhập tốt", token vào orchestrator.env; token sai báo đúng lý do Claude trả ("401 OAuth access token is invalid"). Màn hình ghi "Bot đang dùng: token dài hạn" khi có token. Đã dọn token khỏi máy ảo sau thử.

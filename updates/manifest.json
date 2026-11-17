@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.17.2",
-  "file": "agentos-update-2026.11.17.2.tar.gz",
-  "size": 643753,
-  "sha256": "86dfec2a89510f540178c49a54a8f3f3b2f5d42ab19f665b98ece306456100c8",
+  "version": "2026.11.17.3",
+  "file": "agentos-update-2026.11.17.3.tar.gz",
+  "size": 643781,
+  "sha256": "f93d268062ddc187c191530cf9cda6843f851eb70d5ff9f24175bfe74a399f77",
   "date": "2026-11-17",
-  "notes": "Sửa lưu token dài hạn Claude báo lỗi dù token đúng"
+  "notes": "Token dài hạn Claude: sửa lỗi lưu, hiện đúng trạng thái; đã thử trên máy ảo"
 }

@@ -448,7 +448,7 @@ function createSettings(o) {
       for (const e of (claudeOnly ? apikeys.ENGINES.filter((x) => x === 'claude') : apikeys.ENGINES)) {
         const ver = await engines.installed(run, e).catch(() => null);
         const lg = engineLogin(e, text);
-        out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, longToken: e === 'claude' && envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN') ? mask.secret(envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN')) : null, installed: ver, enabled: order.includes(e), login: lg, using: keys[e] ? 'key' : (lg.loggedIn ? 'account' : 'none') });
+        out.push({ id: e, name: apikeys.NAMES[e], where: apikeys.WHERE[e], key: keys[e] ? apikeys.mask(keys[e]) : null, longToken: e === 'claude' && envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN') ? mask.secret(envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN')) : null, installed: ver, enabled: order.includes(e), login: lg, using: keys[e] ? 'key' : (e === 'claude' && envVal(text, 'CLAUDE_CODE_OAUTH_TOKEN') ? 'token' : (lg.loggedIn ? 'account' : 'none')) });
       }
       return { engines: out, order: claudeOnly ? ['claude'] : order, claudeOnly, configured: readEnv() != null };
     },

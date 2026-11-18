@@ -52,6 +52,7 @@ test('đăng nhập: AI in "CẦN ĐĂNG NHẬP" → câu trả lời kèm cách
   const all = msgs.join('\n');
   assert.match(all, /CẦN ĐĂNG NHẬP: KiotViet/);
   assert.match(all, /\/mo webbot/); assert.match(all, /\/dong webbot/); assert.match(all, /\/hanghoa|\/doanhso/);
+  assert.match(all, /tên đăng nhập \+ mật khẩu/); assert.match(all, /\/taikhoan/); assert.doesNotMatch(all, /không bao giờ tự nhập/);
 });
 
 test('trình duyệt: chỉ dùng Google Chrome đã cài (không Chromium), bỏ ảnh khỏi phiên AI; thứ tự IPv4 do gai.conf', () => {

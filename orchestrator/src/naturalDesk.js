@@ -33,7 +33,7 @@ function intent(raw) {
   return null;
 }
 
-const CONTINUE_PROMPT = 'Chủ máy báo ĐÃ ĐĂNG NHẬP xong trên trình duyệt của bạn (hồ sơ trình duyệt riêng của bot này; trình duyệt đã được đóng lại). Hãy kiểm tra xem đã vào được trang cần dùng chưa rồi TIẾP TỤC việc đang làm dở trước đó trong cuộc trò chuyện này, làm hết việc và báo kết quả. Vẫn KHÔNG tự nhập mật khẩu.';
+const CONTINUE_PROMPT = 'Chủ máy báo ĐÃ ĐĂNG NHẬP xong trên trình duyệt của bạn (hồ sơ trình duyệt riêng của bot này; trình duyệt đã được đóng lại). Hãy kiểm tra xem đã vào được trang cần dùng chưa rồi TIẾP TỤC việc đang làm dở trước đó trong cuộc trò chuyện này, làm hết việc và báo kết quả. Nếu còn cần tài khoản thì dùng tài khoản đã lưu (/dangnhap) hoặc mật khẩu chủ máy đã đưa.';
 
 // o: { quick, isAdmin, submit(chatId, prompt), audit(summary), sleep(ms), now() }
 function createNaturalDesk(o) {
@@ -67,7 +67,7 @@ function createNaturalDesk(o) {
       await sleep(3500);
       let shot = null; try { shot = await quick.run('manhinh', '', ctx); } catch (e) { shot = null; }
       const msg = it.app === 'webbot'
-        ? '✅ Em đã mở trình duyệt của em trên màn hình máy (hồ sơ riêng của bot này). Anh đăng nhập trang cần dùng; xong anh chỉ cần nhắn "xong", em đóng lại và làm tiếp. (Em không bao giờ tự nhập mật khẩu.)'
+        ? '✅ Em đã mở trình duyệt của em trên màn hình máy (hồ sơ riêng của bot này). Anh đăng nhập trang cần dùng; xong anh chỉ cần nhắn "xong", em đóng lại và làm tiếp. (Anh gửi tên đăng nhập + mật khẩu trong chat thì em cũng tự đăng nhập được.)'
         : '✅ Em đã mở ' + it.app + ' trên màn hình máy.';
       return shot && typeof shot === 'object' && shot.files ? { text: msg, files: shot.files } : msg;
     })();

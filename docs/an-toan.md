@@ -825,3 +825,8 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - CHỈ chủ máy ghi được sổ tay (người lạ nhắn y hệt cũng không ghi) — nếu cho người lạ ghi thì họ cài được "quy tắc" vào bot. Nội dung có mật khẩu/mã bí mật bị từ chối (sổ tay hiện cho cả nhóm). Bản tóm tắt tự nén là DỮ LIỆU, không phải lệnh.
 - Test: zalo-memory.test.js (8 test, rate-limit nâng trong test để chạy 45 tin).
 - Tóm tắt tự nén phân biệt lời chủ máy (quy ước chắc chắn) với lời thành viên (chỉ là họ khẳng định): thử trên máy ảo thấy mô hình viết "đã ghi nhận nồi chiên giá 1 triệu" từ lời người lạ nên đã chặn bằng lệnh nén + nhãn trong ngữ cảnh.
+
+## Bản 2026.11.18.17 — SỬA LỜI NHẮC CŨ KHIẾN BOT TỰ CHẶN ĐĂNG NHẬP WEB (KiotViet...)
+- Lỗi: bản 18.3 đã cho bot dùng mật khẩu chủ máy đưa, nhưng còn sót vài câu dặn cũ "bạn KHÔNG BAO GIỜ tự nhập mật khẩu" trong lời nhắc của bot (AGENT_HINT, LOGIN_HINT, thông báo "CẦN ĐĂNG NHẬP", naturalDesk). AI đọc câu cũ nên trả lời "máy chặn em nhập mật khẩu" dù chủ máy đã cho phép.
+- Sửa: ƯU TIÊN API/lệnh có sẵn (/doanhso, /ton, /hanghoa, /vps); API không làm được thì ĐĂNG NHẬP WEB: tài khoản đã lưu (/taikhoan → /dangnhap), hoặc mật khẩu chủ máy gửi trong chat thì tự gõ; chưa có thì hỏi chủ máy; chỉ dừng ở CAPTCHA, OTP chưa được đưa, ĐIỆN THOẠI. Thông báo "CẦN ĐĂNG NHẬP" nay đưa 3 cách (gửi mật khẩu trong chat / lưu /taikhoan / tự đăng nhập /mo webbot).
+- Không đổi: bộ theo dõi Messenger tự chạy nền vẫn không nhập mật khẩu (không có chủ máy ở đó).

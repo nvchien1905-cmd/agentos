@@ -33,11 +33,11 @@ function setup(over) {
 test('mở trình duyệt để đăng nhập: tự mở, gửi ảnh màn hình, hẹn "xong"; "xong" thì đóng trình duyệt và giao AI làm tiếp', async () => {
   const S = setup();
   const r = await S.nd.tryHandle('9', '1', 'Em mở ra anh đăng nhập');
-  assert.deepEqual(S.runs.slice(0, 2), [['mo', 'webbot'], ['manhinh', '']]); assert.match(r.text, /nhắn "xong"/); assert.match(r.text, /không bao giờ tự nhập mật khẩu/); assert.equal(r.files.length, 1);
+  assert.deepEqual(S.runs.slice(0, 2), [['mo', 'webbot'], ['manhinh', '']]); assert.match(r.text, /nhắn "xong"/); assert.match(r.text, /gửi tên đăng nhập \+ mật khẩu trong chat/); assert.equal(r.files.length, 1);
   assert.equal(S.nd.waiting('9'), true); assert.equal(S.nd.waiting('8'), false);
   S.runs.length = 0; const d = await S.nd.tryHandle('9', '1', 'xong');
   assert.deepEqual(S.runs, [['dong', 'webbot']]); assert.deepEqual(S.submits, [['9', CONTINUE_PROMPT]]); assert.match(d, /làm tiếp/); assert.equal(S.nd.waiting('9'), false);
-  assert.match(CONTINUE_PROMPT, /TIẾP TỤC việc đang làm dở/); assert.match(CONTINUE_PROMPT, /KHÔNG tự nhập mật khẩu/);
+  assert.match(CONTINUE_PROMPT, /TIẾP TỤC việc đang làm dở/); assert.match(CONTINUE_PROMPT, /tài khoản đã lưu/);
   assert.equal(S.nd.tryHandle('9', '1', 'xong'), null, '"xong" trơn khi bot không chờ đăng nhập: để AI hiểu');
   assert.ok(S.audits.length >= 2, 'ghi nhật ký');
 });

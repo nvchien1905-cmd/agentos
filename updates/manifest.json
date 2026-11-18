@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.15",
-  "file": "agentos-update-2026.11.18.15.tar.gz",
-  "size": 672406,
-  "sha256": "52cfe138ea2216193fab9d9c5f4639154399aafc94115f508f34e167698be746",
+  "version": "2026.11.18.17",
+  "file": "agentos-update-2026.11.18.17.tar.gz",
+  "size": 672726,
+  "sha256": "27751e9c2bb84b97c640e97c109e2402e0992788c280114d7dff8ba0fb64f120",
   "date": "2026-11-18",
-  "notes": "Bot Zalo: nhóm nhớ lâu (tự nén tin cũ) và có sổ tay riêng cho từng nhóm (/zalobot nho, sotay, quen)"
+  "notes": "Sửa: bot không còn tự chặn đăng nhập web; ưu tiên API, API không làm được thì đăng nhập web bằng tài khoản đã lưu hoặc mật khẩu anh gửi"
 }

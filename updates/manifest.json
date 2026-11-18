@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.17",
-  "file": "agentos-update-2026.11.18.17.tar.gz",
-  "size": 672726,
-  "sha256": "27751e9c2bb84b97c640e97c109e2402e0992788c280114d7dff8ba0fb64f120",
+  "version": "2026.11.18.18",
+  "file": "agentos-update-2026.11.18.18.tar.gz",
+  "size": 672982,
+  "sha256": "3a7ce1fbd992bee33ddcc99975c540011f2a1896403b009e30842734311eb2ad",
   "date": "2026-11-18",
-  "notes": "Sửa: bot không còn tự chặn đăng nhập web; ưu tiên API, API không làm được thì đăng nhập web bằng tài khoản đã lưu hoặc mật khẩu anh gửi"
+  "notes": "Bot Zalo: hỏi 'đã thấy nhóm nào chưa' ở chat riêng thì trả luôn danh sách nhóm đã thấy + giải thích Zalo không cho bot xem danh sách nhóm"
 }

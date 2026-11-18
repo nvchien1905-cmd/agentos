@@ -128,7 +128,8 @@ function createZaloBot(o) {
     if (a.length >= NOTE_MAX) return { ok: false, msg: 'sổ tay đầy (' + NOTE_MAX + ' mục) — xóa bớt bằng /zalobot quen' };
     a.push({ t, at: now(), by: clip(by || 'chủ máy', 40) }); save(); return { ok: true, n: a.length };
   }
-  const OWNER_NOTE_RE = /^(?:@\S+\s+)?(?:ghi nho|nho (?:rang|la|nhe|giup)|nho:|tu nay|luon luon|dung bao gio|quy dinh)\b/;
+  const ASKS_GROUPS = (t) => t.length <= 80 && /\bnhom\b/.test(t) && /(thay|vao|tham gia|dang o|co mat|nhung nhom|nhom nao|danh sach|bao nhieu nhom)/.test(t) && !/\|/.test(t);
+  const OWNER_NOTE_RE =/^(?:@\S+\s+)?(?:ghi nho|nho (?:rang|la|nhe|giup)|nho:|tu nay|luon luon|dung bao gio|quy dinh)\b/;
   const groupName = (cid) => { const st = load(); return st.alias[cid] || ('nhóm ' + String(cid).slice(0, 6)); };
   function groupsList() {
     const st = load();
@@ -296,6 +297,11 @@ function createZaloBot(o) {
         if (o.notify) o.notify('👤 ' + (from.display_name || 'Có người') + ' (ID Zalo ' + fid + ') nhắn bot Zalo nhưng chưa được phép ra lệnh. Muốn cho phép: Cài đặt → Bot Zalo → thêm ID này.').catch(() => {});
       }
       return 'khong-duoc-phep';
+    }
+    if (isOwner && !isGroup && text && ASKS_GROUPS(noAccent(text))) {
+      const l = groupsList();
+      await send(cid, (l.length ? await command('nhom') : 'Bot Zalo chưa thấy nhóm nào.') + '\n\nGhi chú: Zalo không cho bot xem danh sách nhóm mình đang ở; em chỉ biết một nhóm khi có người @nhắc em hoặc trả lời tin của em trong nhóm đó. Nhóm nào chưa có ở trên thì anh vào nhóm đó @nhắc em một câu (VD "@Bot quản gia Huyền Anh chào em").');
+      return 'nhom';
     }
     if (isOwner && !isGroup && o.core && fullOn()) return runCore(m, cid, from, text, img);
     if (!isOwner && !rate('s:' + cid + ':' + fid, perSender())) { await send(cid, 'Bạn hỏi nhiều quá trong 1 giờ rồi, bạn chờ chút rồi hỏi lại nhé.'); return 'qua-han-muc-nguoi'; }

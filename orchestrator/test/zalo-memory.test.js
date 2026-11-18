@@ -125,3 +125,16 @@ test('sổ tay riêng của nhóm: /zalobot nho·sotay·quen, chủ máy dặn t
   assert.match(await z.command('quen 1 | 9'), /TỪ CHỐI/); assert.match(await z.command('nhom'), /sổ tay 1 mục/);
   for (let i = 0; i < 45; i++) await z.command('nho 1 | mục ' + i); assert.match(await z.command('nho 1 | thêm nữa'), /sổ tay đầy/);
 });
+
+test('chủ máy hỏi "đã thấy nhóm nào chưa" ở chat riêng: bot trả LUÔN danh sách nhóm đã thấy + giải thích Zalo không cho xem danh sách, KHÔNG giao AI; câu thường vẫn đi cho AI', async () => {
+  const { z, core, sent } = mk();
+  const priv = (text) => ({ event_name: 'message.text.received', message: { message_id: 'p' + Math.random(), from: { id: 'boss1', display_name: 'Anh Chiến', is_bot: false }, chat: { id: 'boss1', chat_type: 'PRIVATE' }, text } });
+  await z.onUpdate(priv('Em đã thấy ba nhóm anh thêm em vào chưa'), true);
+  assert.equal(core.length, 0); assert.match(sent[sent.length - 1].text, /chưa thấy nhóm nào/); assert.match(sent[sent.length - 1].text, /@nhắc em/);
+  await z.onUpdate(ev('@Bot chào', nv), true);
+  await z.command('ten 1 Hồng Hà');
+  await z.onUpdate(priv('bot đang ở những nhóm nào'), true);
+  const last = sent[sent.length - 1].text; assert.match(last, /Hồng Hà/); assert.match(last, /Zalo không cho bot xem danh sách nhóm/); assert.equal(core.length, 0);
+  await z.onUpdate(priv('doanh số hôm nay'), true); assert.equal(core.length, 1);
+  await z.onUpdate(priv('/zalobot gui Hồng Hà | chào cả nhà, nhóm nào cũng vào đi'), true); assert.equal(core.length, 2, 'có dấu | là lệnh/việc giao, không bị chặn');
+});

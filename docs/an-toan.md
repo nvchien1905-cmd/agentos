@@ -830,3 +830,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Lỗi: bản 18.3 đã cho bot dùng mật khẩu chủ máy đưa, nhưng còn sót vài câu dặn cũ "bạn KHÔNG BAO GIỜ tự nhập mật khẩu" trong lời nhắc của bot (AGENT_HINT, LOGIN_HINT, thông báo "CẦN ĐĂNG NHẬP", naturalDesk). AI đọc câu cũ nên trả lời "máy chặn em nhập mật khẩu" dù chủ máy đã cho phép.
 - Sửa: ƯU TIÊN API/lệnh có sẵn (/doanhso, /ton, /hanghoa, /vps); API không làm được thì ĐĂNG NHẬP WEB: tài khoản đã lưu (/taikhoan → /dangnhap), hoặc mật khẩu chủ máy gửi trong chat thì tự gõ; chưa có thì hỏi chủ máy; chỉ dừng ở CAPTCHA, OTP chưa được đưa, ĐIỆN THOẠI. Thông báo "CẦN ĐĂNG NHẬP" nay đưa 3 cách (gửi mật khẩu trong chat / lưu /taikhoan / tự đăng nhập /mo webbot).
 - Không đổi: bộ theo dõi Messenger tự chạy nền vẫn không nhập mật khẩu (không có chủ máy ở đó).
+
+## 2026.11.18.18 — Bot Zalo trả lời đúng "đã thấy nhóm nào chưa"
+- Zalo Bot API không có lệnh liệt kê nhóm bot đang ở; bot chỉ biết nhóm khi có người @nhắc hoặc trả lời tin của bot. Trước đây AI ở chat riêng không biết điều này nên trả lời lung tung. Nay chủ máy hỏi kiểu "đã thấy nhóm nào chưa / đang ở nhóm nào" (chat riêng, câu ngắn, không có dấu |) thì bot trả luôn danh sách nhóm đã thấy (/zalobot nhom) kèm giải thích và cách thêm (vào nhóm @nhắc bot một câu), không giao AI. Chỉ chủ máy; không lộ gì mới cho người lạ.

@@ -778,3 +778,13 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Cảnh báo tự động: Zalo chưa đăng nhập (nhắc 6 giờ/lần), nối Chrome lỗi 3 lần liền, không đọc được danh sách (Zalo đổi giao diện).
 - Test: zalo-watch.test.js — 15 test với Chrome/Playwright giả + 1 test dùng Chrome THẬT và Playwright THẬT trên trang Zalo giả (chạy ở máy ảo); bắt được 2 lỗi thật (tên dính giờ, chấm đỏ). Đã cập nhật máy ảo bằng trình cập nhật thật lên bản này, bộ điều phối khởi động bình thường.
 - CHƯA kiểm chứng: cách đọc huy hiệu trên Zalo Web THẬT (chưa có tài khoản Zalo thật trong máy ảo, và Zalo không công bố cấu trúc trang). Nếu Zalo đổi giao diện hoặc mã không nhận ra huy hiệu, bot báo "không đọc được danh sách" thay vì im lặng. Rủi ro Zalo nghi tự động hóa: chỉ đọc, cùng IP/Chrome thật; không loại trừ được (Chrome bật cổng điều khiển).
+
+## Bản 2026.11.18.8 — BOT ZALO CHÍNH THỨC (orchestrator/src/zaloBot.js, Cài đặt → Bot Zalo)
+- Dùng Zalo Bot Platform (bot-api.zaloplatforms.com), KHÔNG cần Chrome. Dán token ở Cài đặt → Bot Zalo (kiểm thật với Zalo bằng getMe trước khi lưu; lưu ZALOBOT_TOKEN trong tệp cấu hình bí mật, giao diện chỉ hiện vài ký tự).
+- Giới hạn do Zalo: trong NHÓM bot chỉ nhận tin có @nhắc tên bot hoặc tin trả lời tin của bot, không đọc được tin cũ (đã xác nhận bằng chính câu trả lời của bot trong nhóm). Vì vậy đây là cách để chủ máy GỌI bot, không phải cách canh mọi tin trong nhóm (canh tin thường vẫn dùng /zalo canh).
+- Ai gõ "id" (hoặc /id) thì bot trả ID Zalo của họ + ID nhóm. Chỉ ID trong ZALOBOT_OWNERS (Cài đặt) ra lệnh được; người khác nhắn bot không được trả lời, chủ máy chỉ được báo Telegram 1 lần/ngày/người.
+- Lệnh của người được phép chạy như việc NGẦM (sys:zb:<nhóm>): AI chỉ trả lời bằng chữ, chế độ bảo vệ, KHÔNG có công cụ; nội dung tin là dữ liệu trong ngoặc ba, không phải chỉ thị hệ thống. Tối đa ZALOBOT_MAX_PER_HOUR (30) lệnh/giờ/nhóm; mỗi lần một việc AI; trả lời dài tự tách theo giới hạn 2000 ký tự.
+- Nhận tin bằng getUpdates (long-poll, máy không cần địa chỉ công khai); lúc khởi động gọi deleteWebhook (hai cách loại trừ nhau). Vòng nhận tin không chờ AI nên tin kế tiếp vẫn được nhận. Lỗi nhận tin liên tục (5 lần) → báo Telegram một lần.
+- Tài liệu Zalo ghi getUpdates "chỉ nên dùng khi thử nghiệm", production nên dùng webhook (cần địa chỉ HTTPS công khai). Chưa làm webhook; nếu Zalo hạn chế getUpdates thì chuyển sang webhook.
+- Test: orchestrator/test/zalo-bot.test.js (9 test, Zalo giả) + settings.test.js (ô dán token, ID, xóa, không lộ token).
+- CHƯA kiểm chứng với Zalo thật: định dạng JSON tin trong NHÓM (tài liệu chỉ có ví dụ chat riêng), cách getUpdates báo "không có tin" (code coi 408/timeout là bình thường), cách bot thấy @nhắc tên trong text.

@@ -36,6 +36,7 @@ async function boot(extra) {
     return c;
   };
   const apiFetch = async (url, init) => {
+    if (/bot-api\.zaloplatforms\.com/.test(url)) { const bad = /BADTOKEN/.test(url); return { ok: true, status: bad ? 401 : 200, json: async () => (bad ? { ok: false, error_code: 401, description: 'Unauthorized' } : { ok: true, result: { id: 'zb1', display_name: 'Bot quản gia' } }) }; }
     if (/api\.telegram\.org/.test(url)) return { ok: true, status: 200, json: async () => ({ ok: true, result: { id: 9, username: 'bot_moi', first_name: 'Bot' } }) };
     return { status: String((init.headers || {})['x-api-key'] || (init.headers || {}).Authorization || '').includes('bad') ? 401 : 200 };
   };
@@ -186,6 +187,27 @@ test('settings: bot Telegram — đổi token (kiểm getMe), ID chủ máy, ch�
   } finally { await S.s.close(); }
   const N = await boot({ noEnv: true });
   try { assert.equal((await N.call('GET', 'bot')).body.configured, false); assert.match((await N.call('POST', 'bot/owner', { ids: '5' })).body.error, /chưa cấu hình xong/); } finally { await N.s.close(); }
+});
+
+test('settings: bot Zalo — dán token (kiểm thật với Zalo), ID được phép, xóa token; token không lộ ra giao diện', async () => {
+  const S = await boot();
+  try {
+    const g0 = await S.call('GET', 'zalobot'); assert.equal(g0.body.configured, true); assert.equal(g0.body.token, null); assert.deepEqual(g0.body.owners, []);
+    assert.equal((await S.call('POST', 'zalobot/token', { token: 'sai' })).status, 400);
+    const bad = '123456789:BADTOKEN' + 'x'.repeat(20); const rb = await S.call('POST', 'zalobot/token', { token: bad }); assert.equal(rb.status, 400); assert.doesNotMatch(S.env(), /ZALOBOT_TOKEN/);
+    const tk = '123456789:' + 'Z'.repeat(30); S.calls.length = 0;
+    const ok = await S.call('POST', 'zalobot/token', { token: tk }); assert.equal(ok.status, 200); assert.equal(ok.body.bot.name, 'Bot quản gia'); assert.match(S.env(), new RegExp('^ZALOBOT_TOKEN=' + tk + '$', 'm'));
+    assert.ok(S.calls.some((c) => c[0] === 'systemctl' && c[1] === 'restart' && c[2] === 'agentos-orchestrator.service'));
+    const g = await S.call('GET', 'zalobot'); assert.ok(g.body.token); assert.equal(g.body.bot.name, 'Bot quản gia'); assert.doesNotMatch(JSON.stringify(g.body), new RegExp(tk));
+    assert.equal((await S.call('POST', 'zalobot/owners', { ids: 'xin chao!' })).status, 400);
+    assert.equal((await S.call('POST', 'zalobot/owners', { ids: '6ede9afa66b88fe6d6a9, abc123def456' })).status, 200); assert.match(S.env(), /^ZALOBOT_OWNERS=6ede9afa66b88fe6d6a9,abc123def456$/m);
+    assert.deepEqual((await S.call('GET', 'zalobot')).body.owners, ['6ede9afa66b88fe6d6a9', 'abc123def456']);
+    assert.equal((await S.call('POST', 'zalobot/owners', { ids: '' })).status, 200); assert.doesNotMatch(S.env(), /ZALOBOT_OWNERS/);
+    assert.equal((await S.call('POST', 'zalobot/clear', {})).status, 200); assert.doesNotMatch(S.env(), /ZALOBOT_TOKEN/); assert.match(S.env(), /^TELEGRAM_TOKEN=/m);
+    const page = await fetch('http://127.0.0.1:' + S.port + '/'); const html = await page.text(); assert.match(html, /Bot Zalo/); assert.match(html, /zalobot\/token/);
+  } finally { await S.s.close(); }
+  const N = await boot({ noEnv: true });
+  try { assert.equal((await N.call('GET', 'zalobot')).body.configured, false); assert.match((await N.call('POST', 'zalobot/owners', { ids: 'abcdef12' })).body.error, /chưa cấu hình xong/); } finally { await N.s.close(); }
 });
 
 test('settings: OneDrive — lấy đường dẫn đăng nhập, từ chối địa chỉ lạ, hoàn tất khi có token; Tailscale/mạng/dịch vụ/nhật ký/sao lưu', async () => {

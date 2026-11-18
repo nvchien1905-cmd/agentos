@@ -31,6 +31,7 @@ const { createLogin } = require('../lib/login');
 const qrLib = require('../lib/qr');
 const { createDevices } = require('../../orchestrator/src/devices');
 const mask = require('../lib/mask');
+const zaloBotLib = require('../../orchestrator/src/zaloBot');
 const { createTailscale } = require('../../orchestrator/src/tailscale');
 const { createUpdater } = require('../../update/updater');
 const { createSummarizer } = require('../../orchestrator/src/summarizer');
@@ -646,6 +647,33 @@ function createSettings(o) {
       saveEnv(setEnvLine(needEnv(), 'TELEGRAM_TOKEN', token));
       await restart('agentos-orchestrator');
       return { bot: { username: bot.username }, masked: apikeys.mask(token) };
+    },
+    // ----- Bot Zalo chính thức (orchestrator/src/zaloBot.js): token + ID Zalo được phép ra lệnh -----
+    async 'GET /api/zalobot'() {
+      const t = readEnv(); if (t == null) return { configured: false };
+      const token = envVal(t, 'ZALOBOT_TOKEN');
+      let bot = null, error = ''; if (token) { try { bot = await zaloBotLib.getMe(token, { fetch: fetchImpl }); } catch (e) { error = e.message; } }
+      let chats = []; try { chats = Object.entries(JSON.parse(fs.readFileSync(path.join(o.boardMainDir || '/var/lib/agentos/data', 'zalobot.json'), 'utf8')).chats || {}).map(([id, c]) => ({ id, type: c.type || '', by: c.by || '', at: c.at || 0 })).sort((a, b) => b.at - a.at).slice(0, 10); } catch (e) { /* chưa có tin nào */ }
+      return { configured: true, token: token ? apikeys.mask(token) : null, bot, error, owners: envVal(t, 'ZALOBOT_OWNERS').split(',').filter(Boolean), chats, service: await isActive('agentos-orchestrator') };
+    },
+    async 'POST /api/zalobot/token'(b) {
+      const token = String(b.token || '').trim();
+      const bot = await zaloBotLib.getMe(token, { fetch: fetchImpl });        // kiểm thật với Zalo trước khi lưu
+      saveEnv(setEnvLine(needEnv(), 'ZALOBOT_TOKEN', token));
+      await restart('agentos-orchestrator');
+      return { bot, masked: apikeys.mask(token) };
+    },
+    async 'POST /api/zalobot/owners'(b) {
+      const ids = String(b.ids || '').split(/[,\s]+/).filter(Boolean);
+      if (ids.some((x) => !zaloBotLib.ID_RE.test(x))) throw new Error('ID Zalo không đúng dạng. Nhắn "id" cho bot trong nhóm để biết ID (dạng 6ede9afa66b88fe6d6a9). Nhiều ID ngăn cách bằng dấu phẩy.');
+      saveEnv(setEnvLine(needEnv(), 'ZALOBOT_OWNERS', ids.length ? ids.join(',') : null));
+      await restart('agentos-orchestrator');
+      return { owners: ids };
+    },
+    async 'POST /api/zalobot/clear'() {
+      let t = setEnvLine(needEnv(), 'ZALOBOT_TOKEN', null);
+      saveEnv(t); await restart('agentos-orchestrator');
+      return { cleared: true };
     },
     async 'POST /api/bot/owner'(b) {
       const ids = String(b.ids || '').split(/[,\s]+/).filter(Boolean);

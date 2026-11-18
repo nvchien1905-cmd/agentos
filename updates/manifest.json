@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.7",
-  "file": "agentos-update-2026.11.18.7.tar.gz",
-  "size": 656247,
-  "sha256": "dc78a0b24860dddfce123fe99a57fb0eabb6c216df20ed15e41e3e6022d681df",
-  "date": "2026-11-17",
-  "notes": "Tự canh tin Zalo mới (không tốn token): /zalo canh bat"
+  "version": "2026.11.18.8",
+  "file": "agentos-update-2026.11.18.8.tar.gz",
+  "size": 661164,
+  "sha256": "122af629417b2d59ab113158ca008af1b0c8f08021847500f71e04a50a67ccf1",
+  "date": "2026-11-18",
+  "notes": "Bot Zalo chính thức: dán token ở Cài đặt → Bot Zalo, @nhắc bot trong nhóm Zalo để hỏi (không cần Chrome)"
 }

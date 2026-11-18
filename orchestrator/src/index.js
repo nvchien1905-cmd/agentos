@@ -58,6 +58,7 @@ const { isSysJob, isQuietJob, skipAnswer, isFacebookCheck } = require('./quiet')
 const { createFacebook } = require('./facebook');
 const { createZalo } = require('./zalo');
 const { createZaloWatch } = require('./zaloWatch');
+const { createZaloBot } = require('./zaloBot');
 const { createWebLogin } = require('./weblogin');
 const { createVps } = require('./vps');
 const { createProbe } = require('./fbprobe');
@@ -674,6 +675,9 @@ async function main() {
     jobActive: (id) => { const j = db.getJob(id); return !!j && ['queued', 'running', 'waiting'].includes(j.status); },
   });
   zaloWatch.start();
+  // Bot Zalo chính thức (zaloBot.js): chủ máy @nhắc bot trong nhóm Zalo → AI trả lời bằng chữ; không cần Chrome. Cần ZALOBOT_TOKEN (Cài đặt → Bot Zalo).
+  const zaloBot = createZaloBot({ file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
+  zaloBot.start();
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();

@@ -46,7 +46,7 @@ mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}.wi{paddin
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['studio', '🎨', 'Xưởng sáng tạo'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['zbot', '🟦', 'Bot Zalo'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['studio', '🎨', 'Xưởng sáng tạo'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -435,6 +435,23 @@ mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}.wi{paddin
         if (!r.configured) return set('<h2>Bot Telegram</h2><div class="banner">Máy chưa cấu hình xong. Hoàn tất trình hướng dẫn lần đầu.</div>');
         set('<h2>Bot Telegram</h2><div id="agp"></div>');
         renderAgents();
+      }).catch(fail);
+    },
+    zbot: function () {
+      api('GET', 'zalobot').then(function (r) {
+        if (!r.configured) return set('<h2>Bot Zalo</h2><div class="banner">Máy chưa cấu hình xong. Hoàn tất trình hướng dẫn lần đầu.</div>');
+        var h = '<h2>Bot Zalo</h2><p class="mute">Bot Zalo chính thức (tạo ở <b>bot.zaloplatforms.com</b>). Trong nhóm, bot chỉ nhận tin có <b>@nhắc tên bot</b> hoặc tin trả lời tin của bot (giới hạn của Zalo). Không cần Chrome, không tốn token khi không ai gọi.</p>';
+        h += '<div class="card"><h3>1. Token bot</h3>';
+        if (r.token) h += '<p>' + (r.bot ? '<span class="ok">● Token hợp lệ</span> · bot <b>' + esc(r.bot.name || '') + '</b>' : '<span class="bad">● Token có nhưng Zalo không nhận: ' + esc(r.error || '') + '</span>') + ' · <code>' + esc(r.token) + '</code> · ' + (r.service ? '<span class="ok">đang chạy</span>' : '<span class="bad">bộ điều phối đang dừng</span>') + '</p>';
+        else h += '<p class="mute">Chưa có token. Vào trang quản lý bot của Zalo, chép <b>Bot Token</b> (dạng 123456789:abc...) dán vào đây.</p>';
+        h += '<div class="row"><input type="password" id="zb-tk" placeholder="Dán token bot Zalo" autocomplete="off" class="grow" style="min-width:240px"><button class="b p" id="zb-save">Kiểm tra và lưu</button>' + (r.token ? '<button class="b d" id="zb-clear">Xóa token</button>' : '') + '</div></div>';
+        h += '<div class="card"><h3>2. Ai được ra lệnh cho bot</h3><p class="mute">Trong nhóm Zalo, người đó gõ <b>@tên bot id</b> thì bot trả ID Zalo của họ. Dán ID vào đây (nhiều người ngăn cách bằng dấu phẩy). Người không có trong danh sách nhắn bot sẽ không được trả lời, em chỉ báo anh qua Telegram.</p>' +
+          '<div class="row"><input type="text" id="zb-ow" value="' + esc(r.owners.join(',')) + '" class="grow" placeholder="ID Zalo, ví dụ 6ede9afa66b88fe6d6a9"><button class="b p" id="zb-owsave">Lưu</button></div></div>';
+        h += '<div class="card"><h3>Nhóm/chat bot đã thấy gần đây</h3>' + (r.chats.length ? '<table><tr><th>ID cuộc trò chuyện</th><th>Loại</th><th>Người nhắn gần nhất</th><th>Lúc</th></tr>' + r.chats.map(function (c) { return '<tr><td><code>' + esc(c.id) + '</code></td><td>' + esc(c.type) + '</td><td>' + esc(c.by) + '</td><td class="mute">' + (c.at ? new Date(c.at).toLocaleString('vi-VN') : '') + '</td></tr>'; }).join('') + '</table>' : '<p class="mute">Chưa có tin nào. Sau khi lưu token, nhắn <b>@tên bot id</b> trong nhóm để thử.</p>') + '</div>';
+        set(h);
+        on('zb-save', function () { toast('Đang kiểm tra token với Zalo...'); api('POST', 'zalobot/token', { token: document.getElementById('zb-tk').value }).then(function (j) { toast('Đã lưu, bot Zalo ' + (j.bot && j.bot.name ? j.bot.name : '') + ' đang chạy'); render(); }).catch(fail); });
+        on('zb-clear', function () { if (ask('Xóa token bot Zalo? Bot ngừng nhận tin.')) api('POST', 'zalobot/clear', {}).then(function () { toast('Đã xóa token'); render(); }).catch(fail); });
+        on('zb-owsave', function () { api('POST', 'zalobot/owners', { ids: document.getElementById('zb-ow').value }).then(function () { toast('Đã lưu'); render(); }).catch(fail); });
       }).catch(fail);
     },
     mem: function () {

@@ -9,7 +9,7 @@
 //   - lệnh NHẠY CẢM (danger: bật/tắt toàn quyền, tắt/khởi động lại máy, chạy lệnh dòng lệnh, cập nhật phần mềm, xóa bot, phân quyền, hoàn tác tệp...) LUÔN hỏi chủ máy bằng nút bấm, kể cả khi việc đến từ chính chủ máy.
 const SAFE = new Set(['help', 'id', 'start', 'menu', 'trangthai', 'viec', 'tim', 'nhatky', 'phien', 'cuaso', 'manhinh', 'doanhso', 'ton', 'hanghoa', 'maytinh', 'trinho', 'log', 'chiphi', 'phancung', 'gia', 'canhbao', 'sukien', 'camera', 'dichvu']);
 const NORMAL = new Set(['mo', 'dong', 'go', 'phim', 'bam', 'timchu', 'bamchu', 'chuyen', 'dan', 'nho', 'quen', 'hen', 'baocao', 'moi', 'huy', 'dung', 'nen', 'tieptuc', 'ai', 'cheodo', 'quyen', 'kynang', 'skill', 'cho', 'plugin', 'duan', 'project',
-  'ghepdoi', 'onedrive', 'tailscale', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'taikhoan', 'dangnhap', 'vps', 'google', 'may', 'ketnoi', 'dien', 'bat', 'in', 'doc', 'doi', 'thay', 'lay', 'guilen', 'saoluu', 'saoluudia', 'hoidong', 'bacsi', 'anh', 'giao', 'daily', 'agent', 'deepseek', 'vao', 'nhaman', 'claude', 'codex', 'gemini', 'deepseekapi']);
+  'ghepdoi', 'onedrive', 'tailscale', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'zalobot', 'taikhoan', 'dangnhap', 'vps', 'google', 'may', 'ketnoi', 'dien', 'bat', 'in', 'doc', 'doi', 'thay', 'lay', 'guilen', 'saoluu', 'saoluudia', 'hoidong', 'bacsi', 'anh', 'giao', 'daily', 'agent', 'deepseek', 'vao', 'nhaman', 'claude', 'codex', 'gemini', 'deepseekapi']);
 // luôn nhạy cảm (kèm vì sao, hiện cho chủ máy trong nút duyệt)
 const DANGER = {
   toanquyen: 'Bật chế độ TOÀN QUYỀN (AI tự làm không hỏi, có sudo)', baove: 'Đổi chế độ bảo vệ của AI', tatmay: 'TẮT máy', khoimay: 'Khởi động lại máy', khoamay: 'Khóa màn hình máy', mokhoa: 'Mở khóa máy',

@@ -38,6 +38,7 @@ function helpText(profiles) {
     '👤 /facebook - TRỢ LÝ TRỰC Messenger cá nhân: may [tên máy Windows] (MỘT LỆNH — dùng Chrome thật của máy Windows, khuyên dùng) · dangnhap (chỉ cách cũ, Chrome của bot) · bat · nhap (chỉ soạn nháp) · tudong [tên] (AI tự trả lời tin đơn giản, nhạy cảm vẫn chờ duyệt) · khong <tên> · chidan · chuky · nhatky · /fb tra <số> <nội dung>\n' +
     '🔑 /taikhoan - lưu tài khoản + mật khẩu các trang web (mã hóa, tin có mật khẩu tự xóa) · /dangnhap <tên> - bot mở Chrome điền hộ, AI không thấy mật khẩu\n' +
     '🖥️ /vps - truy cập VPS của anh bằng khóa SSH: bot quản lý đủ quyền, bot thường CHỈ XEM · /vps them · khoa · thu · chay <tên> <lệnh>\n' +
+    '🟦 /zalobot - BOT ZALO chính thức (nhóm Zalo): nhom · ten <số> <tên> · gui <nhóm> | <nội dung> (bot nhắn vào nhóm) · chidan <nhóm> | <nội dung> (dặn bot cách trả lời lâu dài trong nhóm) · xem <nhóm>\n' +
     '💬 /zalo - TRỢ LÝ ZALO cá nhân qua Chrome (gõ chậm như người thật, tự soạn + tự gửi): bat · tat · dangnhap · tudong (AI tự gửi) · nhap (anh bấm ✅) · canh bat|chibao|tat|<giây> (tự canh tin Zalo mới, không tốn token) · gui <nơi nhận> | <nội dung> · chan <tên> · gioihan · nhip · gio · chidan · nhatky\n' +
     '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +
@@ -73,8 +74,8 @@ const ICON = { queued: 'chờ', running: 'đang chạy', waiting: 'chờ hạn m
 // `isAdmin(uid)`: quản trị viên mới dùng được bộ adminOnly và duyệt lệnh/ghi file (mặc định: mọi người được phép).
 // `approvals`: nhận lượt bấm nút duyệt.
 // Lệnh điều khiển máy ghi vào /nhatky (lệnh /go chỉ ghi số ký tự vì có thể là mật khẩu)
-const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'taikhoan', 'dangnhap', 'vps', 'camera', 'dien', 'vao']);
-function createBot({ vps, weblogin, db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
+const AUDITED = new Set(['lenh', 'lay', 'go', 'phim', 'bam', 'bamchu', 'chuyen', 'dan', 'tuxa', 'guilen', 'mo', 'dong', 'khoamay', 'khoimay', 'tatmay', 'mokhoa', 'saoluu', 'bat', 'doi', 'thay', 'hangrao', 'tuchan', 'log', 'nen', 'tieptuc', 'saoluudia', 'chiphi', 'canhbao', 'may', 'ketnoi', 'ai', 'dongbo', 'fanpage', 'facebook', 'fb', 'zalo', 'zalobot', 'taikhoan', 'dangnhap', 'vps', 'camera', 'dien', 'vao']);
+function createBot({ zaloBot, vps, weblogin, db, worker, allowed, profiles, isAdmin, approvals, fullAccess, quick, voice, media, memory, send, quietAck, roles, projects, auditlog, hoidap, images, diagnose, fleet, iot, ketnoi, engineCtl, dongbo, fanpage, facebook, zalo, deleteMessage, now, access, pairing, sandboxLine, checkpoints, journal, connectorsUi, pluginsUi, skillsUi, googleStatus, agentsUi, agentMode }) {
   now = now || Date.now;
   const albums = new Map();                       // media_group_id -> { msgs, timer }: gom các ảnh/video của một album thành MỘT việc
   const ATT_KEYS = { photo: undefined, video: undefined, video_note: undefined, animation: undefined, document: undefined, caption: undefined, media_group_id: undefined };
@@ -283,6 +284,11 @@ function createBot({ vps, weblogin, db, worker, allowed, profiles, isAdmin, appr
           if (name === 'taikhoan' && !agentsUi && /^(them|add|xoa|del|rm)/i.test(String(cmd[3] || '').trim())) { if (deleteMessage && msg.message_id) Promise.resolve(deleteMessage(chatId, msg.message_id)).catch(() => {}); return '🔑 Thêm/xóa tài khoản web làm ở BOT QUẢN LÝ (CEO HA LIFE): lưu một lần là mọi bot phụ tự nhận sau vài phút, và /dangnhap dùng được ở bot nào cũng được. Tin của anh vừa gõ đã được xóa.'; }
           const wl = name === 'dangnhap' ? weblogin.loginCommand(String(cmd[3] || '')) : weblogin.command(String(cmd[3] || ''));
           return wl.then((r) => { if (r.secret && deleteMessage && msg.message_id) Promise.resolve(deleteMessage(chatId, msg.message_id)).catch(() => {}); return r.text; }, (e) => '⚠️ ' + e.message);
+        }
+        case 'zalobot': {                                   // Bot Zalo chính thức: nhóm, nhắn vào nhóm, chỉ dẫn lâu dài (zaloBot.js)
+          if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /zalobot.';
+          if (!zaloBot) return 'Máy này chưa có bot Zalo.';
+          return zaloBot.command(String(cmd[3] || ''));
         }
         case 'zalo': {                                      // Trợ lý Zalo cá nhân qua Chrome: bật/tắt, chế độ, hạn mức, gửi tin (zalo.js)
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /zalo.';

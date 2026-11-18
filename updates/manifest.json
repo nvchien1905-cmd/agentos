@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.11",
-  "file": "agentos-update-2026.11.18.11.tar.gz",
-  "size": 667260,
-  "sha256": "2b6102a1626cec27ffee7312c72efb91dea2a5161f6a0635aa10e05f6cab6436",
+  "version": "2026.11.18.13",
+  "file": "agentos-update-2026.11.18.13.tar.gz",
+  "size": 670349,
+  "sha256": "949da09c21fceca13a15701ca81b6c16a0cdc10ee0d335ba8e6a021212ecdef3",
   "date": "2026-11-18",
-  "notes": "Bot Zalo đủ quyền như bot Telegram quản lý (chat riêng của chủ máy): mọi lệnh, AI có công cụ, duyệt việc bằng chữ, gửi tệp"
+  "notes": "Bot Zalo: trí nhớ chung chat riêng và nhóm; chủ máy giao việc, bot nhắn vào nhóm (/zalobot)"
 }

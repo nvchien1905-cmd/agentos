@@ -21,7 +21,7 @@ async function call(token, method, body, opts) {
   const f = opts.fetch || fetch;
   let r;
   try {
-    r = await f(API + token + '/' + method, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: opts.signal || AbortSignal.timeout(opts.timeoutMs || 40000) });
+    r = await f((process.env.ZALOBOT_API_BASE || API) + token + '/' + method, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}), signal: opts.signal || AbortSignal.timeout(opts.timeoutMs || 40000) });
   } catch (e) { const er = new Error('Không kết nối được tới Zalo Bot: ' + (e.message || e)); er.network = true; throw er; }
   let j = null; try { j = await r.json(); } catch (e) { j = null; }
   if (!j || j.ok !== true) {
@@ -79,6 +79,7 @@ function createZaloBot(o) {
   const owners = () => new Set(String(env().ZALOBOT_OWNERS || '').split(',').map((x) => x.trim()).filter(Boolean));
   const perHour = () => Math.max(1, Number(env().ZALOBOT_MAX_PER_HOUR) || 30);                 // mỗi nhóm/chat
   const perSender = () => Math.max(1, Number(env().ZALOBOT_MAX_PER_SENDER) || 10);             // mỗi người LẠ trong nhóm
+  const fullOn = () => !/^(0|false|no|off|tat)$/i.test(String(env().ZALOBOT_FULL === undefined ? '1' : env().ZALOBOT_FULL).trim());   // chat RIÊNG của chủ máy dùng được toàn bộ tính năng như bot Telegram
   const groupOpen = () => !/^(0|false|no|off|tat)$/i.test(String(env().ZALOBOT_GROUP_OPEN === undefined ? '1' : env().ZALOBOT_GROUP_OPEN).trim());
   let state = null;
   const load = () => { if (state) return state; try { state = JSON.parse(fs.readFileSync(o.file, 'utf8')); } catch (e) { state = null; } if (!state || typeof state !== 'object') state = {}; state.chats = state.chats || {}; state.unknown = state.unknown || {}; return state; };
@@ -91,6 +92,50 @@ function createZaloBot(o) {
     let last = null; for (const part of splitText(text, MAX_TEXT - 50)) last = await call(t, 'sendMessage', { chat_id: String(chatId), text: part }, { fetch: o.fetch });
     return last;
   })();
+
+  // Tải lên ảnh (≤10 MB, JPEG/PNG/WebP) hoặc tệp (≤50 MB) bằng multipart; field tên "photo" / "file"
+  async function upload(method, field, chatId, filePath, name, caption) {
+    const t = token(); if (!t) throw new Error('Chưa có token bot Zalo.');
+    const buf = fs.readFileSync(filePath);
+    const max = method === 'sendPhoto' ? 10 * 1048576 : 50 * 1048576;
+    if (buf.length > max) throw new Error('tệp quá lớn (' + Math.round(buf.length / 1048576) + ' MB, Zalo cho tối đa ' + Math.round(max / 1048576) + ' MB)');
+    const form = new FormData();
+    form.set('chat_id', String(chatId)); form.set(field, new Blob([buf]), name || path.basename(filePath));
+    if (method === 'sendFile') form.set('file_name', String(name || path.basename(filePath)).slice(0, 255));
+    if (caption) form.set('caption', String(caption).slice(0, 2000));
+    const f = o.fetch || fetch; let r;
+    try { r = await f((process.env.ZALOBOT_API_BASE || API) + t + '/' + method, { method: 'POST', body: form, signal: AbortSignal.timeout(120000) }); } catch (e) { throw new Error('Không kết nối được tới Zalo Bot: ' + (e.message || e)); }
+    let j = null; try { j = await r.json(); } catch (e) { j = null; }
+    if (!j || j.ok !== true) throw new Error((j && j.description) || ('Zalo Bot trả HTTP ' + r.status));
+    return j.result;
+  }
+  const channel = {
+    send: (chatId, text) => send(chatId, text),
+    sendPhoto: (chatId, p, caption) => upload('sendPhoto', 'photo', chatId, p, path.basename(p), caption),
+    sendFile: (chatId, p, name, caption) => upload('sendFile', 'file', chatId, p, name, caption),
+    typing: (chatId) => call(token(), 'sendChatAction', { chat_id: String(chatId), action: 'typing' }, { fetch: o.fetch }),
+  };
+
+  // CHAT RIÊNG của chủ máy: dùng NGUYÊN bộ não của bot Telegram (o.core.handle / callback / takePending) — lệnh /, AI có công cụ, duyệt việc, gửi tệp...
+  let coreSeq = 0;
+  async function runCore(m, cid, from, text, img) {
+    const chatKey = 'zl:' + cid;
+    try {
+      const data = o.core.takePending ? o.core.takePending(chatKey, text) : null;
+      if (data) { const r = await o.core.callback({ id: 'zl-cb', from: { id: chatKey }, data, message: { chat: { id: chatKey }, message_id: 0 } }); if (r && typeof r === 'string') await send(cid, r); return 'duyet'; }
+      let body = text;
+      if (img) {
+        const dest = await downloadImage(m.photo_url, path.join(o.inboxDir || path.join(require('os').tmpdir(), 'agentos-inbox'), chatKey.replace(/[^\w.-]/g, '_'), new Date(now()).toISOString().replace(/[-:T.Z]/g, '').slice(0, 14) + '-' + String(m.message_id || 'x').replace(/[^\w.-]/g, '').slice(0, 20)), { fetch: o.imgFetch || o.fetch });
+        body = (text ? text + '\n' : '') + '[Tệp đính kèm — đã lưu trên máy. Hãy xem ảnh/khung hình bằng công cụ đọc ảnh/tệp rồi làm theo yêu cầu]\n- Ảnh: ' + dest;
+      }
+      await o.core.handle({ message_id: ++coreSeq, date: Math.floor(now() / 1000), from: { id: chatKey, first_name: clip(from.display_name || 'Chủ máy', 40), is_bot: false }, chat: { id: chatKey, type: 'private' }, text: body });
+      return 'core';
+    } catch (e) {
+      log('bot Zalo: xử lý tin của chủ máy lỗi: ' + (e && e.stack || e));
+      await send(cid, '⚠️ Em gặp lỗi khi xử lý tin này: ' + clip(e && e.message || e, 300) + '\nAnh thử gửi lại, hoặc gõ /trangthai.').catch(() => {});
+      return 'loi';
+    }
+  }
 
   function rate(chatId, max) {
     const k = String(chatId), arr = (used.get(k) || []).filter((x) => now() - x < 3600000);
@@ -117,6 +162,7 @@ function createZaloBot(o) {
       }
       return 'khong-duoc-phep';
     }
+    if (isOwner && !isGroup && o.core && fullOn()) return runCore(m, cid, from, text, img);
     if (!isOwner && !rate('s:' + cid + ':' + fid, perSender())) { await send(cid, 'Bạn hỏi nhiều quá trong 1 giờ rồi, bạn chờ chút rồi hỏi lại nhé.'); return 'qua-han-muc-nguoi'; }
     if (!rate(cid)) { await send(cid, 'Em đang nhận quá nhiều lệnh trong 1 giờ, anh chờ chút rồi nhắn lại nhé.'); return 'qua-han-muc'; }
     handled++;
@@ -177,8 +223,9 @@ function createZaloBot(o) {
   return {
     start() { if (running || !token()) return false; stopping = false; loop().catch((e) => log('bot Zalo dừng: ' + e.message)); return true; },
     stop() { stopping = true; },
-    send, onMessage, onUpdate, getMe: () => getMe(token(), { fetch: o.fetch }),
-    status() { const st = load(); return { enabled: !!token(), running, owners: [...owners()], lastOk, lastErr, handled, chats: Object.keys(st.chats).map((id) => Object.assign({ id }, st.chats[id])) }; },
+    send, onMessage, onUpdate, channel,
+    owners: () => owners(), fullOn, getMe: () => getMe(token(), { fetch: o.fetch }),
+    status() { const st = load(); return { enabled: !!token(), running, full: fullOn(), groupOpen: groupOpen(), owners: [...owners()], lastOk, lastErr, handled, chats: Object.keys(st.chats).map((id) => Object.assign({ id }, st.chats[id])) }; },
   };
 }
 

@@ -205,6 +205,8 @@ test('settings: bot Zalo — dán token (kiểm thật với Zalo), ID được 
     assert.equal((await S.call('POST', 'zalobot/owners', { ids: '' })).status, 200); assert.doesNotMatch(S.env(), /ZALOBOT_OWNERS/);
     assert.equal((await S.call('GET', 'zalobot')).body.groupOpen, true); assert.equal((await S.call('POST', 'zalobot/group-open', { open: false })).status, 200); assert.match(S.env(), /^ZALOBOT_GROUP_OPEN=0$/m); assert.equal((await S.call('GET', 'zalobot')).body.groupOpen, false);
     assert.equal((await S.call('POST', 'zalobot/group-open', { open: true })).status, 200); assert.match(S.env(), /^ZALOBOT_GROUP_OPEN=1$/m);
+    assert.equal((await S.call('GET', 'zalobot')).body.full, true); assert.equal((await S.call('POST', 'zalobot/full', { on: false })).status, 200); assert.match(S.env(), /^ZALOBOT_FULL=0$/m); assert.equal((await S.call('GET', 'zalobot')).body.full, false);
+    assert.equal((await S.call('POST', 'zalobot/full', { on: true })).status, 200); assert.match(S.env(), /^ZALOBOT_FULL=1$/m);
     assert.equal((await S.call('POST', 'zalobot/clear', {})).status, 200); assert.doesNotMatch(S.env(), /ZALOBOT_TOKEN/); assert.match(S.env(), /^TELEGRAM_TOKEN=/m);
     const page = await fetch('http://127.0.0.1:' + S.port + '/'); const html = await page.text(); assert.match(html, /Bot Zalo/); assert.match(html, /zalobot\/token/);
   } finally { await S.s.close(); }

@@ -59,6 +59,7 @@ const { createFacebook } = require('./facebook');
 const { createZalo } = require('./zalo');
 const { createZaloWatch } = require('./zaloWatch');
 const { createZaloBot } = require('./zaloBot');
+const { createChannelRouter } = require('./channelRouter');
 const { createWebLogin } = require('./weblogin');
 const { createVps } = require('./vps');
 const { createProbe } = require('./fbprobe');
@@ -127,7 +128,11 @@ async function main() {
     notices.push('⚠️ Cơ sở dữ liệu bị hỏng (' + String(integrity.detail).slice(0, 80) + '). ' + (restored ? 'Đã khôi phục từ bản sao lưu ' + restored + ' (có thể mất việc gần đây).' : 'Không có bản sao lưu dùng được nên đã tạo mới.'));
   }
   const db = openDb(cfg.dbPath);
-  const tg = createTelegram(cfg.token);
+  // Bot Zalo chính thức = cửa thứ hai vào CÙNG bộ não: chat RIÊNG của chủ máy (ZALOBOT_OWNERS) có mã "zl:<id>" và là quản trị viên như ID Telegram. tg là bộ định tuyến: chat "zl:..." đi Zalo, còn lại Telegram (channelRouter.js).
+  const zlRoute = { v: null };
+  const zlFull = !!cfg.token && !!process.env.ZALOBOT_TOKEN && !/^(0|false|no|off|tat)$/i.test(String(process.env.ZALOBOT_FULL === undefined ? '1' : process.env.ZALOBOT_FULL).trim());
+  if (zlFull && !cfg.agentId) for (const id of String(process.env.ZALOBOT_OWNERS || '').split(',').map((x) => x.trim()).filter(Boolean)) { cfg.allowedUserIds.add('zl:' + id); cfg.adminUserIds.add('zl:' + id); }
+  const tg = createChannelRouter(createTelegram(cfg.token), zlRoute, { log });
 
   // Chế độ TOÀN QUYỀN (máy cá nhân của chủ): AI tự làm một mạch, không cổng duyệt, không sandbox, có sudo.
   // Chủ đổi lúc đang chạy bằng /toanquyen và /baove (lưu trong cơ sở dữ liệu, ưu tiên hơn FULL_ACCESS trong .env).
@@ -676,8 +681,8 @@ async function main() {
   });
   zaloWatch.start();
   // Bot Zalo chính thức (zaloBot.js): chủ máy @nhắc bot trong nhóm Zalo → AI trả lời bằng chữ; không cần Chrome. Cần ZALOBOT_TOKEN (Cài đặt → Bot Zalo).
-  const zaloBot = createZaloBot({ inboxDir: path.join(cfg.workdir, 'inbox'), file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
-  zaloBot.start();
+  const zaloBot = createZaloBot({ core: { handle: async (m) => { let r = botRef.handle(m); if (r && typeof r.then === 'function') r = await r; await botSend(m.chat.id, r); }, callback: (cq) => botRef.handleCallback(cq), takePending: (c, t) => tg.takePending(c, t) }, inboxDir: path.join(cfg.workdir, 'inbox'), file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
+  zlRoute.v = zaloBot.channel;
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();
   setTimeout(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 120000).unref(); setInterval(() => dongbo.tick().catch((e) => log('dongbo: ' + e.message)), 600000).unref();
@@ -895,6 +900,7 @@ async function main() {
 
   let offset = Number(db.kvGet('tg_offset')) || 0;
   let backoff = 1000;
+  zaloBot.start();                                 // bắt đầu nhận tin Zalo khi bộ não (bot) đã dựng xong
   health.ready();                                  // READY=1 cho systemd: từ đây watchdog bắt đầu có nghĩa
   while (!stopping) {
     health.tickLoop();

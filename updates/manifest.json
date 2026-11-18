@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.10",
-  "file": "agentos-update-2026.11.18.10.tar.gz",
-  "size": 663054,
-  "sha256": "cb7b6253f941f72d305b3fa363309968cd48e5ec9596d4a0e03c8fe8bf05ca33",
+  "version": "2026.11.18.11",
+  "file": "agentos-update-2026.11.18.11.tar.gz",
+  "size": 667260,
+  "sha256": "2b6102a1626cec27ffee7312c72efb91dea2a5161f6a0635aa10e05f6cab6436",
   "date": "2026-11-18",
-  "notes": "Bot Zalo đọc được ảnh gửi trong nhóm/chat (AI xem ảnh rồi trả lời)"
+  "notes": "Bot Zalo đủ quyền như bot Telegram quản lý (chat riêng của chủ máy): mọi lệnh, AI có công cụ, duyệt việc bằng chữ, gửi tệp"
 }

@@ -38,7 +38,7 @@ function helpText(profiles) {
     '👤 /facebook - TRỢ LÝ TRỰC Messenger cá nhân: may [tên máy Windows] (MỘT LỆNH — dùng Chrome thật của máy Windows, khuyên dùng) · dangnhap (chỉ cách cũ, Chrome của bot) · bat · nhap (chỉ soạn nháp) · tudong [tên] (AI tự trả lời tin đơn giản, nhạy cảm vẫn chờ duyệt) · khong <tên> · chidan · chuky · nhatky · /fb tra <số> <nội dung>\n' +
     '🔑 /taikhoan - lưu tài khoản + mật khẩu các trang web (mã hóa, tin có mật khẩu tự xóa) · /dangnhap <tên> - bot mở Chrome điền hộ, AI không thấy mật khẩu\n' +
     '🖥️ /vps - truy cập VPS của anh bằng khóa SSH: bot quản lý đủ quyền, bot thường CHỈ XEM · /vps them · khoa · thu · chay <tên> <lệnh>\n' +
-    '🟦 /zalobot - BOT ZALO chính thức (nhóm Zalo): nhom · ten <số> <tên> · gui <nhóm> | <nội dung> (bot nhắn vào nhóm) · chidan <nhóm> | <nội dung> (dặn bot cách trả lời lâu dài trong nhóm) · xem <nhóm>\n' +
+    '🟦 /zalobot - BOT ZALO chính thức (nhóm Zalo): nhom · ten <số> <tên> · gui <nhóm> | <nội dung> (bot nhắn vào nhóm) · chidan <nhóm> | <nội dung> (dặn bot cách trả lời lâu dài trong nhóm) · sotay/nho/quen (sổ tay riêng của nhóm) · xem <nhóm>\n' +
     '💬 /zalo - TRỢ LÝ ZALO cá nhân qua Chrome (gõ chậm như người thật, tự soạn + tự gửi): bat · tat · dangnhap · tudong (AI tự gửi) · nhap (anh bấm ✅) · canh bat|chibao|tat|<giây> (tự canh tin Zalo mới, không tốn token) · gui <nơi nhận> | <nội dung> · chan <tên> · gioihan · nhip · gio · chidan · nhatky\n' +
     '💾 /dongbo [bat|tat|chay] [tên máy] - sao lưu 2 CHIỀU dữ liệu Claude/Codex giữa máy này và các máy con (qua SSH, tự chạy theo giờ, giữ nhiều bản)\n' +
     '🤖 /ai [claude|codex|gemini|deepseek|tudong] - xem/đổi AI ưu tiên ngay (hoặc nhắn "chuyển sang dùng codex")\n' +

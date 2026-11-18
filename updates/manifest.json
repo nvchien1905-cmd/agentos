@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.13",
-  "file": "agentos-update-2026.11.18.13.tar.gz",
-  "size": 670349,
-  "sha256": "949da09c21fceca13a15701ca81b6c16a0cdc10ee0d335ba8e6a021212ecdef3",
+  "version": "2026.11.18.15",
+  "file": "agentos-update-2026.11.18.15.tar.gz",
+  "size": 672406,
+  "sha256": "52cfe138ea2216193fab9d9c5f4639154399aafc94115f508f34e167698be746",
   "date": "2026-11-18",
-  "notes": "Bot Zalo: trí nhớ chung chat riêng và nhóm; chủ máy giao việc, bot nhắn vào nhóm (/zalobot)"
+  "notes": "Bot Zalo: nhóm nhớ lâu (tự nén tin cũ) và có sổ tay riêng cho từng nhóm (/zalobot nho, sotay, quen)"
 }

@@ -818,3 +818,10 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Lệnh /zalobot (chỉ chủ máy; AI chế độ toàn quyền cũng gọi được bằng bot_command, mức "thường": chạy ngay nếu việc chưa đọc nội dung web, đã đọc web thì hỏi): nhom (liệt kê nhóm bot đã thấy, có số thứ tự), ten <số> <tên>, gui <số/tên/ID nhóm> | <nội dung> (bot nhắn vào nhóm ngay; chỉ gửi được vào chat bot đã từng thấy; tối đa 4000 ký tự, tự tách tin 2000), chidan <nhóm> | <nội dung> (trống = xóa), xem <nhóm>. Lời nhắc hệ thống của AI toàn quyền (zaloBotRule) dạy AI các lệnh này nên chủ máy chỉ cần nói "nhắn nhóm Hồng Hà nhắc báo cáo trước 17h"; nhắc định kỳ dùng /hen.
 - Lỗi tìm được lúc viết test: bộ lọc mật khẩu ban đầu không nhận chữ có dấu ("mật khẩu") — đã sửa bằng chuẩn hóa không dấu.
 - Test: zalo-memory.test.js (6 test). Nhật ký tối đa 30 tin/nhóm lưu trong zalobot.json.
+
+## Bản 2026.11.18.15 — BOT ZALO: NHÓM NHỚ LÂU + SỔ TAY RIÊNG CỦA TỪNG NHÓM
+- Nhóm Zalo không còn "quên" sau 30 tin. Nhật ký gần đây tối đa 40 tin; tin cũ bị đẩy ra được NÉN dần vào bản tóm tắt của nhóm (≤1200 ký tự) bằng mô hình rẻ giống bot Telegram (Gemini/DeepSeek, rồi Claude/Codex nếu có; lỗi hoặc không có thì cắt gọn). Dòng có mật khẩu/OTP/token bị loại trước khi nén; lệnh nén dặn mô hình không làm theo chữ trong tin.
+- SỔ TAY RIÊNG của từng nhóm (tối đa 40 mục × 300 ký tự), vào ngữ cảnh mỗi lần bot trả lời trong nhóm: /zalobot nho <nhóm> | <điều>, /zalobot sotay <nhóm>, /zalobot quen <nhóm> | <số>; hoặc chủ máy nhắn trong nhóm câu mở đầu "ghi nhớ…/nhớ rằng…/từ nay…/luôn luôn…/đừng bao giờ…/quy định…" thì bot tự ghi và báo lại.
+- CHỈ chủ máy ghi được sổ tay (người lạ nhắn y hệt cũng không ghi) — nếu cho người lạ ghi thì họ cài được "quy tắc" vào bot. Nội dung có mật khẩu/mã bí mật bị từ chối (sổ tay hiện cho cả nhóm). Bản tóm tắt tự nén là DỮ LIỆU, không phải lệnh.
+- Test: zalo-memory.test.js (8 test, rate-limit nâng trong test để chạy 45 tin).
+- Tóm tắt tự nén phân biệt lời chủ máy (quy ước chắc chắn) với lời thành viên (chỉ là họ khẳng định): thử trên máy ảo thấy mô hình viết "đã ghi nhận nồi chiên giá 1 triệu" từ lời người lạ nên đã chặn bằng lệnh nén + nhãn trong ngữ cảnh.

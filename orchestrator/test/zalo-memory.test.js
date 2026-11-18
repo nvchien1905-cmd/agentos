@@ -10,8 +10,8 @@ function mk(extra) {
   extra = extra || {}; const core = [], sent = [], ai = []; const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zm-'));
   const fetch = async (url, init) => { if (url.endsWith('/sendMessage')) { if (extra.failSend) return { status: 500, json: async () => ({ ok: false, description: 'lỗi' }) }; sent.push(JSON.parse(init.body)); } return { status: 200, json: async () => ({ ok: true, result: {} }) }; };
   let t = 1000000;
-  const z = createZaloBot({ env: { ZALOBOT_TOKEN: TK, ZALOBOT_OWNERS: 'boss1' }, file: path.join(dir, 'z.json'), inboxDir: path.join(dir, 'inbox'), log: () => {}, fetch, now: () => (t += 1000), notify: async () => {},
-    ownerMemory: extra.mem ? () => extra.mem : undefined,
+  const z = createZaloBot({ env: { ZALOBOT_TOKEN: TK, ZALOBOT_OWNERS: 'boss1', ZALOBOT_MAX_PER_HOUR: '5000', ZALOBOT_MAX_PER_SENDER: '5000' }, file: path.join(dir, 'z.json'), inboxDir: path.join(dir, 'inbox'), log: () => {}, fetch, now: () => (t += 1000), notify: async () => {},
+    ownerMemory: extra.mem ? () => extra.mem : undefined, summarize: extra.summarize,
     runAI: async (k, p) => { ai.push({ k, p }); return { ok: true, text: 'Trả lời nhóm' }; },
     core: { handle: async (m) => { core.push(m); }, callback: async () => '', takePending: () => null } });
   return { z, core, sent, ai, dir, adv: (ms) => { t += ms; } };
@@ -84,11 +84,44 @@ test('/zalobot là lệnh thường (chạy luôn khi chủ máy nhờ, không h
   assert.equal(ai.length, 1, 'trong nhóm câu này chỉ là chữ cho AI hỏi-đáp (không chạy lệnh)'); assert.match(ai[0].p, /"""\n\/zalobot gui 1 \| spam toàn nhóm\n"""/);
 });
 
-test('nhật ký nhóm giới hạn 30 tin/nhóm, lưu file; nhóm chỉ hiện là GROUP (chat riêng không lẫn)', async () => {
+test('nhật ký nhóm giới hạn 40 tin/nhóm (tin cũ được nén vào tóm tắt), lưu file; nhóm chỉ hiện là GROUP (chat riêng không lẫn)', async () => {
   const { z, dir } = mk();
   for (let i = 0; i < 40; i++) await z.onUpdate(ev('tin ' + i, nv), true);
-  const st = JSON.parse(fs.readFileSync(path.join(dir, 'z.json'), 'utf8')); assert.ok(st.log.grpHA01.length <= 30);
+  const st = JSON.parse(fs.readFileSync(path.join(dir, 'z.json'), 'utf8')); assert.ok(st.log.grpHA01.length <= 40);
   assert.ok(st.log.grpHA01.some((e) => e.text === 'tin 39'));
   await z.onUpdate(ev('xin chào', { chat: { id: 'boss1', chat_type: 'PRIVATE' } }), true);
   assert.deepEqual(z.groupsList().map((g) => g.id), ['grpHA01']);
+});
+
+test('nhóm nhớ LÂU: tin cũ được nén vào tóm tắt (mô hình rẻ), lọc dòng bí mật, vào ngữ cảnh nhóm; mô hình lỗi → cắt gọn', async () => {
+  const calls = [];
+  const { z, ai, dir } = mk({ summarize: async (sys, user) => { calls.push({ sys, user }); return { text: '- chị Lan hay hỏi giá nồi chiên' }; } });
+  await z.onUpdate(ev('mật khẩu wifi là abc123', nv), true);
+  for (let i = 0; i < 45; i++) await z.onUpdate(ev('hỏi giá nồi chiên lần ' + i, nv), true);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(calls.length >= 1); assert.match(calls[0].sys, /KHÔNG ghi mật khẩu|không ghi mật khẩu/i); assert.doesNotMatch(calls[0].user, /abc123/);
+  const st = JSON.parse(fs.readFileSync(path.join(dir, 'z.json'), 'utf8')); assert.ok(st.log.grpHA01.length <= 40); assert.match(st.sum.grpHA01, /chị Lan hay hỏi giá nồi chiên/);
+  await z.onUpdate(ev('chào bot', nv), true); assert.match(ai[ai.length - 1].p, /Tóm tắt các cuộc trò chuyện CŨ[\s\S]*chị Lan hay hỏi giá nồi chiên/);
+  const bad = mk({ summarize: async () => { throw new Error('hết hạn mức'); } });
+  for (let i = 0; i < 45; i++) await bad.z.onUpdate(ev('tin ' + i, nv), true);
+  await new Promise((r) => setTimeout(r, 50));
+  const sb = JSON.parse(fs.readFileSync(path.join(bad.dir, 'z.json'), 'utf8')); assert.match(sb.sum.grpHA01, /• Chị Lan: tin 0/);
+});
+
+test('sổ tay riêng của nhóm: /zalobot nho·sotay·quen, chủ máy dặn trong nhóm tự ghi, người lạ KHÔNG ghi được, mật khẩu bị từ chối, vào ngữ cảnh nhóm', async () => {
+  const { z, ai, sent } = mk();
+  await z.onUpdate(ev('xin chào', nv), true);
+  assert.match(await z.command('nho 1 | Giờ làm việc 8h-21h, nghỉ chủ nhật'), /Đã ghi vào sổ tay/);
+  assert.match(await z.command('nho 1 | Giờ làm việc 8h-21h, nghỉ chủ nhật'), /đã có/);
+  assert.match(await z.command('nho 1 | mật khẩu kho là 1234'), /KHÔNG GHI.*mật khẩu/);
+  assert.match(await z.command('sotay 1'), /1. Giờ làm việc 8h-21h/);
+  await z.onUpdate(ev('@Bot ghi nhớ giúp: bảo hành nồi chiên 12 tháng'), true);
+  assert.match(sent[sent.length - 1].text, /ghi vào sổ tay của nhóm/);
+  await z.onUpdate(ev('ghi nhớ rằng giá nồi chiên là 1 triệu', nv), true);
+  const t = await z.command('sotay 1'); assert.match(t, /bảo hành nồi chiên 12 tháng/); assert.doesNotMatch(t, /giá nồi chiên là 1 triệu/, 'người lạ không ghi được sổ tay');
+  await z.onUpdate(ev('bảo hành bao lâu', nv), true);
+  const p = ai[ai.length - 1].p; assert.match(p, /SỔ TAY RIÊNG của nhóm/); assert.match(p, /Giờ làm việc 8h-21h/); assert.match(p, /bảo hành nồi chiên 12 tháng/);
+  assert.match(await z.command('quen 1 | 1'), /Đã xóa mục 1/); assert.doesNotMatch(await z.command('sotay 1'), /Giờ làm việc/);
+  assert.match(await z.command('quen 1 | 9'), /TỪ CHỐI/); assert.match(await z.command('nhom'), /sổ tay 1 mục/);
+  for (let i = 0; i < 45; i++) await z.command('nho 1 | mục ' + i); assert.match(await z.command('nho 1 | thêm nữa'), /sổ tay đầy/);
 });

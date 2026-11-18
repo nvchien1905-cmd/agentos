@@ -788,3 +788,9 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Tài liệu Zalo ghi getUpdates "chỉ nên dùng khi thử nghiệm", production nên dùng webhook (cần địa chỉ HTTPS công khai). Chưa làm webhook; nếu Zalo hạn chế getUpdates thì chuyển sang webhook.
 - Test: orchestrator/test/zalo-bot.test.js (9 test, Zalo giả) + settings.test.js (ô dán token, ID, xóa, không lộ token).
 - CHƯA kiểm chứng với Zalo thật: định dạng JSON tin trong NHÓM (tài liệu chỉ có ví dụ chat riêng), cách getUpdates báo "không có tin" (code coi 408/timeout là bình thường), cách bot thấy @nhắc tên trong text.
+
+## Bản 2026.11.18.9 — BOT ZALO: TRONG NHÓM AI CŨNG HỎI ĐƯỢC, CHAT RIÊNG CHỈ CHỦ MÁY
+- Trong nhóm: ai @bot cũng được trả lời, chỉ trả lời trong nhóm đó (công tắc Cài đặt → Bot Zalo, ZALOBOT_GROUP_OPEN, mặc định BẬT). Người không phải chủ máy chỉ được hỏi đáp chung: lời nhắc dặn AI không nhắc/đoán thông tin nội bộ (doanh thu, khách, SĐT, mật khẩu, cấu hình, cuộc trò chuyện khác); AI vẫn không có công cụ, chế độ bảo vệ. Giới hạn mỗi người lạ 10 câu/giờ (ZALOBOT_MAX_PER_SENDER) và mỗi nhóm 30 câu/giờ để không ai đốt token của máy.
+- Chat riêng: chỉ ID trong ZALOBOT_OWNERS được trả lời; người khác bị bỏ qua, chủ máy được báo Telegram tối đa 1 lần/ngày/người. ID trong danh sách là CHỦ MÁY: hỏi cả chuyện nội bộ.
+- Rủi ro còn lại: AI chỉ bị dặn bằng lời (không phải rào cứng) không tiết lộ nội bộ; nhưng AI ở đây không có công cụ và không đọc được dữ liệu cửa hàng ngoài những gì có trong bộ nhớ chung của AI. Nếu chủ máy lo, tắt công tắc nhóm.
+- Test: zalo-bot.test.js 12 test.

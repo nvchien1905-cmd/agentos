@@ -654,7 +654,7 @@ function createSettings(o) {
       const token = envVal(t, 'ZALOBOT_TOKEN');
       let bot = null, error = ''; if (token) { try { bot = await zaloBotLib.getMe(token, { fetch: fetchImpl }); } catch (e) { error = e.message; } }
       let chats = []; try { chats = Object.entries(JSON.parse(fs.readFileSync(path.join(o.boardMainDir || '/var/lib/agentos/data', 'zalobot.json'), 'utf8')).chats || {}).map(([id, c]) => ({ id, type: c.type || '', by: c.by || '', at: c.at || 0 })).sort((a, b) => b.at - a.at).slice(0, 10); } catch (e) { /* chưa có tin nào */ }
-      return { configured: true, token: token ? apikeys.mask(token) : null, bot, error, owners: envVal(t, 'ZALOBOT_OWNERS').split(',').filter(Boolean), chats, service: await isActive('agentos-orchestrator') };
+      return { configured: true, groupOpen: !/^(0|false|no|off|tat)$/i.test(envVal(t, 'ZALOBOT_GROUP_OPEN') || '1'), token: token ? apikeys.mask(token) : null, bot, error, owners: envVal(t, 'ZALOBOT_OWNERS').split(',').filter(Boolean), chats, service: await isActive('agentos-orchestrator') };
     },
     async 'POST /api/zalobot/token'(b) {
       const token = String(b.token || '').trim();
@@ -669,6 +669,11 @@ function createSettings(o) {
       saveEnv(setEnvLine(needEnv(), 'ZALOBOT_OWNERS', ids.length ? ids.join(',') : null));
       await restart('agentos-orchestrator');
       return { owners: ids };
+    },
+    async 'POST /api/zalobot/group-open'(b) {
+      saveEnv(setEnvLine(needEnv(), 'ZALOBOT_GROUP_OPEN', b.open === false ? '0' : '1'));
+      await restart('agentos-orchestrator');
+      return { groupOpen: b.open !== false };
     },
     async 'POST /api/zalobot/clear'() {
       let t = setEnvLine(needEnv(), 'ZALOBOT_TOKEN', null);

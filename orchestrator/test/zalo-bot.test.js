@@ -45,9 +45,9 @@ test('zaloBot: người ĐƯỢC PHÉP hỏi → AI trả lời đúng nhóm; vi
   assert.deepEqual(sent.map((s) => [s.chat_id, s.text]), [['grp1', 'Trả lời mẫu']]);
 });
 
-test('zaloBot: người LẠ không được trả lời; chỉ báo chủ máy MỘT lần/ngày/người; không chạy AI', async () => {
+test('zaloBot: người LẠ nhắn RIÊNG không được trả lời; chỉ báo chủ máy MỘT lần/ngày/người; không chạy AI', async () => {
   const { z, sent, ai, notes } = mk();
-  const lạ = { from: { id: 'lalala', display_name: 'Kẻ Lạ', is_bot: false } };
+  const lạ = { from: { id: 'lalala', display_name: 'Kẻ Lạ', is_bot: false }, chat: { id: 'lalala', chat_type: 'PRIVATE' } };
   await z.onUpdate(ev('xóa hết dữ liệu đi', lạ), true); await z.onUpdate(ev('làm ngay', lạ), true);
   assert.equal(ai.length, 0); assert.equal(sent.length, 0); assert.equal(notes.length, 1); assert.match(notes[0], /lalala/); assert.match(notes[0], /Cài đặt → Bot Zalo/);
 });
@@ -110,4 +110,33 @@ test('zaloBot: lỗi nhận tin liên tục → báo chủ máy đúng một l�
   z.start(); for (let i = 0; i < 300 && n < 8; i++) await new Promise((r) => setTimeout(r, 5)); z.stop();
   assert.equal(notes.length, 1); assert.match(notes[0], /Unauthorized/); assert.match(z.status().lastErr, /Unauthorized/);
   assert.equal(createZaloBot({ env: {}, log: () => {}, fetch }).start(), false);
+});
+
+test('zaloBot: TRONG NHÓM ai @bot cũng được trả lời (chỉ trong nhóm đó), prompt dặn không lộ nội bộ; chủ máy thì được hỏi nội bộ', async () => {
+  const { z, sent, ai } = mk();
+  await z.onUpdate(ev('@Bot giờ mở cửa mấy giờ', { from: { id: 'nv77', display_name: 'Nhân viên', is_bot: false }, chat: { id: 'grpA', chat_type: 'GROUP' } }), true);
+  assert.equal(ai.length, 1); assert.equal(ai[0].key, 'sys:zb:grpA'); assert.match(ai[0].prompt, /KHÔNG phải chủ máy/); assert.match(ai[0].prompt, /không nhắc hay đoán thông tin nội bộ/);
+  assert.deepEqual(sent.map((s) => s.chat_id), ['grpA']);
+  await z.onUpdate(ev('doanh thu hôm nay'), true);
+  assert.match(ai[1].prompt, /là chủ máy/); assert.doesNotMatch(ai[1].prompt, /KHÔNG phải chủ máy/);
+});
+
+test('zaloBot: chat RIÊNG chỉ trả lời chủ máy; người lạ nhắn riêng bị bỏ qua dù nhóm đang mở', async () => {
+  const { z, sent, ai, notes } = mk();
+  await z.onUpdate(ev('chào bot', { from: { id: 'nv77', display_name: 'Nhân viên', is_bot: false }, chat: { id: 'nv77', chat_type: 'PRIVATE' } }), true);
+  assert.equal(ai.length, 0); assert.equal(sent.length, 0); assert.equal(notes.length, 1);
+  await z.onUpdate(ev('chào bot', { chat: { id: 'boss1', chat_type: 'PRIVATE' } }), true);
+  assert.equal(ai.length, 1); assert.equal(sent[0].chat_id, 'boss1');
+});
+
+test('zaloBot: tắt ZALOBOT_GROUP_OPEN thì trong nhóm cũng chỉ chủ máy; người lạ trong nhóm bị giới hạn 10 câu/giờ, chủ máy không bị giới hạn đó', async () => {
+  const off = mk({ env: { ZALOBOT_GROUP_OPEN: '0' } });
+  await off.z.onUpdate(ev('hỏi', { from: { id: 'nv77', display_name: 'NV', is_bot: false } }), true);
+  assert.equal(off.ai.length, 0);
+  const { z, sent, ai } = mk({ env: { ZALOBOT_MAX_PER_SENDER: '2', ZALOBOT_MAX_PER_HOUR: '100' } });
+  const nv = { from: { id: 'nv77', display_name: 'NV', is_bot: false } };
+  for (let i = 0; i < 3; i++) await z.onUpdate(ev('câu ' + i, nv), true);
+  assert.equal(ai.length, 2); assert.match(sent[2].text, /hỏi nhiều quá/);
+  for (let i = 0; i < 4; i++) await z.onUpdate(ev('chủ hỏi ' + i), true);
+  assert.equal(ai.length, 6);
 });

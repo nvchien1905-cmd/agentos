@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.8",
-  "file": "agentos-update-2026.11.18.8.tar.gz",
-  "size": 661164,
-  "sha256": "122af629417b2d59ab113158ca008af1b0c8f08021847500f71e04a50a67ccf1",
+  "version": "2026.11.18.9",
+  "file": "agentos-update-2026.11.18.9.tar.gz",
+  "size": 661903,
+  "sha256": "7e44dcd5a0b438737a213735831d680be84866660e1e18e2d82d791afb4b56f9",
   "date": "2026-11-18",
-  "notes": "Bot Zalo chính thức: dán token ở Cài đặt → Bot Zalo, @nhắc bot trong nhóm Zalo để hỏi (không cần Chrome)"
+  "notes": "Bot Zalo: trong nhóm ai @bot cũng được trả lời (chỉ trong nhóm đó), chat riêng chỉ chủ máy"
 }

@@ -676,7 +676,7 @@ async function main() {
   });
   zaloWatch.start();
   // Bot Zalo chính thức (zaloBot.js): chủ máy @nhắc bot trong nhóm Zalo → AI trả lời bằng chữ; không cần Chrome. Cần ZALOBOT_TOKEN (Cài đặt → Bot Zalo).
-  const zaloBot = createZaloBot({ file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
+  const zaloBot = createZaloBot({ inboxDir: path.join(cfg.workdir, 'inbox'), file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
   zaloBot.start();
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();

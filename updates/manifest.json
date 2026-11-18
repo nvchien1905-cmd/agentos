@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.9",
-  "file": "agentos-update-2026.11.18.9.tar.gz",
-  "size": 661903,
-  "sha256": "7e44dcd5a0b438737a213735831d680be84866660e1e18e2d82d791afb4b56f9",
+  "version": "2026.11.18.10",
+  "file": "agentos-update-2026.11.18.10.tar.gz",
+  "size": 663054,
+  "sha256": "cb7b6253f941f72d305b3fa363309968cd48e5ec9596d4a0e03c8fe8bf05ca33",
   "date": "2026-11-18",
-  "notes": "Bot Zalo: trong nhóm ai @bot cũng được trả lời (chỉ trong nhóm đó), chat riêng chỉ chủ máy"
+  "notes": "Bot Zalo đọc được ảnh gửi trong nhóm/chat (AI xem ảnh rồi trả lời)"
 }

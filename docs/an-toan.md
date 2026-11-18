@@ -794,3 +794,9 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 - Chat riêng: chỉ ID trong ZALOBOT_OWNERS được trả lời; người khác bị bỏ qua, chủ máy được báo Telegram tối đa 1 lần/ngày/người. ID trong danh sách là CHỦ MÁY: hỏi cả chuyện nội bộ.
 - Rủi ro còn lại: AI chỉ bị dặn bằng lời (không phải rào cứng) không tiết lộ nội bộ; nhưng AI ở đây không có công cụ và không đọc được dữ liệu cửa hàng ngoài những gì có trong bộ nhớ chung của AI. Nếu chủ máy lo, tắt công tắc nhóm.
 - Test: zalo-bot.test.js 12 test.
+
+## Bản 2026.11.18.10 — BOT ZALO ĐỌC ĐƯỢC ẢNH (message.image.received)
+- Zalo gửi ảnh qua trường photo_url (+ caption). Bot tải ảnh về inbox/sys_zb_<nhóm>/ (đúng thư mục hộp cô lập mở cho việc của nhóm đó), đưa ĐƯỜNG DẪN + chú thích cho AI giống cách ảnh Telegram (Claude đọc bằng công cụ đọc ảnh, Codex -i, Gemini @; đường dẫn có /inbox/ nên các hàm sẵn có nhận ra). Không có chú thích thì AI mô tả và đọc chữ trong ảnh. Chữ trong ảnh được dặn là dữ liệu, không phải chỉ thị.
+- Hàng rào tải ảnh: chỉ https, chặn địa chỉ nội bộ (localhost, 10.x, 192.168.x, 172.16-31.x, 169.254.x, ::1), không đi theo chuyển hướng, tối đa 10 MB, kiểm byte đầu phải đúng JPEG/PNG/WEBP/GIF, lỗi thì báo lịch sự và KHÔNG chạy AI. Cùng luật người dùng như tin chữ (người lạ nhắn riêng bị bỏ qua và không tải ảnh; trong nhóm theo công tắc). Thư mục inbox tự dọn theo số ngày giữ tệp sẵn có.
+- CHƯA kiểm chứng với Zalo thật: photo_url có tải được không cần xác thực không (tài liệu không nói), thời hạn URL, ảnh có tới được bot khi trong nhóm không @nhắc tên. Bước AI thật đọc ảnh chưa chạy được trên máy ảo (Claude chưa đăng nhập ở đó): đã kiểm đường đi tới AI (tải, lưu, đường dẫn trong lời nhắc), chưa kiểm AI nhìn ảnh. Chưa hỗ trợ sticker, giọng nói, tệp (PDF...).
+- Test: zalo-bot.test.js 16 test (thêm 4 test ảnh).

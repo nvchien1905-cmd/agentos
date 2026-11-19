@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.20",
-  "file": "agentos-update-2026.11.18.20.tar.gz",
-  "size": 673489,
-  "sha256": "f5ea2dc15a935e7e331945cd2c9cf60b20877916bcfc435abd54f63f76d47033",
+  "version": "2026.11.18.21",
+  "file": "agentos-update-2026.11.18.21.tar.gz",
+  "size": 673714,
+  "sha256": "cac1065864475918dae143a8b65096b952cb1a8ebb7a045c5ea11c29f5a69a61",
   "date": "2026-11-19",
-  "notes": "Bot Zalo có ô quyền KiotViet riêng (Cài đặt → KiotViet), độc lập với bot quản lý"
+  "notes": "Bot Zalo xem được VPS (chỉ đọc) qua /vps"
 }

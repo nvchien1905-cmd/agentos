@@ -839,3 +839,6 @@ AI được dặn: xem tin trong nhóm/khách thì mở ứng dụng Zalo đã �
 
 ## 2026.11.18.20 — Bot Zalo có quyền KiotViet riêng
 Cài đặt → KiotViet có thêm ô "Bot Zalo chính thức" cho từng gian hàng, độc lập với "Bot quản lý". Tích thì bot Zalo (trả lời trong nhóm và người được phép) nhận số liệu doanh thu/tồn kho lấy sẵn bằng API chỉ đọc; bỏ tích thì không có. Chat riêng của chủ máy vẫn chạy bằng bộ não Bot quản lý.
+
+## 2026.11.18.21 — Bot Zalo xem được VPS (chỉ đọc)
+`/vps` gọi từ chat Zalo của chủ máy luôn dùng khóa + tài khoản `agentos-ro` (chỉ đọc, do chính VPS ép) và bị chặn lệnh ghi; không thêm/xóa VPS hay lấy khóa từ Zalo (làm ở Telegram). Nhóm Zalo vẫn không có công cụ nào.

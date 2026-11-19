@@ -60,19 +60,20 @@ function createVps(o) {
   function remove(name) { if (role === 'ro') throw new Error('Xóa VPS làm ở bot quản lý.'); const all = Object.assign({}, read()), k = find(all, name); if (!k) return false; delete all[k]; write(all); return true; }
 
   // Chạy lệnh trên VPS. role 'full' dùng khóa + tài khoản đủ quyền; 'ro' dùng khóa + tài khoản chỉ-đọc và bị chặn lệnh ghi.
-  async function exec(name, cmd) {
+  async function exec(name, cmd, opt) {
+    const eff = opt && opt.readOnly ? 'ro' : role;      // readOnly: kênh Zalo luôn dùng khóa + tài khoản CHỈ-ĐỌC, kể cả trên bot quản lý
     const all = read(), k = find(all, name);
     if (!k) return { ok: false, text: 'Chưa có VPS "' + name + '". Đã có: ' + (Object.keys(all).join(', ') || '(chưa có)') };
     const s = all[k]; cmd = String(cmd || '').trim();
     if (!cmd || cmd.length > 4000 || /\x00/.test(cmd)) return { ok: false, text: 'Lệnh rỗng hoặc dài quá.' };
-    if (role === 'ro' && WRITE_RE.test(cmd)) return { ok: false, text: '⛔ Bot này chỉ có quyền XEM trên VPS "' + k + '": lệnh có vẻ ghi/sửa/xóa nên bị chặn. Việc ghi do bot quản lý làm.' };
-    const key = role === 'ro' ? keyRo : keyFull, user = role === 'ro' ? s.roUser : s.fullUser;
-    if (!user) return { ok: false, text: 'VPS "' + k + '" chưa có tài khoản ' + (role === 'ro' ? 'chỉ-đọc' : 'đủ quyền') + '.' };
-    if (!fs.existsSync(key)) return { ok: false, text: role === 'ro' ? 'Bot này chưa nhận khóa chỉ-đọc từ bot quản lý (chờ ~1 phút sau khi bot quản lý chạy /vps khoa).' : 'Chưa có khóa SSH — gõ /vps khoa ' + k + '.' };
+    if (eff === 'ro' && WRITE_RE.test(cmd)) return { ok: false, text: '⛔ Bot này chỉ có quyền XEM trên VPS "' + k + '": lệnh có vẻ ghi/sửa/xóa nên bị chặn. Việc ghi do bot quản lý làm.' };
+    const key = eff === 'ro' ? keyRo : keyFull, user = eff === 'ro' ? s.roUser : s.fullUser;
+    if (!user) return { ok: false, text: 'VPS "' + k + '" chưa có tài khoản ' + (eff === 'ro' ? 'chỉ-đọc' : 'đủ quyền') + '.' };
+    if (!fs.existsSync(key)) return { ok: false, text: eff === 'ro' && role === 'ro' ? 'Bot này chưa nhận khóa chỉ-đọc từ bot quản lý (chờ ~1 phút sau khi bot quản lý chạy /vps khoa).' : 'Chưa có khóa SSH — gõ /vps khoa ' + k + '.' };
     const args = ['-i', key, '-p', String(s.port), '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'UserKnownHostsFile=' + known, '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', user + '@' + s.host, '--', cmd];
     const r = await run('ssh', args);
     const out = trimOut((r.out + (r.err ? '\n' + r.err : '')).trim());
-    log('vps: ' + role + ' ' + k + ' (mã ' + r.code + ') ' + cmd.slice(0, 80).replace(/\s+/g, ' '));
+    log('vps: ' + eff + ' ' + k + ' (mã ' + r.code + ') ' + cmd.slice(0, 80).replace(/\s+/g, ' '));
     if (r.code === 255) return { ok: false, text: '❌ Không vào được VPS "' + k + '" (' + user + '@' + s.host + ':' + s.port + '): ' + (out || 'lỗi kết nối') + '\nKiểm tra khóa công khai đã dán vào VPS chưa: /vps khoa ' + k };
     return { ok: r.code === 0, text: (r.code === 0 ? '' : '⚠️ Lệnh trả mã ' + r.code + '\n') + (out || '(không có kết quả)') };
   }
@@ -86,16 +87,18 @@ function createVps(o) {
     return '🔑 Anh dán ĐÚNG MỘT dòng này vào VPS "' + name + '" (đăng nhập bằng ' + u + '):\n\n' + cmd + '\n\nDán xong gõ: /vps thu ' + name;
   }
 
-  async function command(argText) {
+  async function command(argText, opt) {
+    const ro = !!(opt && opt.readOnly);
     const a = String(argText || '').trim();
     const m = /^(\S+)\s*([\s\S]*)$/.exec(a); const verb = m ? m[1].toLowerCase() : '', rest = m ? m[2].trim() : '';
     try {
       if (!a || verb === 'ds' || verb === 'list') {
         const l = list();
-        return role === 'ro'
+        return role === 'ro' || ro
           ? (l.length ? '🖥️ VPS có thể XEM (chỉ-đọc):\n' + l.map((x) => '• ' + x.name + ' — ' + x.host).join('\n') + '\nXem: /vps chay <tên> <lệnh> (vd /vps chay ' + l[0].name + ' df -h)' : '🖥️ Chưa có VPS nào (cấu hình ở bot quản lý: /vps them).')
           : (l.length ? '🖥️ VPS đã lưu:\n' + l.map((x) => '• ' + x.name + ' — ' + x.host + ':' + x.port + ' — đủ quyền: ' + x.fullUser + ' · chỉ đọc: ' + x.roUser).join('\n') + '\n/vps chay <tên> <lệnh> · /vps thu <tên> · /vps khoa <tên> · /vps xoa <tên>' : '🖥️ Chưa có VPS nào.\nThêm: /vps them <tên> <địa chỉ VPS>\nVí dụ: /vps them sv1 203.0.113.5');
       }
+      if (ro && /^(them|khoa|key|xoa)$/.test(verb)) return '⛔ Từ Zalo chỉ XEM VPS được (/vps ds · /vps thu <tên> · /vps chay <tên> <lệnh xem>). Thêm/xóa VPS và lấy khóa làm ở Telegram.';
       if (verb === 'them') {
         const p = rest.split(/\s+/); if (!p[0] || !p[1]) return 'Cú pháp: /vps them <tên> <địa chỉ VPS> [cổng, mặc định 22] [tài khoản, mặc định root]';
         const r = put(p[0], p[1], p[2] || 22, p[3] || 'root', p[4]);
@@ -109,10 +112,10 @@ function createVps(o) {
         return setupText(k, all[k]);
       }
       if (verb === 'xoa') return remove(rest) ? '🗑️ Đã xóa VPS khỏi danh sách (khóa công khai trên VPS anh tự gỡ nếu muốn).' : 'Không có VPS tên đó.';
-      if (verb === 'thu' || verb === 'test') { const r = await exec(rest, 'echo OK; whoami; hostname; uptime'); return (r.ok ? '✅ Vào được VPS (' + (role === 'ro' ? 'chỉ-đọc' : 'đủ quyền') + '):\n' : '') + r.text; }
+      if (verb === 'thu' || verb === 'test') { const r = await exec(rest, 'echo OK; whoami; hostname; uptime', opt); return (r.ok ? '✅ Vào được VPS (' + (role === 'ro' || ro ? 'chỉ-đọc' : 'đủ quyền') + '):\n' : '') + r.text; }
       if (verb === 'chay' || verb === 'run') {
         const mm = /^(\S+)\s+([\s\S]+)$/.exec(rest); if (!mm) return 'Cú pháp: /vps chay <tên VPS> <lệnh>';
-        return (await exec(mm[1], mm[2])).text;
+        return (await exec(mm[1], mm[2], opt)).text;
       }
       return 'Dùng: /vps · /vps them … · /vps khoa <tên> · /vps thu <tên> · /vps chay <tên> <lệnh> · /vps xoa <tên>';
     } catch (e) { return '⚠️ ' + e.message; }

@@ -64,3 +64,29 @@ test('AI qua bot_command: /vps xem + lệnh đọc = thường; thêm/xóa hoặ
   assert.equal(classify('/vps chay sv1 mysql -e "SELECT 1"').level, 'normal');
   for (const bad of ['/vps them a 1.1.1.1 22 root', '/vps xoa sv1', '/vps chay sv1 rm -rf /data', '/vps chay sv1 systemctl stop nginx', '/vps chay sv1 mysql -e "DROP DATABASE x"', '/vps chay sv1 sudo reboot', '/vps chay sv1 pm2 delete all']) assert.equal(classify(bad).level, 'danger', bad);
 });
+
+test('kênh Zalo: /vps trên bot quản lý luôn dùng khóa + tài khoản CHỈ-ĐỌC và chặn lệnh ghi; không thêm/xóa/lấy khóa được; Telegram vẫn đủ quyền', async () => {
+  const { v, calls } = mk('full');
+  await v.command('them sv1 203.0.113.5 22 root');
+  const RO = { readOnly: true };
+  assert.match(await v.command('chay sv1 cat /opt/mo-qua/backend/data/db.json', RO), /kết quả/);
+  let c = calls[calls.length - 1]; assert.ok(c.includes('agentos-ro@203.0.113.5')); assert.ok(c.some((x) => /vps-ro\.key$/.test(x)), 'dùng khóa ro');
+  assert.match(await v.command('chay sv1 rm -rf /opt/x', RO), /chỉ có quyền XEM/); assert.match(await v.command('chay sv1 pm2 restart all', RO), /chỉ có quyền XEM/);
+  const n = calls.length;
+  for (const t of ['them sv9 1.2.3.4', 'khoa sv1', 'xoa sv1']) assert.match(await v.command(t, RO), /chỉ XEM VPS/);
+  assert.equal(calls.length, n); assert.equal(v.list().length, 1, 'không thêm/xóa được từ Zalo');
+  assert.match(await v.command('thu sv1', RO), /chỉ-đọc/);
+  assert.match(await v.command('ds', RO), /XEM \(chỉ-đọc\)/);
+  await v.command('chay sv1 whoami'); c = calls[calls.length - 1]; assert.ok(c.includes('root@203.0.113.5'), 'Telegram (không readOnly) vẫn đủ quyền');
+});
+
+test('bot: lệnh /vps từ chat Zalo (zl:…) được gọi ở chế độ chỉ-đọc; từ Telegram thì không', async () => {
+  const { createBot } = require('../src/bot'); const got = [];
+  const db = { addJob: () => 1, aheadOf: () => 0, kvGet: () => null, kvSet() {}, runningInChat: () => 0, addAudit() {}, recentJobs: () => [] };
+  const worker = { engineNames: () => ['claude'], wake() {}, engineStatus: () => [] };
+  const vps = { command: async (a, o) => { got.push([a, !!(o && o.readOnly)]); return 'ok'; } };
+  const bot = createBot({ vps, db, worker, allowed: new Set(['zl:g1', '1']), isAdmin: () => true, quietAck: true, quick: { has: () => false, match: () => null, run: async () => '' } });
+  await bot.handle({ from: { id: 'zl:g1' }, chat: { id: 'zl:g1', type: 'private' }, text: '/vps chay sv1 df -h', message_id: 1 });
+  await bot.handle({ from: { id: 1 }, chat: { id: 1, type: 'private' }, text: '/vps chay sv1 df -h', message_id: 2 });
+  assert.deepEqual(got, [['chay sv1 df -h', true], ['chay sv1 df -h', false]]);
+});

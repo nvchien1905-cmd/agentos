@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.24",
-  "file": "agentos-update-2026.11.18.24.tar.gz",
-  "size": 677020,
-  "sha256": "885ac2b8c85759119bbb73c7374d833b0e61b99c4b37b50d88a64c919b1d124b",
+  "version": "2026.11.18.25",
+  "file": "agentos-update-2026.11.18.25.tar.gz",
+  "size": 676857,
+  "sha256": "89bee72ea638472e2fb782f935195bca6236f77a457cdff140aad8622603bbd9",
   "date": "2026-11-19",
-  "notes": "Cài đặt → VPS: đăng nhập một lần tự cài khóa, tích bot và quyền (không/chỉ xem/sudo)"
+  "notes": "Chạy lệnh trên VPS không hỏi duyệt từng lần (quyền theo Cài đặt → VPS)"
 }

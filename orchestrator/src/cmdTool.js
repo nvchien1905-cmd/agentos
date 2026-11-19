@@ -19,7 +19,7 @@ const DANGER = {
 // lệnh bình thường nhưng một số cách dùng là nhạy cảm
 const DANGER_ARG = { capnhat: [/^(co|xacnhan|ok|tudong\b.*)/i, 'Cập nhật phần mềm AgentOS / đổi cập nhật tự động'], daily: [/^(xoa|chu|sudo|quyen)\b/i, 'Xóa bot phụ / đổi chủ / cấp quyền bot phụ'], agent: [/^(xoa|chu|sudo|quyen)\b/i, 'Xóa bot phụ / đổi chủ / cấp quyền bot phụ'],
   chiphi: [/^tran\b/i, 'Đổi trần chi phí AI'], nhaman: [/./, 'Đổi quyền màn hình'],
-  vps: [/^(them|xoa|del)\b|^(chay|run)\s+\S+\s+[\s\S]*(\brm\b|\bdd\b|mkfs|\bdrop\b|\btruncate\b|\bdelete\b|\bkill|shutdown|reboot|\bhalt\b|poweroff|\bsudo\b|chmod\s+-R|chown\s+-R|systemctl\s+(stop|disable|mask)|pm2\s+(delete|kill|stop)|>\s*\/|git\s+(reset|clean|push))/i, 'Thêm/xóa VPS hoặc chạy lệnh có thể XÓA/SỬA/DỪNG dịch vụ trên VPS'],
+  vps: [/^(them|xoa|del)\b/i, 'Thêm/xóa VPS khỏi danh sách (chạy lệnh trên VPS KHÔNG hỏi: quyền từng bot do chủ máy tích ở Cài đặt → VPS)'],
   taikhoan: [/^(them|add|xoa|del|rm)\b/i, 'Lưu/xóa tài khoản + mật khẩu trang web (mật khẩu không nên đi qua AI)'],
   zalo: [/^(gui|canh)\b/i, 'GỬI tin Zalo trực tiếp (bỏ qua chế độ nháp) / bật-tắt tự canh Zalo'] };
 

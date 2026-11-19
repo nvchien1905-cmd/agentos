@@ -845,3 +845,6 @@ Cài đặt → KiotViet có thêm ô "Bot Zalo chính thức" cho từng gian h
 
 ## 2026.11.18.24 — Cài đặt → VPS: đăng nhập một lần, tự lấy khóa, tích bot và quyền
 Trang Cài đặt có mục "VPS": nhập địa chỉ + tài khoản + mật khẩu MỘT lần, AgentOS tự cài khóa SSH (khóa đủ quyền cho tài khoản đăng nhập + tài khoản `agentos-ro` chỉ đọc) rồi chỉ dùng khóa; mật khẩu chỉ đi qua biến môi trường của tiến trình ssh (và stdin của sudo), không ghi tệp/nhật ký/dòng lệnh, không lưu. Mỗi VPS tích từng bot: Không / Chỉ xem / Đủ quyền (sudo); bot phụ tối đa Chỉ xem (khóa đủ quyền không rời bot quản lý).
+
+## 2026.11.18.25 — Chạy lệnh trên VPS không còn hỏi duyệt từng lần
+`/vps chay …` không còn là lệnh nhạy cảm: quyền do chủ máy tích ở Cài đặt → VPS (không / chỉ xem / đủ quyền) quyết định, chỉ xem thì chính VPS chặn ghi. Thêm/xóa VPS khỏi danh sách qua AI vẫn hỏi duyệt.

@@ -62,7 +62,8 @@ test('AI qua bot_command: /vps xem + lệnh đọc = thường; thêm/xóa hoặ
   assert.equal(classify('/vps').level, 'normal');
   assert.equal(classify('/vps chay sv1 df -h').level, 'normal');
   assert.equal(classify('/vps chay sv1 mysql -e "SELECT 1"').level, 'normal');
-  for (const bad of ['/vps them a 1.1.1.1 22 root', '/vps xoa sv1', '/vps chay sv1 rm -rf /data', '/vps chay sv1 systemctl stop nginx', '/vps chay sv1 mysql -e "DROP DATABASE x"', '/vps chay sv1 sudo reboot', '/vps chay sv1 pm2 delete all']) assert.equal(classify(bad).level, 'danger', bad);
+  for (const bad of ['/vps them a 1.1.1.1 22 root', '/vps xoa sv1']) assert.equal(classify(bad).level, 'danger', bad);
+  for (const free of ['/vps chay sv1 rm -rf /data', '/vps chay sv1 systemctl stop nginx', '/vps chay sv1 grep -rl x /etc/nginx 2>/dev/null; ls /var/www; uptime; df -h /', '/vps chay sv1 sudo reboot']) assert.equal(classify(free).level, 'normal', 'chạy lệnh trên VPS không hỏi (quyền do Cài đặt → VPS): ' + free);
 });
 
 test('kênh Zalo: /vps trên bot quản lý luôn dùng khóa + tài khoản CHỈ-ĐỌC và chặn lệnh ghi; không thêm/xóa/lấy khóa được; Telegram vẫn đủ quyền', async () => {

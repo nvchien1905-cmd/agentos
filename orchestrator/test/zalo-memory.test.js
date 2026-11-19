@@ -138,3 +138,9 @@ test('chủ máy hỏi "đã thấy nhóm nào chưa" ở chat riêng: bot trả
   await z.onUpdate(priv('doanh số hôm nay'), true); assert.equal(core.length, 1);
   await z.onUpdate(priv('/zalobot gui Hồng Hà | chào cả nhà, nhóm nào cũng vào đi'), true); assert.equal(core.length, 2, 'có dấu | là lệnh/việc giao, không bị chặn');
 });
+
+test('lời nhắc AI: đọc tin trong Zalo bằng ứng dụng Zalo đã đăng nhập (agentos-desk open zalo), không mở Chrome trống', () => {
+  const s = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'index.js'), 'utf8');
+  assert.match(s, /ZALO_READ = '[^']*agentos-desk open zalo[^']*about:blank/);
+  assert.equal((s.match(/ZALO_READ \+/g) || []).length, 2, 'cả hai nhánh zaloRule đều kèm quy tắc');
+});

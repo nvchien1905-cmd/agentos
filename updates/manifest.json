@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.18",
-  "file": "agentos-update-2026.11.18.18.tar.gz",
-  "size": 672982,
-  "sha256": "3a7ce1fbd992bee33ddcc99975c540011f2a1896403b009e30842734311eb2ad",
-  "date": "2026-11-18",
-  "notes": "Bot Zalo: hỏi 'đã thấy nhóm nào chưa' ở chat riêng thì trả luôn danh sách nhóm đã thấy + giải thích Zalo không cho bot xem danh sách nhóm"
+  "version": "2026.11.18.19",
+  "file": "agentos-update-2026.11.18.19.tar.gz",
+  "size": 673166,
+  "sha256": "e03d0dfd4b715766daef8f618051bfb28fdb73c73e0fabf22e90ff589e95c97e",
+  "date": "2026-11-19",
+  "notes": "AI đọc tin trong Zalo bằng ứng dụng Zalo đã đăng nhập, không mở Chrome trống"
 }

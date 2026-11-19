@@ -833,3 +833,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.11.18.18 — Bot Zalo trả lời đúng "đã thấy nhóm nào chưa"
 - Zalo Bot API không có lệnh liệt kê nhóm bot đang ở; bot chỉ biết nhóm khi có người @nhắc hoặc trả lời tin của bot. Trước đây AI ở chat riêng không biết điều này nên trả lời lung tung. Nay chủ máy hỏi kiểu "đã thấy nhóm nào chưa / đang ở nhóm nào" (chat riêng, câu ngắn, không có dấu |) thì bot trả luôn danh sách nhóm đã thấy (/zalobot nhom) kèm giải thích và cách thêm (vào nhóm @nhắc bot một câu), không giao AI. Chỉ chủ máy; không lộ gì mới cho người lạ.
+
+## 2026.11.18.19 — Đọc tin Zalo bằng ứng dụng Zalo đã đăng nhập
+AI được dặn: xem tin trong nhóm/khách thì mở ứng dụng Zalo đã đăng nhập (`agentos-desk open zalo`), không mở Chrome trống (about:blank) và không đòi đăng nhập lại.

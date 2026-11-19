@@ -27,6 +27,7 @@ const { createUsage } = require('../../orchestrator/src/usage');
 const { createAuditLog } = require('../../orchestrator/src/auditlog');
 const { ACTIONS: CONTROL_ACTIONS } = require('../../orchestrator/src/control');
 const { createFleet } = require('../../orchestrator/src/fleet');
+const { createVps } = require('../../orchestrator/src/vps');
 const { createLogin } = require('../lib/login');
 const qrLib = require('../lib/qr');
 const { createDevices } = require('../../orchestrator/src/devices');
@@ -129,6 +130,10 @@ function createSettings(o) {
   }));
   // Danh sách bot để tích quyền dùng khóa KiotViet (bot quản lý + các bot phụ) và đồng bộ khóa xuống cấu hình của bot phụ (agentctl update viết lại tệp cấu hình riêng rồi khởi động lại bot đó)
   const kvBotList = async () => { const l = await botsLib().list().catch(() => ({ agents: [] })); const zl = envVal(readEnv() || '', 'ZALOBOT_TOKEN') ? [{ key: 'zalobot', name: 'Bot Zalo chính thức', username: 'Zalo' }] : []; return [{ key: 'main', name: 'Bot quản lý' }].concat(zl).concat((l.agents || []).map((a) => ({ key: a.id, name: a.name, username: (a.bot && a.bot.username) || '' }))); };
+  // VPS của chủ máy: đăng nhập bằng mật khẩu MỘT lần, AgentOS tự cài khóa SSH rồi chỉ dùng khóa; tích bot nào được vào + quyền (không / chỉ xem / đủ quyền sudo). Dữ liệu ở /var/lib/agentos (bot quản lý đọc lại mỗi lần chạy, không cần khởi động lại).
+  let vpsInst = null;
+  const vpsFiles = () => ({ file: o.vpsFile || '/var/lib/agentos/data/vps.json', keyFull: o.vpsKeyFull || '/var/lib/agentos/vps-full.key', keyRo: o.vpsKeyRo || '/var/lib/agentos/vps-ro.key', known: o.vpsKnown || '/var/lib/agentos/vps-known-hosts' });
+  const vpsLib = () => vpsInst || (vpsInst = createVps(Object.assign({ role: 'full', botId: 'main', chown: (p) => chownAgentos(p), run: o.vpsRun, tmpDir: o.vpsTmp, log: (m) => console.log('[vps] ' + m) }, vpsFiles())));
   const kvSyncAgents = async (ids) => { const warn = []; for (const id of [...new Set(ids)]) { if (id === 'main' || id === 'zalobot') continue; try { await botsLib().update({ id }); } catch (e) { warn.push(id + ': ' + String(e.message || e).slice(0, 160)); } } return warn; };
   // DÙNG CHUNG AI CHO MỌI BOT: chủ máy đăng nhập/đăng xuất AI hoặc dán khóa ở đây → bot phụ nhận theo (agentctl 'sync'); thêm vòng 3 phút để bắt cả đăng nhập qua điện thoại và token tự làm mới
   const aiSyncOn = o.aiSync !== undefined ? o.aiSync : !o.homeDir;
@@ -396,6 +401,14 @@ function createSettings(o) {
       const warn = await kvSyncAgents(changed);
       return { saved: true, bots: r.after, changed, warn };
     },
+    async 'GET /api/vps'() { return { vps: vpsLib().list(), bots: await kvBotList() }; },
+    async 'POST /api/vps/add'(b) {
+      const r = await vpsLib().addWithPassword({ name: b.name, host: b.host, port: b.port, user: b.user, password: b.password });
+      chownAgentos(vpsFiles().known); return { saved: true, vps: r };
+    },
+    async 'POST /api/vps/access'(b) { const a = vpsLib().setAccess(String(b.name || ''), b.access && typeof b.access === 'object' ? b.access : {}); return { saved: true, access: a }; },
+    async 'POST /api/vps/delete'(b) { return { removed: vpsLib().remove(String(b.name || '')) }; },
+    async 'POST /api/vps/test'(b) { const r = await vpsLib().exec(String(b.name || ''), 'echo OK; whoami; hostname', { bot: String(b.bot || 'main') }); return { ok: r.ok, detail: r.text }; },
     async 'POST /api/kiotviet/save'(b) {
       const text = needEnv();
       let u;

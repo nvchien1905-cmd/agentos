@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.21",
-  "file": "agentos-update-2026.11.18.21.tar.gz",
-  "size": 673714,
-  "sha256": "cac1065864475918dae143a8b65096b952cb1a8ebb7a045c5ea11c29f5a69a61",
+  "version": "2026.11.18.24",
+  "file": "agentos-update-2026.11.18.24.tar.gz",
+  "size": 677020,
+  "sha256": "885ac2b8c85759119bbb73c7374d833b0e61b99c4b37b50d88a64c919b1d124b",
   "date": "2026-11-19",
-  "notes": "Bot Zalo xem được VPS (chỉ đọc) qua /vps"
+  "notes": "Cài đặt → VPS: đăng nhập một lần tự cài khóa, tích bot và quyền (không/chỉ xem/sudo)"
 }

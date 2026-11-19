@@ -842,3 +842,6 @@ Cài đặt → KiotViet có thêm ô "Bot Zalo chính thức" cho từng gian h
 
 ## 2026.11.18.21 — Bot Zalo xem được VPS (chỉ đọc)
 `/vps` gọi từ chat Zalo của chủ máy luôn dùng khóa + tài khoản `agentos-ro` (chỉ đọc, do chính VPS ép) và bị chặn lệnh ghi; không thêm/xóa VPS hay lấy khóa từ Zalo (làm ở Telegram). Nhóm Zalo vẫn không có công cụ nào.
+
+## 2026.11.18.24 — Cài đặt → VPS: đăng nhập một lần, tự lấy khóa, tích bot và quyền
+Trang Cài đặt có mục "VPS": nhập địa chỉ + tài khoản + mật khẩu MỘT lần, AgentOS tự cài khóa SSH (khóa đủ quyền cho tài khoản đăng nhập + tài khoản `agentos-ro` chỉ đọc) rồi chỉ dùng khóa; mật khẩu chỉ đi qua biến môi trường của tiến trình ssh (và stdin của sudo), không ghi tệp/nhật ký/dòng lệnh, không lưu. Mỗi VPS tích từng bot: Không / Chỉ xem / Đủ quyền (sudo); bot phụ tối đa Chỉ xem (khóa đủ quyền không rời bot quản lý).

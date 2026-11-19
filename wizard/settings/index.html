@@ -46,7 +46,7 @@ mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}.wi{paddin
 <div id="toast"></div>
 <script>
 (function () {
-  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['zbot', '🟦', 'Bot Zalo'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['studio', '🎨', 'Xưởng sáng tạo'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
+  var TABS = [['overview', '🏠', 'Tổng quan'], ['acc', '🔐', 'Tài khoản đã lưu'], ['updates', '⬆️', 'Cập nhật'], ['apps', '📦', 'Ứng dụng'], ['ai', '🤖', 'AI và khóa API'], ['kv', '🏬', 'KiotViet'], ['vps', '🌐', 'VPS'], ['vault', '🖥', 'Máy từ xa'], ['sess', '📋', 'Phiên'], ['bot', '💬', 'Bot Telegram'], ['zbot', '🟦', 'Bot Zalo'], ['mem', '🧠', 'Bộ nhớ của AI'], ['net', '📶', 'Mạng'], ['proj', '📁', 'Dự án'], ['dbk', '💾', 'Sao lưu ngoài'], ['usg', '📊', 'Chi phí AI'], ['aud', '🧾', 'Nhật ký'], ['board', '🎛', 'Bảng điều khiển bot'], ['studio', '🎨', 'Xưởng sáng tạo'], ['watch', '👁', 'Màn hình AI'], ['conn', '🧩', 'Kết nối và kỹ năng'],['flt', '🖥️', 'Đội máy'], ['dev', '📷', 'Thiết bị'], ['cloud', '🗄️', 'Kho tệp riêng'], ['link', '☁️', 'Kết nối (OneDrive, Tailscale)'], ['sys', '🛠️', 'Hệ thống']];
   var cur = 'overview', main = document.getElementById('main'), timer = null;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function api(method, path, body) {
@@ -394,6 +394,49 @@ mark{background:#fde68a;color:inherit;border-radius:2px;padding:0 1px}.wi{paddin
           api('POST', 'kiotviet/test', { retailer: rt }).then(function (j) { box.innerHTML = j.ok ? '<span class="ok">✓ ' + esc(j.detail) + '</span>' : '<span class="bad">✗ ' + esc(j.detail) + '</span>'; }).catch(function (e) { box.innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; });
         }; });
         [].forEach.call(main.querySelectorAll('button[data-d]'), function (b) { b.onclick = function () { if (ask('Xóa gian hàng này khỏi bot? (Không ảnh hưởng dữ liệu trên KiotViet.)')) api('POST', 'kiotviet/delete', { retailer: b.getAttribute('data-d') }).then(render).catch(fail); }; });
+      }).catch(fail);
+    },
+    vps: function () {
+      api('GET', 'vps').then(function (r) {
+        var LV = [['none', 'Không được vào'], ['ro', 'Chỉ xem'], ['full', 'Đủ quyền (sudo)']];
+        var h = '<h2>VPS</h2><p class="mute">Đăng nhập VPS <b>một lần</b> bằng mật khẩu: AgentOS tự cài khóa SSH rồi từ đó chỉ dùng khóa (<b>mật khẩu không được lưu</b>). Sau đó tích bot nào được vào và được làm gì: <b>Chỉ xem</b> = tài khoản chỉ đọc do chính VPS ép (không sửa/xóa được); <b>Đủ quyền</b> = tài khoản đăng nhập của anh (root hoặc có sudo). Các bot khác tối đa chỉ xem.</p>';
+        (r.vps || []).forEach(function (v) {
+          h += '<div class="card" data-v="' + esc(v.name) + '"><div class="row"><h3 class="grow" style="margin:0">🌐 ' + esc(v.name) + '</h3><button class="b" data-vt="' + esc(v.name) + '">Thử vào</button><button class="b d" data-vd="' + esc(v.name) + '">Xóa</button></div>' +
+            '<p class="mute" style="margin:6px 0">' + esc(v.host) + ':' + esc(String(v.port)) + ' · tài khoản đủ quyền: <b>' + esc(v.fullUser) + '</b> · tài khoản chỉ xem: <b>' + esc(v.roUser) + '</b></p>' +
+            '<div style="margin:8px 0;padding:8px 10px;background:#f4f8fb;border-radius:8px"><b>🤖 Bot được vào VPS này</b><div style="margin-top:6px">' +
+            (r.bots || []).map(function (b) {
+              var cur = (v.access && v.access[b.key]) || (b.key === 'main' ? 'full' : 'ro'), canFull = (b.key === 'main' || b.key === 'zalobot');
+              return '<div class="row" style="margin:4px 0"><span style="min-width:210px">' + (b.key === 'main' ? '⭐ ' : '🤖 ') + esc(b.name) + (b.username ? ' <small class="mute">@' + esc(b.username) + '</small>' : '') + '</span><select data-vb="' + esc(b.key) + '">' +
+                LV.filter(function (x) { return canFull || x[0] !== 'full'; }).map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === cur ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>';
+            }).join('') +
+            '</div><div class="row" style="margin-top:6px"><button class="b p" data-vs="' + esc(v.name) + '">Lưu quyền</button><span class="mute" id="vs-' + esc(v.name) + '"></span></div></div><div class="mute" id="vt-' + esc(v.name) + '"></div></div>';
+        });
+        if (!(r.vps || []).length) h += '<div class="card"><p class="mute">Chưa có VPS nào. Thêm bên dưới.</p></div>';
+        h += '<div class="card"><h3>Thêm VPS</h3><p class="mute">Nhập địa chỉ và tài khoản đăng nhập (root, hoặc tài khoản có sudo). Mật khẩu chỉ dùng cho lần cài khóa này.</p>' +
+          '<div class="row"><input type="text" id="vn" placeholder="Tên gọi, ví dụ: vps2"><input type="text" id="vh" placeholder="Địa chỉ, ví dụ: 42.96.18.153"><input type="text" id="vp" placeholder="Cổng (22)" style="max-width:110px"></div>' +
+          '<div class="row" style="margin-top:8px"><input type="text" id="vu" placeholder="Tài khoản (root)" autocomplete="off"><input type="password" id="vw" placeholder="Mật khẩu VPS" autocomplete="new-password"><button class="b p" id="vadd">Đăng nhập và cài khóa</button></div></div>';
+        set(h);
+        on('vadd', function () {
+          var v = function (id) { return document.getElementById(id).value.trim(); };
+          if (!v('vn') || !v('vh')) return toast('Nhập tên và địa chỉ VPS', true);
+          var pw = document.getElementById('vw').value; if (!pw) return toast('Chưa nhập mật khẩu', true);
+          toast('Đang đăng nhập và cài khóa (vài giây)...');
+          api('POST', 'vps/add', { name: v('vn'), host: v('vh'), port: v('vp') || 22, user: v('vu') || 'root', password: pw }).then(function () { document.getElementById('vw').value = ''; toast('✔ Đã cài khóa và vào được VPS'); render(); }).catch(fail);
+        });
+        [].forEach.call(main.querySelectorAll('button[data-vs]'), function (b) { b.onclick = function () {
+          var nm = b.getAttribute('data-vs'), box = main.querySelector('.card[data-v="' + nm + '"]'), st = document.getElementById('vs-' + nm), acc = {};
+          [].forEach.call(box.querySelectorAll('select[data-vb]'), function (s) { acc[s.getAttribute('data-vb')] = s.value; });
+          st.textContent = ' Đang lưu...';
+          api('POST', 'vps/access', { name: nm, access: acc }).then(function () { st.innerHTML = ' <span class="ok">✔ Đã lưu (có hiệu lực ngay)</span>'; }).catch(function (e) { st.innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; });
+        }; });
+        [].forEach.call(main.querySelectorAll('button[data-vt]'), function (b) { b.onclick = function () {
+          var nm = b.getAttribute('data-vt'), box = document.getElementById('vt-' + nm); box.textContent = 'Đang thử...';
+          api('POST', 'vps/test', { name: nm }).then(function (j) { box.innerHTML = j.ok ? '<span class="ok">✓ ' + esc(j.detail) + '</span>' : '<span class="bad">✗ ' + esc(j.detail) + '</span>'; }).catch(function (e) { box.innerHTML = '<span class="bad">' + esc(e.message) + '</span>'; });
+        }; });
+        [].forEach.call(main.querySelectorAll('button[data-vd]'), function (b) { b.onclick = function () {
+          var nm = b.getAttribute('data-vd'); if (!ask('Xóa VPS "' + nm + '" khỏi AgentOS? (Khóa AgentOS đã cài trên VPS vẫn còn, anh tự gỡ nếu muốn.)')) return;
+          api('POST', 'vps/delete', { name: nm }).then(function () { render(); }).catch(fail);
+        }; });
       }).catch(fail);
     },
     vault: function () {

@@ -276,7 +276,7 @@ function createBot({ zaloBot, vps, weblogin, db, worker, allowed, profiles, isAd
         case 'vps': {                                       // VPS của chủ máy qua khóa SSH: bot quản lý đủ quyền, bot thường chỉ đọc (vps.js)
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /vps.';
           if (!vps) return 'Máy này chưa có tính năng VPS.';
-          return vps.command(String(cmd[3] || ''), { readOnly: String(uid).startsWith('zl:') });      // chat Zalo (zl:…) chỉ được XEM VPS
+          return vps.command(String(cmd[3] || ''), { bot: String(uid).startsWith('zl:') ? 'zalobot' : undefined, noManage: String(uid).startsWith('zl:') });      // chat Zalo (zl:…) dùng quyền của "Bot Zalo" (mặc định chỉ xem), không thêm/xóa VPS
         }
         case 'taikhoan': case 'dangnhap': {                 // Kho tài khoản web + đăng nhập hộ trong Chrome dùng chung (weblogin.js); mật khẩu không bao giờ tới AI
           if (!isAdmin(uid)) return 'Chỉ chủ máy dùng được /' + name + '.';

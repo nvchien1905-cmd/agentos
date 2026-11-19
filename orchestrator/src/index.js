@@ -668,7 +668,7 @@ async function main() {
     getJob: (id) => db.getJob(id),
   });
   const weblogin = createWebLogin({ file: path.join(dataDir, 'weblogin.enc'), keyFile: path.join(dataDir, '..', 'weblogin.key'), log, endpoint: () => browserHost.ensure('admin', browserProfile) });
-  const vps = createVps({ role: cfg.agentId ? 'ro' : 'full', file: path.join(dataDir, 'vps.json'), keyFull: path.join(dataDir, '..', 'vps-full.key'), keyRo: path.join(dataDir, '..', 'vps-ro.key'), known: path.join(dataDir, '..', 'vps-known-hosts'), log });
+  const vps = createVps({ botId: cfg.agentId || 'main', role: cfg.agentId ? 'ro' : 'full', file: path.join(dataDir, 'vps.json'), keyFull: path.join(dataDir, '..', 'vps-full.key'), keyRo: path.join(dataDir, '..', 'vps-ro.key'), known: path.join(dataDir, '..', 'vps-known-hosts'), log });
   zaloRef.v = createZalo({
     file: path.join(dataDir, 'zalo.json'), log, admin: adminChat,
     notify: (chat, text) => tg.sendMessage(chat, text), ask: (chat, text, buttons) => tg.sendButtons(chat, text, buttons),

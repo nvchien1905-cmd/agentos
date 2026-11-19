@@ -66,12 +66,13 @@ async function boot() {
   };
   const run = async (cmd, args) => { calls.push([cmd].concat(args).join(' ')); return { code: 0, out: 'active\n', err: '' }; };
   const spawn = () => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); c.kill = () => {}; setImmediate(() => c.emit('close', 0)); return c; };
-  const s = createSettings({ port: 0, host: '127.0.0.1', envFile, versionFile: path.join(dir, 'VERSION'), backupDir: path.join(dir, 'bk'), onedriveConf: path.join(dir, 'od'), onedriveDir: path.join(dir, 'odir'), memFallback: path.join(dir, 'so-tay'),
+  const vpsCalls = []; const vpsRun = async (bin, args, opts) => { vpsCalls.push({ bin, args, opts }); if (bin === 'ssh-keygen') { const kf = args[args.indexOf('-f') + 1]; fs.writeFileSync(kf, 'PRIV'); fs.writeFileSync(kf + '.pub', 'ssh-ed25519 PUB-' + path.basename(kf) + ' x'); } return { code: 0, out: 'OK', err: '' }; };
+  const s = createSettings({ vpsFile: path.join(dir, 'vps', 'vps.json'), vpsKeyFull: path.join(dir, 'vps', 'f.key'), vpsKeyRo: path.join(dir, 'vps', 'r.key'), vpsKnown: path.join(dir, 'vps', 'kh'), vpsRun, vpsTmp: dir, port: 0, host: '127.0.0.1', envFile, versionFile: path.join(dir, 'VERSION'), backupDir: path.join(dir, 'bk'), onedriveConf: path.join(dir, 'od'), onedriveDir: path.join(dir, 'odir'), memFallback: path.join(dir, 'so-tay'),
     run, spawn, fetch: apiFetch, peerUid: () => 1000, allowedUids: () => new Set([1000, 0]), pageFile: path.join(__dirname, '..', 'settings', 'index.html'), exit: () => {}, sleep: () => new Promise((r) => setTimeout(r, 1)),
     agentCtl: { handle: async (req) => { reqs.push(req); if (req.action === 'update' && st.fail) return { ok: false, error: 'dịch vụ lỗi' }; return { ok: true, msg: 'ok' }; } }, agentsFile: path.join(dir, 'agents.json'), agentShow: async () => ({ ActiveState: 'active' }) });
   const port = await s.listen();
   const call = async (method, p, body) => { const r = await fetch('http://127.0.0.1:' + port + '/api/' + p, { method, headers: { 'content-type': 'application/json', 'x-agentos-settings': '1' }, body: method === 'POST' ? JSON.stringify(body || {}) : undefined }); const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* html */ } return { status: r.status, body: j, text }; };
-  return { s, call, calls, reqs, st, envFile, env: () => fs.readFileSync(envFile, 'utf8') };
+  return { s, call, calls, reqs, st, envFile, vpsCalls, dir, env: () => fs.readFileSync(envFile, 'utf8') };
 }
 
 test('Cài đặt: danh sách bot để tích; lưu quyền → bot được thêm/bớt khởi động lại với cấu hình mới, bot quản lý chỉ khởi động lại khi chính nó đổi quyền; bot lạ bị từ chối', async () => {
@@ -133,4 +134,30 @@ test('Cài đặt: có token bot Zalo thì hiện ô "Bot Zalo chính thức" đ
     assert.ok(S.calls.some((c) => /restart agentos-orchestrator/.test(c)));
     assert.match(S.env(), /"bots":\["zalobot"\]/);
   } finally { await S.s.close(); }
+});
+
+test('Cài đặt → VPS: thêm bằng mật khẩu (cài khóa), tích bot + quyền (bot phụ không được sudo), thử vào, xóa; mật khẩu không lưu; trang không dùng cú pháp mới', async () => {
+  const S = await boot();
+  try {
+    await S.call('POST', 'bots/agent/add', { token: '987654321:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', name: 'Bán hàng' });
+    fs.appendFileSync(S.envFile, 'ZALOBOT_TOKEN=123456789:' + 'Z'.repeat(30) + '\n');
+    let r = await S.call('GET', 'vps'); assert.equal(r.status, 200, r.text); assert.deepEqual(r.body.vps, []); assert.deepEqual(r.body.bots.map((b) => b.key), ['main', 'zalobot', 'a1']);
+    r = await S.call('POST', 'vps/add', { name: 'vps2', host: '203.0.113.9', port: 22185, user: 'root', password: 'MatKhau-Thu-123' }); assert.equal(r.status, 200, r.text);
+    const inst = S.vpsCalls.find((c) => c.bin === 'ssh' && c.opts && c.opts.env && c.opts.env.SSH_ASKPASS); assert.equal(inst.opts.env.AGENTOS_VPS_PW, 'MatKhau-Thu-123'); assert.ok(!inst.args.join(' ').includes('MatKhau-Thu-123'));
+    assert.ok(!r.text.includes('MatKhau-Thu-123')); assert.ok(!fs.readFileSync(path.join(S.dir, 'vps', 'vps.json'), 'utf8').includes('MatKhau-Thu-123'));
+    r = await S.call('GET', 'vps'); assert.equal(r.body.vps[0].name, 'vps2'); assert.equal(r.body.vps[0].port, 22185);
+    r = await S.call('POST', 'vps/access', { name: 'vps2', access: { main: 'full', zalobot: 'full', a1: 'full' } }); assert.equal(r.status, 200, r.text); assert.deepEqual(r.body.access, { main: 'full', zalobot: 'full', a1: 'ro' });
+    r = await S.call('GET', 'vps'); assert.deepEqual(r.body.vps[0].access, { main: 'full', zalobot: 'full', a1: 'ro' });
+    assert.equal((await S.call('POST', 'vps/access', { name: 'vps2', access: { zalobot: 'root' } })).status >= 400, true);
+    assert.equal((await S.call('POST', 'vps/access', { name: 'khong-co', access: {} })).status >= 400, true);
+    r = await S.call('POST', 'vps/test', { name: 'vps2', bot: 'zalobot' }); assert.equal(r.body.ok, true);
+    assert.equal((await S.call('POST', 'vps/add', { name: 'x', host: '1.2.3.4', user: 'root', password: '' })).status >= 400, true);
+    r = await S.call('POST', 'vps/delete', { name: 'vps2' }); assert.equal(r.body.removed, true); assert.deepEqual((await S.call('GET', 'vps')).body.vps, []);
+  } finally { await S.s.close(); }
+  const html = fs.readFileSync(path.join(__dirname, '..', 'settings', 'index.html'), 'utf8');
+  const code = html.match(/<script>([\s\S]*)<\/script>/)[1]; new Function(code);
+  const seg = code.slice(code.indexOf('    vps: function () {'), code.indexOf('    vault: function () {'));
+  assert.ok(seg.length > 2500); assert.match(seg, /vps\/add/); assert.match(seg, /vps\/access/); assert.match(seg, /Đủ quyền \(sudo\)/); assert.match(seg, /type="password"|type=\?"password/);
+  assert.ok(!/=>/.test(seg) && !/\b(let|const)\b/.test(seg) && !/`/.test(seg) && !/\?\./.test(seg), 'ES5');
+  assert.match(html, /\['vps', '🌐', 'VPS'\]/);
 });

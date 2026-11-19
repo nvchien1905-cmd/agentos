@@ -68,7 +68,7 @@ test('AI qua bot_command: /vps xem + lệnh đọc = thường; thêm/xóa hoặ
 test('kênh Zalo: /vps trên bot quản lý luôn dùng khóa + tài khoản CHỈ-ĐỌC và chặn lệnh ghi; không thêm/xóa/lấy khóa được; Telegram vẫn đủ quyền', async () => {
   const { v, calls } = mk('full');
   await v.command('them sv1 203.0.113.5 22 root');
-  const RO = { readOnly: true };
+  const RO = { bot: 'zalobot', noManage: true };
   assert.match(await v.command('chay sv1 cat /opt/mo-qua/backend/data/db.json', RO), /kết quả/);
   let c = calls[calls.length - 1]; assert.ok(c.includes('agentos-ro@203.0.113.5')); assert.ok(c.some((x) => /vps-ro\.key$/.test(x)), 'dùng khóa ro');
   assert.match(await v.command('chay sv1 rm -rf /opt/x', RO), /chỉ có quyền XEM/); assert.match(await v.command('chay sv1 pm2 restart all', RO), /chỉ có quyền XEM/);
@@ -80,13 +80,54 @@ test('kênh Zalo: /vps trên bot quản lý luôn dùng khóa + tài khoản CH�
   await v.command('chay sv1 whoami'); c = calls[calls.length - 1]; assert.ok(c.includes('root@203.0.113.5'), 'Telegram (không readOnly) vẫn đủ quyền');
 });
 
-test('bot: lệnh /vps từ chat Zalo (zl:…) được gọi ở chế độ chỉ-đọc; từ Telegram thì không', async () => {
+test('bot: lệnh /vps từ chat Zalo (zl:…) mang danh bot Zalo và không được quản lý VPS; từ Telegram thì không', async () => {
   const { createBot } = require('../src/bot'); const got = [];
   const db = { addJob: () => 1, aheadOf: () => 0, kvGet: () => null, kvSet() {}, runningInChat: () => 0, addAudit() {}, recentJobs: () => [] };
   const worker = { engineNames: () => ['claude'], wake() {}, engineStatus: () => [] };
-  const vps = { command: async (a, o) => { got.push([a, !!(o && o.readOnly)]); return 'ok'; } };
+  const vps = { command: async (a, o) => { got.push([a, !!(o && o.noManage), o && o.bot]); return 'ok'; } };
   const bot = createBot({ vps, db, worker, allowed: new Set(['zl:g1', '1']), isAdmin: () => true, quietAck: true, quick: { has: () => false, match: () => null, run: async () => '' } });
   await bot.handle({ from: { id: 'zl:g1' }, chat: { id: 'zl:g1', type: 'private' }, text: '/vps chay sv1 df -h', message_id: 1 });
   await bot.handle({ from: { id: 1 }, chat: { id: 1, type: 'private' }, text: '/vps chay sv1 df -h', message_id: 2 });
-  assert.deepEqual(got, [['chay sv1 df -h', true], ['chay sv1 df -h', false]]);
+  assert.deepEqual(got, [['chay sv1 df -h', true, 'zalobot'], ['chay sv1 df -h', false, undefined]]);
+});
+
+test('quyền theo từng bot: chưa tích = bot quản lý đủ quyền, bot khác chỉ xem; tích "Không" chặn; "đủ quyền/sudo" chỉ cho bot quản lý và bot Zalo, bot phụ tối đa chỉ xem', async () => {
+  const { v, calls } = mk('full'); await v.command('them sv1 203.0.113.5 22 root');
+  assert.equal(v.levelOf('sv1', 'main'), 'full'); assert.equal(v.levelOf('sv1', 'zalobot'), 'ro'); assert.equal(v.levelOf('sv1', 'a1'), 'ro');
+  assert.deepEqual(v.setAccess('sv1', { main: 'full', zalobot: 'full', a1: 'full', a2: 'none' }), { main: 'full', zalobot: 'full', a1: 'ro', a2: 'none' }, 'bot phụ không được đủ quyền');
+  await v.exec('sv1', 'whoami', { bot: 'zalobot' }); assert.ok(calls[calls.length - 1].includes('root@203.0.113.5'), 'bot Zalo được tích đủ quyền → khóa đủ quyền');
+  assert.match((await v.exec('sv1', 'whoami', { bot: 'a2' })).text, /không được phép/);
+  assert.deepEqual(v.list({ bot: 'a2' }), []); assert.equal(v.list({ bot: 'a1' }).length, 1);
+  v.setAccess('sv1', { zalobot: 'none' }); assert.match((await v.exec('sv1', 'whoami', { bot: 'zalobot' })).text, /không được phép/);
+  assert.throws(() => v.setAccess('sv1', { evil: 'ro' }), /không hợp lệ/); assert.throws(() => v.setAccess('sv1', { main: 'root' }), /Quyền không hợp lệ/);
+  const ag = mk('ro'); ag.v.put; // bot phụ (role ro) không đổi quyền được
+  assert.throws(() => ag.v.setAccess('x', {}), /bot quản lý/);
+});
+
+test('đăng nhập VPS bằng mật khẩu MỘT lần: tự cài khóa; mật khẩu chỉ ở biến môi trường (+stdin sudo), không vào dòng lệnh/tệp/nhật ký; lỗi thì không lưu VPS', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'vpspw-')); const calls = [], logs = []; let fail = 0;
+  const run = async (bin, args, opts) => {
+    calls.push({ bin, args, opts });
+    if (bin === 'ssh-keygen') { const f = args[args.indexOf('-f') + 1]; fs.writeFileSync(f, 'PRIV'); fs.writeFileSync(f + '.pub', 'ssh-ed25519 PUB-' + path.basename(f) + ' x'); return { code: 0, out: '', err: '' }; }
+    if (opts && opts.env && opts.env.SSH_ASKPASS) { assert.ok(fs.existsSync(opts.env.SSH_ASKPASS), 'có tệp askpass lúc chạy'); assert.equal(fs.readFileSync(opts.env.SSH_ASKPASS, 'utf8').includes('MatKhauBiMat'), false, 'mật khẩu không nằm trong tệp askpass'); if (fail) return { code: 255, out: '', err: 'Permission denied MatKhauBiMat' }; }
+    return { code: 0, out: 'OK', err: '' };
+  };
+  const mkv = () => createVps({ role: 'full', file: d + '/data/vps.json', keyFull: d + '/f.key', keyRo: d + '/r.key', known: d + '/kh', run, tmpDir: d, log: (m) => logs.push(m) });
+  let v = mkv();
+  const r = await v.addWithPassword({ name: 'vps2', host: '203.0.113.9', port: 22185, user: 'root', password: 'MatKhauBiMat' });
+  assert.equal(r.name, 'vps2'); assert.equal(v.list().length, 1);
+  const inst = calls.find((c) => c.bin === 'ssh' && c.opts && c.opts.env && c.opts.env.SSH_ASKPASS);
+  assert.equal(inst.opts.env.AGENTOS_VPS_PW, 'MatKhauBiMat'); assert.equal(inst.opts.env.SSH_ASKPASS_REQUIRE, 'force');
+  assert.ok(!inst.args.join(' ').includes('MatKhauBiMat'), 'không có mật khẩu trong dòng lệnh'); assert.match(inst.args[inst.args.length - 1], /authorized_keys/); assert.match(inst.args[inst.args.length - 1], /agentos-ro/); assert.ok(inst.args.includes('-p') && inst.args.includes('22185'));
+  assert.ok(!logs.join('\n').includes('MatKhauBiMat'), 'không ghi mật khẩu vào nhật ký');
+  assert.ok(!fs.readFileSync(d + '/data/vps.json', 'utf8').includes('MatKhauBiMat'), 'không lưu mật khẩu');
+  assert.deepEqual(fs.readdirSync(d).filter((x) => /askpass/.test(x)), [], 'tệp askpass tạm đã xóa');
+  // dùng tài khoản thường: chạy bằng sudo, mật khẩu qua stdin
+  calls.length = 0; await v.addWithPassword({ name: 'vps3', host: '203.0.113.10', user: 'ubuntu', password: 'MatKhauBiMat' });
+  const sd = calls.find((c) => c.bin === 'ssh' && c.opts && c.opts.env && c.opts.env.SSH_ASKPASS); assert.match(sd.args[sd.args.length - 1], /^sudo -S -p ''/); assert.equal(sd.opts.input, 'MatKhauBiMat\n'); assert.ok(!sd.args.join(' ').includes('MatKhauBiMat'));
+  // lỗi (sai mật khẩu): báo rõ, KHÔNG lưu VPS, mật khẩu bị che trong thông báo
+  fail = 1; await assert.rejects(v.addWithPassword({ name: 'vps4', host: '203.0.113.11', user: 'root', password: 'MatKhauBiMat' }), (e) => /Chưa lưu VPS/.test(e.message) && !e.message.includes('MatKhauBiMat'));
+  assert.equal(v.list().map((x) => x.name).includes('vps4'), false);
+  await assert.rejects(v.addWithPassword({ name: 'vps5', host: '1.2.3.4', user: 'root', password: '' }), /mật khẩu/);
+  assert.equal(v.list().map((x) => x.name).includes('vps5'), false, 'thiếu mật khẩu không để lại VPS nửa vời');
 });

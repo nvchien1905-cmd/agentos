@@ -407,7 +407,7 @@ function createMultiKiotViet(shops, o) {
 }
 
 // BOT NÀO ĐƯỢC DÙNG gian hàng (chủ máy tích ở Cài đặt → KiotViet): `bots` = danh sách mã bot ('main' = bot quản lý, 'a1'… = bot phụ). Không có trường này (gian cũ) = chỉ bot quản lý.
-const BOT_ID_RE = /^(main|a\d{1,3})$/;
+const BOT_ID_RE = /^(main|zalobot|a\d{1,3})$/;       // zalobot = bot Zalo chính thức (độc lập với bot quản lý)
 const botsField = (v) => (Array.isArray(v) ? [...new Set(v.map(String).filter((x) => BOT_ID_RE.test(x)))] : null);
 const botsOf = (shop) => (shop && Array.isArray(shop.bots) ? shop.bots : ['main']);
 const shopsForBot = (shops, botId) => (shops || []).filter((s) => botsOf(s).includes(botId || 'main'));

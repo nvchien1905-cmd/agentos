@@ -71,7 +71,7 @@ async function boot() {
     agentCtl: { handle: async (req) => { reqs.push(req); if (req.action === 'update' && st.fail) return { ok: false, error: 'dịch vụ lỗi' }; return { ok: true, msg: 'ok' }; } }, agentsFile: path.join(dir, 'agents.json'), agentShow: async () => ({ ActiveState: 'active' }) });
   const port = await s.listen();
   const call = async (method, p, body) => { const r = await fetch('http://127.0.0.1:' + port + '/api/' + p, { method, headers: { 'content-type': 'application/json', 'x-agentos-settings': '1' }, body: method === 'POST' ? JSON.stringify(body || {}) : undefined }); const text = await r.text(); let j = null; try { j = JSON.parse(text); } catch (e) { /* html */ } return { status: r.status, body: j, text }; };
-  return { s, call, calls, reqs, st, env: () => fs.readFileSync(envFile, 'utf8') };
+  return { s, call, calls, reqs, st, envFile, env: () => fs.readFileSync(envFile, 'utf8') };
 }
 
 test('Cài đặt: danh sách bot để tích; lưu quyền → bot được thêm/bớt khởi động lại với cấu hình mới, bot quản lý chỉ khởi động lại khi chính nó đổi quyền; bot lạ bị từ chối', async () => {
@@ -117,4 +117,20 @@ test('Cài đặt: bot phụ lỗi khi cập nhật không làm hỏng việc l�
   const seg = code.slice(code.indexOf('var botsBox'), code.indexOf("button[data-t]'"));
   assert.ok(seg.length > 1500); assert.match(seg, /data-bk/); assert.match(seg, /kiotviet\/bots/); assert.match(seg, /Bot được dùng gian hàng này/);
   assert.ok(!/=>/.test(seg) && !/\b(let|const)\b/.test(seg) && !/`/.test(seg) && !/\?\./.test(seg), 'ES5');
+});
+
+test('Cài đặt: có token bot Zalo thì hiện ô "Bot Zalo chính thức" để tích riêng; tích/bỏ → chỉ bot quản lý khởi động lại (đọc cấu hình mới), KHÔNG gọi cập nhật bot phụ', async () => {
+  const S = await boot();
+  try {
+    let r = await S.call('POST', 'kiotviet/save', { name: 'Huyền Anh', retailer: 'huyenanh', clientId: 'cid-0123456789', clientSecret: 'csec-0123456789' }); assert.equal(r.status, 200, r.text);
+    r = await S.call('GET', 'kiotviet'); assert.deepEqual(r.body.bots.map((b) => b.key), ['main'], 'chưa có bot Zalo thì không hiện ô');
+    fs.appendFileSync(S.envFile, 'ZALOBOT_TOKEN=123456789:' + 'Z'.repeat(30) + '\n');
+    r = await S.call('GET', 'kiotviet'); assert.deepEqual(r.body.bots.map((b) => b.key), ['main', 'zalobot']); assert.equal(r.body.bots[1].name, 'Bot Zalo chính thức');
+    S.reqs.length = 0; S.calls.length = 0;
+    r = await S.call('POST', 'kiotviet/bots', { retailer: 'huyenanh', bots: ['zalobot'] }); assert.equal(r.status, 200, r.text);
+    assert.deepEqual(r.body.bots, ['zalobot']); assert.deepEqual(r.body.changed.sort(), ['main', 'zalobot']); assert.deepEqual(r.body.warn, []);
+    assert.equal(S.reqs.length, 0, 'không gọi cập nhật bot phụ cho bot Zalo');
+    assert.ok(S.calls.some((c) => /restart agentos-orchestrator/.test(c)));
+    assert.match(S.env(), /"bots":\["zalobot"\]/);
+  } finally { await S.s.close(); }
 });

@@ -26,7 +26,7 @@ const maint = require('./maintenance');
 const { createDeskClient } = require('./desk');
 const { createMultiKiotViet } = require('./kiotviet');
 const { THINK_HINT, kiotvietHint } = require('./thinking');
-const { createKvContext } = require('./kvcontext');
+const { createKvContext, build: kvctxBuild } = require('./kvcontext');
 const { createVault } = require('./vault');
 const { createProjectPerms } = require('./projectPerms');
 const { createPairing } = require('./pairing');
@@ -604,6 +604,9 @@ async function main() {
   };
   const kiotviet = createMultiKiotViet(cfg.kiotviet.shops);
   kvForAi.api = kiotviet;
+  // Bot Zalo chính thức có quyền KiotViet RIÊNG (ô "Bot Zalo chính thức" ở Cài đặt → KiotViet), không phụ thuộc quyền của bot quản lý
+  const kvZalo = createMultiKiotViet(cfg.kiotviet.zaloShops || []);
+  const zaloKv = async (text) => (cfg.kiotviet.zaloShops || []).length && kvctxBuild(kvZalo, text, Date.now());
   // Đội máy: máy này nhận việc từ máy đầu não (nếu chủ máy bật ở Cài đặt → Đội máy) và/hoặc giao việc cho máy con (/may)
   const fleet = createFleet({ file: path.join(dataDir, 'fleet.json'), log });
   // Đổi AI ưu tiên ngay bằng /ai (hoặc câu nói "chuyển sang dùng codex"): sắp lại chính mảng cfg.engineOrder tại chỗ (bộ xếp việc dùng chung mảng này) và nhớ ở db để lần khởi động sau vẫn giữ.
@@ -684,7 +687,7 @@ async function main() {
   });
   zaloWatch.start();
   // Bot Zalo chính thức (zaloBot.js): chủ máy @nhắc bot trong nhóm Zalo → AI trả lời bằng chữ; không cần Chrome. Cần ZALOBOT_TOKEN (Cài đặt → Bot Zalo).
-  const zaloBot = createZaloBot({ summarize: (s, u) => summarizer.run(s, u), ownerMemory: () => { const own = [...cfg.adminUserIds].find((x) => String(x).startsWith('zl:')); if (!own) return []; try { return db.recentJobs(own, 14).filter((h) => h.status !== 'cancelled').reverse().map((h) => String(h.prompt || '').split('\n[Bối cảnh')[0].split('\n[Tệp đính kèm')[0].trim()).filter((t) => t && !t.startsWith('/')).slice(-8); } catch (e) { return []; } }, core: { handle: async (m) => { let r = botRef.handle(m); if (r && typeof r.then === 'function') r = await r; await botSend(m.chat.id, r); }, callback: (cq) => botRef.handleCallback(cq), takePending: (c, t) => tg.takePending(c, t) }, inboxDir: path.join(cfg.workdir, 'inbox'), file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
+  const zaloBot = createZaloBot({ kvData: zaloKv, summarize: (s, u) => summarizer.run(s, u), ownerMemory: () => { const own = [...cfg.adminUserIds].find((x) => String(x).startsWith('zl:')); if (!own) return []; try { return db.recentJobs(own, 14).filter((h) => h.status !== 'cancelled').reverse().map((h) => String(h.prompt || '').split('\n[Bối cảnh')[0].split('\n[Tệp đính kèm')[0].trim()).filter((t) => t && !t.startsWith('/')).slice(-8); } catch (e) { return []; } }, core: { handle: async (m) => { let r = botRef.handle(m); if (r && typeof r.then === 'function') r = await r; await botSend(m.chat.id, r); }, callback: (cq) => botRef.handleCallback(cq), takePending: (c, t) => tg.takePending(c, t) }, inboxDir: path.join(cfg.workdir, 'inbox'), file: path.join(dataDir, 'zalobot.json'), log, runAI: runSysAI, notify: (text) => { const a = adminChat(); return a ? tg.sendMessage(a, text) : Promise.resolve(); } });
   zlRoute.v = zaloBot.channel;
   fanpage.start(); facebook.start();
   setTimeout(() => fanpage.poll().catch((e) => log('fanpage: ' + e.message)), 20000).unref();

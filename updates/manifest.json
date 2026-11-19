@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.19",
-  "file": "agentos-update-2026.11.18.19.tar.gz",
-  "size": 673166,
-  "sha256": "e03d0dfd4b715766daef8f618051bfb28fdb73c73e0fabf22e90ff589e95c97e",
+  "version": "2026.11.18.20",
+  "file": "agentos-update-2026.11.18.20.tar.gz",
+  "size": 673489,
+  "sha256": "f5ea2dc15a935e7e331945cd2c9cf60b20877916bcfc435abd54f63f76d47033",
   "date": "2026-11-19",
-  "notes": "AI đọc tin trong Zalo bằng ứng dụng Zalo đã đăng nhập, không mở Chrome trống"
+  "notes": "Bot Zalo có ô quyền KiotViet riêng (Cài đặt → KiotViet), độc lập với bot quản lý"
 }

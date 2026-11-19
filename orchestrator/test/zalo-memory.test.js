@@ -11,7 +11,7 @@ function mk(extra) {
   const fetch = async (url, init) => { if (url.endsWith('/sendMessage')) { if (extra.failSend) return { status: 500, json: async () => ({ ok: false, description: 'lỗi' }) }; sent.push(JSON.parse(init.body)); } return { status: 200, json: async () => ({ ok: true, result: {} }) }; };
   let t = 1000000;
   const z = createZaloBot({ env: { ZALOBOT_TOKEN: TK, ZALOBOT_OWNERS: 'boss1', ZALOBOT_MAX_PER_HOUR: '5000', ZALOBOT_MAX_PER_SENDER: '5000' }, file: path.join(dir, 'z.json'), inboxDir: path.join(dir, 'inbox'), log: () => {}, fetch, now: () => (t += 1000), notify: async () => {},
-    ownerMemory: extra.mem ? () => extra.mem : undefined, summarize: extra.summarize,
+    ownerMemory: extra.mem ? () => extra.mem : undefined, summarize: extra.summarize, kvData: extra.kvData,
     runAI: async (k, p) => { ai.push({ k, p }); return { ok: true, text: 'Trả lời nhóm' }; },
     core: { handle: async (m) => { core.push(m); }, callback: async () => '', takePending: () => null } });
   return { z, core, sent, ai, dir, adv: (ms) => { t += ms; } };
@@ -143,4 +143,22 @@ test('lời nhắc AI: đọc tin trong Zalo bằng ứng dụng Zalo đã đăn
   const s = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'index.js'), 'utf8');
   assert.match(s, /ZALO_READ = '[^']*agentos-desk open zalo[^']*about:blank/);
   assert.equal((s.match(/ZALO_READ \+/g) || []).length, 2, 'cả hai nhánh zaloRule đều kèm quy tắc');
+});
+
+test('quyền KiotViet RIÊNG của bot Zalo: có kvData thì số liệu được đính vào câu hỏi trong nhóm; không có thì không; lỗi KiotViet không làm bot im', async () => {
+  const calls = [];
+  let S = mk({ kvData: async (t) => { calls.push(t); return '[DỮ LIỆU KIOTVIET] doanh thu 1.000.000đ [HẾT DỮ LIỆU KIOTVIET]\n\n'; } });
+  await S.z.onUpdate(ev('@Bot doanh thu hôm nay bao nhiêu', nv), true);
+  assert.equal(calls.length, 1); assert.match(S.ai[0].p, /^\[DỮ LIỆU KIOTVIET\] doanh thu 1\.000\.000đ/);
+  S = mk(); await S.z.onUpdate(ev('@Bot doanh thu hôm nay bao nhiêu', nv), true); assert.doesNotMatch(S.ai[0].p, /DỮ LIỆU KIOTVIET/);
+  S = mk({ kvData: async () => { throw new Error('mạng'); } }); await S.z.onUpdate(ev('@Bot doanh thu hôm nay', nv), true);
+  assert.equal(S.ai.length, 1); assert.equal(S.sent.length >= 1, true);
+});
+
+test('KiotViet: "zalobot" là mã bot hợp lệ, gian chỉ tích bot Zalo thì chỉ bot Zalo thấy; bot quản lý không thấy', () => {
+  const kv = require('../src/kiotviet');
+  const shops = [{ retailer: 'a', clientId: 'x', clientSecret: 'y', bots: ['zalobot'] }, { retailer: 'b', clientId: 'x', clientSecret: 'y', bots: ['main', 'zalobot'] }, { retailer: 'c', clientId: 'x', clientSecret: 'y' }];
+  assert.deepEqual(kv.shopsForBot(shops, 'zalobot').map((s) => s.retailer), ['a', 'b']);
+  assert.deepEqual(kv.shopsForBot(shops, 'main').map((s) => s.retailer), ['b', 'c']);
+  assert.deepEqual(kv.botsField(['zalobot', 'main', 'evil']), ['zalobot', 'main']);
 });

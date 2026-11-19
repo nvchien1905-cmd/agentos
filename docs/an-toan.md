@@ -836,3 +836,6 @@ Yêu cầu của chủ máy: AI làm trợ lý trực tin nhắn Facebook cá nh
 
 ## 2026.11.18.19 — Đọc tin Zalo bằng ứng dụng Zalo đã đăng nhập
 AI được dặn: xem tin trong nhóm/khách thì mở ứng dụng Zalo đã đăng nhập (`agentos-desk open zalo`), không mở Chrome trống (about:blank) và không đòi đăng nhập lại.
+
+## 2026.11.18.20 — Bot Zalo có quyền KiotViet riêng
+Cài đặt → KiotViet có thêm ô "Bot Zalo chính thức" cho từng gian hàng, độc lập với "Bot quản lý". Tích thì bot Zalo (trả lời trong nhóm và người được phép) nhận số liệu doanh thu/tồn kho lấy sẵn bằng API chỉ đọc; bỏ tích thì không có. Chat riêng của chủ máy vẫn chạy bằng bộ não Bot quản lý.

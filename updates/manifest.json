@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.25",
-  "file": "agentos-update-2026.11.18.25.tar.gz",
-  "size": 676857,
-  "sha256": "89bee72ea638472e2fb782f935195bca6236f77a457cdff140aad8622603bbd9",
+  "version": "2026.11.18.26",
+  "file": "agentos-update-2026.11.18.26.tar.gz",
+  "size": 677302,
+  "sha256": "b96970e52fb331bdc6eb5f34cf5233eb73dd2a82965f6f5a1d2eb297721887cc",
   "date": "2026-11-19",
-  "notes": "Chạy lệnh trên VPS không hỏi duyệt từng lần (quyền theo Cài đặt → VPS)"
+  "notes": "Zalo và Telegram có kho dự án/trí nhớ riêng; không đặt tên dự án theo mã bí mật"
 }

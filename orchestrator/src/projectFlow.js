@@ -23,7 +23,7 @@ function createProjectFlow(o) {
 
   // Dự án người này dùng được, mới làm việc gần đây nhất trước (kèm dự án tổng của chính họ)
   function usable(chatId, uid) {
-    const out = projects.list().filter((p) => !p.home && projects.canUse(uid, p, isAdmin));
+    const out = projects.list().filter((p) => !p.home && projects.canUse(uid, p, isAdmin) && projects.scopeOk(chatId, p));      // Zalo và Telegram có kho dự án riêng
     const h = projects.homeOf(chatId);
     if (h && !out.some((p) => p.id === h.id) && projects.canUse(uid, h, isAdmin)) out.push(h);
     return out.map((p) => Object.assign({ at: projects.lastActive(p.id) }, p)).sort((a, b) => b.at - a.at);
@@ -188,6 +188,7 @@ function createProjectFlow(o) {
 
   // Tin thường: null = cứ giao việc như bình thường; còn lại = trả lời thay (chọn dự án / đang đặt tên).
   function gate(chatId, uid, text, prevAt) {
+    if (projects.isZlChat && projects.isZlChat(chatId)) { db.kvDel(kHold(chatId)); db.kvDel(kName(chatId)); return null; }      // Zalo: một dự án riêng của Zalo, không hỏi chọn dự án
     const nm = parse(db.kvGet(kName(chatId)));
     if (nm) return naming(chatId, nm, text);
     const hold = parse(db.kvGet(kHold(chatId)));

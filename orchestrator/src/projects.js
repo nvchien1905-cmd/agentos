@@ -90,7 +90,7 @@ function createProjects(o) {
   function titleFromPrompt(id, prompt) {
     const p = get(id); if (!p || !p.autoTitle) return null;
     let t = String(prompt || '').replace(/[\u0000-\u001f]/g, ' ').replace(/^#\S+\s+/, '').replace(/\s+/g, ' ').trim();
-    if (t.length < 3) return null;
+    if (t.length < 3 || /\d{6,}:[A-Za-z0-9_-]{20,}/.test(t) || /(sk-|AIza|ghp_|xox[bp]-)[A-Za-z0-9_-]{16,}/.test(t)) return null;      // không biến mã bí mật thành TÊN dự án (hiện ra ở danh sách, Zalo...)
     t = t.length > 44 ? t.slice(0, 43).replace(/\s+\S*$/, '') + '…' : t;
     const taken = new Set(load().list.filter((x) => !x.deleted && x.id !== id).map((x) => x.name.toLowerCase()));
     let name = t, n = 2; while (taken.has(name.toLowerCase())) name = t + ' (' + n++ + ')';
@@ -234,12 +234,12 @@ function createProjects(o) {
   const setHomeEnabled = (on) => { if (o.db) db.kvSet('home_projects', on ? '1' : '0'); };
   function homeOf(chatId) {
     const c = String(chatId == null ? '' : chatId);
-    if (!baseDir || !homeEnabled() || !/^\d{3,}$/.test(c)) return null;
+    if (!baseDir || !homeEnabled() || !(/^\d{3,}$/.test(c) || /^zl:[\w.-]{3,}$/.test(c))) return null;
     try {
       const st = load(); let p = st.list.find((x) => x.home === c && !x.deleted);
       if (!p) {
-        let id = 'tong-' + c, n = 2; while (st.list.some((x) => x.id === id) || fs.existsSync(dirOf(id))) id = 'tong-' + c + '-' + n++;
-        p = { id, name: 'Tổng · ' + c, created: now(), createdBy: c, archived: false, engine: null, users: [c], home: c };
+        const sl = c.replace(/[^\w-]+/g, '-').slice(0, 40); let id = 'tong-' + sl, n = 2; while (st.list.some((x) => x.id === id) || fs.existsSync(dirOf(id))) id = 'tong-' + sl + '-' + n++;
+        p = { id, name: c.startsWith('zl:') ? 'Tổng · Zalo' : 'Tổng · ' + c, created: now(), createdBy: c, archived: false, engine: null, users: [c], home: c };
         st.list.push(p); ensureDirs(p); save(st);
         log('tạo dự án tổng cho ID ' + c + ' (' + id + ')');
       }
@@ -258,12 +258,16 @@ function createProjects(o) {
     if (h.name === want || h.nameAuto === false || (h.nameAuto !== true && h.name !== 'Tổng · ' + c)) return;
     update(h.id, (p) => { p.name = want; p.nameAuto = true; });
   }
+  // PHẠM VI: chat Zalo (zl:…) và Telegram có KHO DỰ ÁN RIÊNG — không thấy/không chọn dự án của nhau (trí nhớ, sổ tay, lịch sử nằm trong dự án)
+  const isZlChat = (c) => /^zl:/.test(String(c == null ? '' : c));
+  const isZlProject = (p) => !!p && /^zl:/.test(String(p.home || p.chat || ''));
+  const scopeOk = (chatId, p) => !p || isZlChat(chatId) === isZlProject(p);
   function active(chatId) {
     const id = db.kvGet(kActive(chatId));
     if (id) {
       let p = get(id);
       for (let i = 0; p && p.mergedInto && i < 5; i++) p = get(p.mergedInto);          // dự án đã gộp: chuyển sang dự án đích
-      if (p && !p.archived) return p; db.kvDel(kActive(chatId));
+      if (p && !p.archived && scopeOk(chatId, p)) return p; db.kvDel(kActive(chatId));
     }
     return homeOf(chatId);
   }
@@ -288,7 +292,7 @@ function createProjects(o) {
   }
   const usage = (id) => { const f = (sub) => files(id, sub).filter((x) => !x.dir).length; return { docs: f('TAI-LIEU'), results: f('KET-QUA') }; };
 
-  return { setMode, setRules, markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, skillsOf, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
+  return { setMode, setRules, markActive, lastActive, newChat, titleFromPrompt, pending, clearPending, update, load, save, noteName, homeOf, scopeOk, isZlChat, homeEnabled, setHomeEnabled, setHoiDap, hoidapProject, setChungTu, addSchedule, removeSchedule, setSchedulePaused, markRan, daysText, MAX_SCHEDULES, root, stateFile, list, get, create, rename, archive, remove, purge, setEngine, setUsers, instructions, skillsOf, rawInstructions, setInstructions, active, setActive, canUse, parseTag, files, usage, dirOf, bookDir, ensureDirs, slugify, TRASH_DAYS };
 }
 
 module.exports = { createProjects, slugify };

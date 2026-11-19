@@ -848,3 +848,6 @@ Trang Cài đặt có mục "VPS": nhập địa chỉ + tài khoản + mật kh
 
 ## 2026.11.18.25 — Chạy lệnh trên VPS không còn hỏi duyệt từng lần
 `/vps chay …` không còn là lệnh nhạy cảm: quyền do chủ máy tích ở Cài đặt → VPS (không / chỉ xem / đủ quyền) quyết định, chỉ xem thì chính VPS chặn ghi. Thêm/xóa VPS khỏi danh sách qua AI vẫn hỏi duyệt.
+
+## 2026.11.18.26 — Zalo và Telegram có kho dự án/trí nhớ RIÊNG
+Chat Zalo (zl:…) có dự án tổng riêng "Tổng · Zalo" (sổ tay, tóm tắt, lịch sử nằm trong dự án) và không còn thấy/chọn dự án của Telegram, ngược lại cũng vậy; Zalo không bị hỏi "tin này thuộc dự án nào". Tên dự án không còn lấy từ câu đầu tiên nếu câu đó chứa mã bí mật (token bot, khóa API).

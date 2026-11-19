@@ -17,7 +17,7 @@ function createProjectCommands(o) {
     return p && projects.canUse(uid == null ? chatId : uid, p, isAdmin) ? p : null;
   }
   const label = (p) => '📁 ' + (p.home ? 'Dự án tổng của bạn' : p.name);
-  const usable = (uid) => projects.list().filter((p) => !p.home && projects.canUse(uid, p, isAdmin));     // dự án tổng riêng của từng ID không nằm trong danh sách chung
+  const usable = (uid, chatId) => projects.list().filter((p) => !p.home && projects.canUse(uid, p, isAdmin) && (chatId == null || projects.scopeOk(chatId, p)));     // dự án tổng riêng của từng ID không nằm trong danh sách chung
 
   function help(uid) {
     const adm = isAdmin(uid);
@@ -30,7 +30,7 @@ function createProjectCommands(o) {
   }
 
   function listText(chatId, uid) {
-    const cur = current(chatId, uid), list = usable(uid);
+    const cur = current(chatId, uid), list = usable(uid, chatId);
     const where = cur ? (cur.home ? ' (đang ở dự án tổng của bạn)' : ' (đang ở: ' + cur.name + ')') : ' (đang ở chế độ chung)';
     if (!list.length) return 'Chưa có dự án nào' + (isAdmin(uid) ? '. Tạo bằng /duan moi <tên>, ví dụ /duan moi Kế toán 2026.' : ' dành cho bạn. Nhờ chủ máy gán.') + (cur && cur.home ? '\n📁 Bạn đang làm việc trong dự án tổng riêng của mình (ID ' + chatId + ').' : '') + '\n\n' + help(uid);
     return '📁 Dự án' + where + ':\n' +

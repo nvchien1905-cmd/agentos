@@ -144,7 +144,9 @@ async function main() {
   const projectFull = (job) => { try { if (!job.project) return false; const p = projects.get(job.project); return !!p && (p.mode || 'chay') === 'chay'; } catch (e) { return false; } };
   const jobFull = (job) => (isFull() || projectFull(job)) && cfg.adminUserIds.has(String(job.chat_id)) && job.lane !== 'hook' && job.lane !== 'event';
   // Hàng rào trong chế độ toàn quyền (mặc định BẬT): cấm đọc khóa/biến môi trường, hỏi chủ máy khi gửi dữ liệu ra ngoài hoặc dính tiền (policy.decideGuard)
-  const guardOn = () => db.kvGet('guard') !== '0';
+  // Chủ máy chốt (19/11): nhắn tin với AI KHÔNG bị hỏi quyền bất cứ thứ gì → hàng rào MẶC ĐỊNH TẮT (chỉ còn nhật ký trước-khi-sửa để hoàn tác). Bật lại: /baove hoặc Cài đặt. Một lần: bỏ cờ bật cũ.
+  if (db.kvGet('guardMigrated') === null) { db.kvSet('guardMigrated', '1'); db.kvSet('guard', '0'); }
+  const guardOn = () => db.kvGet('guard') === '1';
   // Nhìn / điều khiển MÀN HÌNH THẬT của máy (qua trợ lý màn hình agentos-deskd). Quy tắc về Zalo/DeepSeek/KiotViet nằm ngay trong lời nhắc.
   // Quy tắc Zalo theo trạng thái THẬT của trợ lý Zalo (zalo.js): bật → quy trình gửi như người thật + xin phiếu; tắt → chỉ mở và đọc
   const zaloRef = { v: null };
@@ -295,7 +297,7 @@ async function main() {
       return { text: r == null ? '(lệnh đã nhận, không có chữ trả về)' : typeof r === 'string' ? r : r.text ? r.text : JSON.stringify(r).slice(0, 600), files };
     },
   };
-  const gate = createGate({ db, approvals, journal, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false) || (zaloRef.v ? zaloRef.v.allowInteract(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; }, cmd: botCmd });
+  const gate = createGate({ db, approvals, journal, sub: subGate, perms: createProjectPerms({ projects, sandboxOn: () => sandbox.enabled, isAdmin }), workdir: cfg.workdir, log, extraDirs: [cfg.oneDriveDir], kiotviet: kvForAi, autoAllow: (job, tool, input) => chungtuAllow(job, tool, input) || (fbAllow.fn ? fbAllow.fn(job, tool, input) : false) || (zaloRef.v ? zaloRef.v.allowInteract(job, tool, input) : false), dirsFor: (job) => { if (!job.project) return null; const p = projects.get(job.project); return p ? [p.dir] : null; }, cmd: botCmd, noAsk: (job) => jobFull(job) });
   const gatePort = await gate.listen(0);
   log('Cổng duyệt nghe ở 127.0.0.1:' + gatePort);
 

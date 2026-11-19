@@ -851,3 +851,7 @@ Trang Cài đặt có mục "VPS": nhập địa chỉ + tài khoản + mật kh
 
 ## 2026.11.18.26 — Zalo và Telegram có kho dự án/trí nhớ RIÊNG
 Chat Zalo (zl:…) có dự án tổng riêng "Tổng · Zalo" (sổ tay, tóm tắt, lịch sử nằm trong dự án) và không còn thấy/chọn dự án của Telegram, ngược lại cũng vậy; Zalo không bị hỏi "tin này thuộc dự án nào". Tên dự án không còn lấy từ câu đầu tiên nếu câu đó chứa mã bí mật (token bot, khóa API).
+
+## 2026.11.19.1 — Chủ máy nhắn tin: không hỏi quyền nữa
+- Chủ máy chốt: nhắn tin với AI (Telegram/Zalo riêng) KHÔNG bị hỏi quyền bất cứ thứ gì. "Hàng rào" chế độ toàn quyền nay MẶC ĐỊNH TẮT (lần chạy đầu của bản này tự gỡ cờ bật cũ); vẫn còn nhật ký trước-khi-sửa để hoàn tác. Bật lại: /baove.
+- Lệnh nhạy cảm của bot (bot_command) cũng không hỏi khi là việc của chủ máy ở chế độ toàn quyền. Việc của người khác, webhook, sự kiện tự kích hoạt: VẪN chạy chế độ bảo vệ và vẫn hỏi.

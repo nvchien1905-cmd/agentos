@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.18.26",
-  "file": "agentos-update-2026.11.18.26.tar.gz",
-  "size": 677302,
-  "sha256": "b96970e52fb331bdc6eb5f34cf5233eb73dd2a82965f6f5a1d2eb297721887cc",
+  "version": "2026.11.19.1",
+  "file": "agentos-update-2026.11.19.1.tar.gz",
+  "size": 677582,
+  "sha256": "e10e1656902e15be1718c424401848ebd796446a725dee9bcd1c6c32427fbe79",
   "date": "2026-11-19",
-  "notes": "Zalo và Telegram có kho dự án/trí nhớ riêng; không đặt tên dự án theo mã bí mật"
+  "notes": "Chủ máy nhắn tin không bị hỏi quyền nữa (hàng rào mặc định tắt, lệnh nhạy cảm không hỏi)"
 }

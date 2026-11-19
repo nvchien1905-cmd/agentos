@@ -7,7 +7,7 @@ const { classify: classifyCmd } = require('./cmdTool');
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
 //   POST /gate  header x-gate-token  body {jobId, tool, input}  ->  {behavior:'allow',updatedInput} | {behavior:'deny',message}
-function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub, journal, cmd }) {
+function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub, journal, cmd, noAsk }) {
   log = log || (() => {});
   const token = crypto.randomBytes(24).toString('hex');
   const jobs = new Map();     // jobId -> { job, policy, state:{tainted, allowed:Set} }
@@ -86,7 +86,8 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     const d = { action: 'ask', cls: 'other', label: 'Chạy lệnh của bot', summary: c.text, reason: '', warn: '', taint: false, canRemember: false };
     if (c.level === 'danger') d.warn = '⚠️ Lệnh nhạy cảm: ' + c.why + '. Chỉ cho phép nếu chính anh vừa nhờ làm việc này.';
     else if (c.level === 'normal' && tainted) d.warn = 'Việc này đã đọc nội dung từ web. Nếu anh không ngờ tới lệnh này, có thể do trang web cài vào: hãy từ chối.';
-    const needAsk = c.level === 'danger' || (c.level === 'normal' && tainted);
+    let skip = false; try { skip = !!(noAsk && noAsk(entry.job)); } catch (e) { skip = false; }          // việc của chủ máy ở chế độ toàn quyền: không hỏi lại (chủ máy đã chọn)
+    const needAsk = !skip && (c.level === 'danger' || (c.level === 'normal' && tainted));
     if (needAsk) {
       const r = await approvals.request(entry.job, 'bot_command', d);
       if (!r.allowed) return { ok: false, error: 'Chủ máy không cho phép lệnh này (' + (r.source === 'timeout' ? 'không trả lời kịp' : 'đã từ chối') + '). Đừng thử lại; báo chủ máy và dừng bước này.' };

@@ -512,3 +512,13 @@ test('cmd-mcp (tiến trình thật): nói đúng giao thức MCP, bot_command v
     assert.match(JSON.parse(none).result.content[0].text, /chưa được cấu hình/);
   } finally { await G.gate.close(); }
 });
+
+test('bot_command: việc của chủ máy ở chế độ toàn quyền (noAsk) KHÔNG bị hỏi, kể cả lệnh nhạy cảm; vẫn ghi nhật ký', async () => {
+  const ran = []; const G = await gateSetup({}, { cmd: cmdOf(ran), noAsk: (job) => String(job.chat_id) === '1' });
+  try {
+    const call = (command) => fetch('http://127.0.0.1:' + G.port + '/cmd', { method: 'POST', headers: { 'x-gate-token': G.gate.token, 'content-type': 'application/json' }, body: JSON.stringify({ jobId: 9, command }) }).then((r) => r.json());
+    assert.equal((await call('/capnhat co')).ok, true); assert.equal((await call('/tatmay co')).ok, true);
+    assert.deepEqual(ran, ['/capnhat co', '/tatmay co']); assert.equal(G.asked.length, 0, 'không hỏi gì');
+    assert.ok(G.db.jobAudit(9).some((a) => a.tool === 'bot_command' && a.source === 'auto'));
+  } finally { await G.gate.close(); }
+});

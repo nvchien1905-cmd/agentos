@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.20.1",
-  "file": "agentos-update-2026.11.20.1.tar.gz",
-  "size": 678144,
-  "sha256": "31dfa85538e0d7cf3be0dd477b168a8b7f54e141863d734ab48495cd2266322a",
+  "version": "2026.11.20.2",
+  "file": "agentos-update-2026.11.20.2.tar.gz",
+  "size": 678141,
+  "sha256": "2b0c04629ae715d4c158d12b56b09042357105c78f4e94c2c4286136f7e6d455",
   "date": "2026-11-20",
-  "notes": "Tự dọn tab trắng about:blank chất đống trong Chrome của bot"
+  "notes": "Bot Zalo: mỗi người tối đa 100 tin/giờ (trước 10), mỗi nhóm 300/giờ"
 }

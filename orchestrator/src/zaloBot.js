@@ -77,8 +77,8 @@ function createZaloBot(o) {
   const env = () => o.env || process.env;
   const token = () => String(env().ZALOBOT_TOKEN || '').trim();
   const owners = () => new Set(String(env().ZALOBOT_OWNERS || '').split(',').map((x) => x.trim()).filter(Boolean));
-  const perHour = () => Math.max(1, Number(env().ZALOBOT_MAX_PER_HOUR) || 30);                 // mỗi nhóm/chat
-  const perSender = () => Math.max(1, Number(env().ZALOBOT_MAX_PER_SENDER) || 10);             // mỗi người LẠ trong nhóm
+  const perHour = () => Math.max(1, Number(env().ZALOBOT_MAX_PER_HOUR) || 300);                // mỗi nhóm/chat
+  const perSender = () => Math.max(1, Number(env().ZALOBOT_MAX_PER_SENDER) || 100);            // mỗi người LẠ trong nhóm
   const fullOn = () => !/^(0|false|no|off|tat)$/i.test(String(env().ZALOBOT_FULL === undefined ? '1' : env().ZALOBOT_FULL).trim());   // chat RIÊNG của chủ máy dùng được toàn bộ tính năng như bot Telegram
   const groupOpen = () => !/^(0|false|no|off|tat)$/i.test(String(env().ZALOBOT_GROUP_OPEN === undefined ? '1' : env().ZALOBOT_GROUP_OPEN).trim());
   let state = null;

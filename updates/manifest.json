@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.19.1",
-  "file": "agentos-update-2026.11.19.1.tar.gz",
-  "size": 677582,
-  "sha256": "e10e1656902e15be1718c424401848ebd796446a725dee9bcd1c6c32427fbe79",
-  "date": "2026-11-19",
-  "notes": "Chủ máy nhắn tin không bị hỏi quyền nữa (hàng rào mặc định tắt, lệnh nhạy cảm không hỏi)"
+  "version": "2026.11.20.1",
+  "file": "agentos-update-2026.11.20.1.tar.gz",
+  "size": 678144,
+  "sha256": "31dfa85538e0d7cf3be0dd477b168a8b7f54e141863d734ab48495cd2266322a",
+  "date": "2026-11-20",
+  "notes": "Tự dọn tab trắng about:blank chất đống trong Chrome của bot"
 }

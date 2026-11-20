@@ -344,7 +344,8 @@ async function main() {
   }
   // Báo cáo .html AI tạo → chụp thành ảnh dài bằng Chrome dùng chung của đúng danh tính (render.js)
   const renderer = createRenderer({ log, endpointFor: (job) => { const adm = isAdmin(String(job.chat_id)); return browserHost.ensure(adm ? 'admin' : 'id-' + safeChat(job.chat_id), adm ? browserProfile : path.join(browserProfilesDir, safeChat(job.chat_id))); } });
-  setInterval(() => { browserHost.reap(30 * 60000).catch(() => {}); }, 5 * 60000).unref();      // Chrome của ID thường nhàn rỗi thì tắt cho đỡ tốn RAM
+  setInterval(() => { browserHost.reap(30 * 60000).catch(() => {}); }, 5 * 60000).unref();
+  setInterval(() => { browserHost.sweepBlank(90000).then((n) => { if (n) log('dọn ' + n + ' tab trắng mồ côi của trình duyệt dùng chung'); }).catch(() => {}); }, 60000).unref();      // tab about:blank bị bỏ lại chất đống      // Chrome của ID thường nhàn rỗi thì tắt cho đỡ tốn RAM
 
   // Khóa API (nếu chủ máy nhập): chỉ khóa của đúng AI được đổi sang biến môi trường mà CLI của hãng đọc (apikeys.js)
   // Gemini CLI đính kèm tệp bằng @đường-dẫn: đổi các đường dẫn ảnh trong câu lệnh thành @đường-dẫn

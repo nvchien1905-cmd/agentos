@@ -18,13 +18,17 @@ const listDefault = (port) => new Promise((resolve) => {
   const req = http.get({ host: '127.0.0.1', port, path: '/json/list', timeout: 2000 }, (r) => { let b = ''; r.on('data', (d) => { b += d; }); r.on('end', () => { try { resolve(JSON.parse(b)); } catch (e) { resolve([]); } }); });
   req.on('timeout', () => { req.destroy(); resolve([]); }); req.on('error', () => resolve([]));
 });
+const closeDefault = (port, id) => new Promise((resolve) => {
+  const req = http.get({ host: '127.0.0.1', port, path: '/json/close/' + encodeURIComponent(id), timeout: 2000 }, (r) => { r.resume(); resolve(r.statusCode === 200); });
+  req.on('timeout', () => { req.destroy(); resolve(false); }); req.on('error', () => resolve(false));
+});
 const freePortDefault = () => new Promise((resolve, reject) => { const s = net.createServer(); s.on('error', reject); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
 
 function createBrowserHost(o) {
   o = o || {};
   const chromeBin = o.chromeBin || '/usr/bin/google-chrome-stable', display = o.display || ':99';
   const log = o.log || (() => {}), now = o.now || Date.now, stateFile = o.stateFile || '';
-  const probe = o.probe || probeDefault, listPages = o.listPages || listDefault, freePort = o.freePort || freePortDefault;
+  const probe = o.probe || probeDefault, listPages = o.listPages || listDefault, freePort = o.freePort || freePortDefault, closeTab = o.closeTab || closeDefault;
   const spawn = o.spawn || ((cmd, args, opts) => { const c = cp.spawn(cmd, args, opts); c.on('error', () => {}); c.unref(); return c; });
   const kill = o.kill || ((pid, sig) => { try { process.kill(-pid, sig); } catch (e) { try { process.kill(pid, sig); } catch (e2) { /* đã thoát */ } } });
   const sleep = o.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
@@ -102,9 +106,29 @@ function createBrowserHost(o) {
     }
     return n;
   }
+  // DỌN TAB TRẮNG (about:blank) mồ côi: mỗi việc của AI mở một tiến trình trình duyệt riêng, chết đột ngột thì tab của nó bị bỏ lại → chất đống tab trắng trên màn hình chủ máy.
+  // Tab trắng thấy ở HAI lần quét liên tiếp (cách nhau ≥ minGapMs) thì đóng; luôn chừa lại 1 tab để Chrome không tự thoát.
+  const blankSeen = new Map();                                         // id tab -> lần đầu thấy trắng
+  async function sweepBlank(minGapMs) {
+    let n = 0; const t = now();
+    for (const [, h] of [...hosts]) {
+      if (h.starting) continue;
+      const all = (await listPages(h.port)).filter((x) => x.type === 'page');
+      const blank = all.filter((x) => x.url === 'about:blank' || x.url === 'chrome://newtab/' || x.url === '');
+      const ids = new Set(blank.map((x) => x.id));
+      for (const id of [...blankSeen.keys()]) if (!ids.has(id) && all.every((x) => x.id !== id)) blankSeen.delete(id);
+      let left = all.length;
+      for (const x of blank) {
+        if (!blankSeen.has(x.id)) { blankSeen.set(x.id, t); continue; }
+        if (t - blankSeen.get(x.id) < minGapMs || left <= 1) continue;
+        if (await closeTab(h.port, x.id)) { n++; left--; blankSeen.delete(x.id); }
+      }
+    }
+    return n;
+  }
   const status = () => [...hosts.values()].map((h) => ({ key: h.key, port: h.port, profile: h.profile, pid: h.pid, idleMs: now() - h.lastUse, starting: !!h.starting }));
 
-  return { ensure, stop, stopAll, reap, status, endpoint };
+  return { ensure, stop, stopAll, reap, sweepBlank, status, endpoint };
 }
 
 module.exports = { createBrowserHost };

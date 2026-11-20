@@ -855,3 +855,6 @@ Chat Zalo (zl:…) có dự án tổng riêng "Tổng · Zalo" (sổ tay, tóm t
 ## 2026.11.19.1 — Chủ máy nhắn tin: không hỏi quyền nữa
 - Chủ máy chốt: nhắn tin với AI (Telegram/Zalo riêng) KHÔNG bị hỏi quyền bất cứ thứ gì. "Hàng rào" chế độ toàn quyền nay MẶC ĐỊNH TẮT (lần chạy đầu của bản này tự gỡ cờ bật cũ); vẫn còn nhật ký trước-khi-sửa để hoàn tác. Bật lại: /baove.
 - Lệnh nhạy cảm của bot (bot_command) cũng không hỏi khi là việc của chủ máy ở chế độ toàn quyền. Việc của người khác, webhook, sự kiện tự kích hoạt: VẪN chạy chế độ bảo vệ và vẫn hỏi.
+
+## 2026.11.20.1 — Dọn tab trắng (about:blank) chất đống trong Chrome của bot
+- Mỗi việc của AI mở một tiến trình trình duyệt riêng; tiến trình chết đột ngột thì tab của nó bị bỏ lại → hàng chục tab trắng trên màn hình chủ máy. Nay bộ điều phối quét mỗi phút, tab trắng thấy 2 lần liên tiếp (≥90 giây) thì đóng, luôn chừa 1 tab. Tab có trang thật không đụng.

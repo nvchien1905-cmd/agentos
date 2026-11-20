@@ -156,3 +156,16 @@ test('THẬT: 2 AI cùng MỘT Chrome — mỗi AI một tab riêng, điều hư
     assert.ok(titles.includes('TRANG-A') && titles.includes('TRANG-B'), 'cả hai tab cùng nằm trong MỘT Chrome: ' + titles.join('|'));
   } finally { A.kill(); B.kill(); await host.stop('admin').catch(() => {}); spawnSync('pkill', ['-f', '[u]ser-data-dir=' + path.join(dir, 'profile')]); }
 });
+
+test('browserHost.sweepBlank: tab trắng thấy 2 lần liên tiếp thì đóng; tab có trang thật không đụng; luôn chừa 1 tab', async () => {
+  let t = 1000; const closed = [];
+  let pages = [{ id: 'a', type: 'page', url: 'about:blank' }, { id: 'b', type: 'page', url: 'about:blank' }, { id: 'c', type: 'page', url: 'https://zalo.me/' }];
+  const E = hostEnv({ now: () => t, listPages: async () => pages, closeTab: async (port, id) => { closed.push(id); pages = pages.filter((x) => x.id !== id); return true; } });
+  await E.host.ensure('admin', PA);
+  assert.equal(await E.host.sweepBlank(90000), 0, 'lần đầu chỉ ghi nhận');
+  t += 30000; assert.equal(await E.host.sweepBlank(90000), 0, 'chưa đủ 90 giây');
+  t += 120000; assert.equal(await E.host.sweepBlank(90000), 2); assert.deepEqual(closed.sort(), ['a', 'b']);
+  // toàn tab trắng: chừa lại 1
+  pages = [{ id: 'x', type: 'page', url: 'about:blank' }, { id: 'y', type: 'page', url: 'about:blank' }]; closed.length = 0;
+  await E.host.sweepBlank(90000); t += 200000; assert.equal(await E.host.sweepBlank(90000), 1); assert.equal(pages.length, 1);
+});

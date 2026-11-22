@@ -118,3 +118,11 @@ test('fill + luật: thay biến, giữ nguyên biến lạ; thêm luật sai lo
   const old = on.match(/hook\/([0-9a-f]{48})/)[1]; const neu = (await q.run('sukien', 'webhook moi')).match(/hook\/([0-9a-f]{48})/)[1]; assert.notEqual(old, neu);
   assert.match(await q.run('sukien', 'webhook tat'), /đang TẮT/); t.stop();
 });
+
+test('khởi động lại giữa chừng: việc của chủ máy tự làm tiếp (một lần), báo lại sau 20s; AI được dặn không tự khởi động lại dịch vụ', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'index.js'), 'utf8');
+  assert.match(src, /Tiếp tục việc #' \+ j\.id \+ ' \(trước đó bị ngắt do máy\/dịch vụ khởi động lại\)/);
+  assert.match(src, /!\/\^Tiếp tục việc #\/\.test\(j\.prompt\)/);        // không làm tiếp bản làm tiếp → không lặp vô hạn
+  assert.match(src, /setTimeout\(\(\) => notify\(j\.chat_id, msg\)/);
+  assert.match(src, /ĐỪNG khởi động lại\/dừng dịch vụ agentos-orchestrator/);
+});

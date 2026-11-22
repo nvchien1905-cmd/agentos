@@ -861,3 +861,6 @@ Chat Zalo (zl:…) có dự án tổng riêng "Tổng · Zalo" (sổ tay, tóm t
 
 ## 2026.11.22.1 — Bot Zalo bị Zalo chặn tần suất (HTTP 429)
 Bot nhận tin Zalo gọi getUpdates dồn dập (khi Zalo trả "hết giờ" ngay) nên bị Zalo trả 429 và im lặng. Nay: mỗi lần nhận cách nhau tối thiểu ~3 giây; gặp 429 thì nghỉ 30 giây rồi tăng dần tới 5 phút, báo "tự thử lại" (không bảo kiểm tra token).
+
+## 2026.11.23.1 — Việc bị ngắt do khởi động lại tự làm tiếp
+Trước đây AI tự khởi động lại dịch vụ giữa việc → việc chết, báo "gửi lại" không tới Zalo → bot im lặng. Nay: việc của chủ máy (mới ngắt <2 giờ, tối đa 3 việc, không làm tiếp bản làm tiếp) tự được giao lại kèm dặn "kiểm tra phần đã làm"; báo lặp lại sau 20 giây; AI được dặn không tự khởi động lại orchestrator giữa việc.

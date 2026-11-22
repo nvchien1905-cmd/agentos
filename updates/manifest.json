@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.22.1",
-  "file": "agentos-update-2026.11.22.1.tar.gz",
-  "size": 678454,
-  "sha256": "ffd0b55335f369c6562790a42a476a515d686074db42de40b668aeac5a323cd0",
+  "version": "2026.11.23.1",
+  "file": "agentos-update-2026.11.23.1.tar.gz",
+  "size": 679218,
+  "sha256": "2e353adfff8dd53de2a1d6a665088768908437b588fa4706fb907bc046c69028",
   "date": "2026-11-22",
-  "notes": "Bot Zalo: tránh bị Zalo chặn 429, tự nghỉ và thử lại"
+  "notes": "Việc bị ngắt do khởi động lại tự làm tiếp; AI không tự restart giữa việc"
 }

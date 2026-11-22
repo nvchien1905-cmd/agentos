@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.20.2",
-  "file": "agentos-update-2026.11.20.2.tar.gz",
-  "size": 678141,
-  "sha256": "2b0c04629ae715d4c158d12b56b09042357105c78f4e94c2c4286136f7e6d455",
-  "date": "2026-11-20",
-  "notes": "Bot Zalo: mỗi người tối đa 100 tin/giờ (trước 10), mỗi nhóm 300/giờ"
+  "version": "2026.11.22.1",
+  "file": "agentos-update-2026.11.22.1.tar.gz",
+  "size": 678454,
+  "sha256": "ffd0b55335f369c6562790a42a476a515d686074db42de40b668aeac5a323cd0",
+  "date": "2026-11-22",
+  "notes": "Bot Zalo: tránh bị Zalo chặn 429, tự nghỉ và thử lại"
 }

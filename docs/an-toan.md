@@ -858,3 +858,6 @@ Chat Zalo (zl:…) có dự án tổng riêng "Tổng · Zalo" (sổ tay, tóm t
 
 ## 2026.11.20.1 — Dọn tab trắng (about:blank) chất đống trong Chrome của bot
 - Mỗi việc của AI mở một tiến trình trình duyệt riêng; tiến trình chết đột ngột thì tab của nó bị bỏ lại → hàng chục tab trắng trên màn hình chủ máy. Nay bộ điều phối quét mỗi phút, tab trắng thấy 2 lần liên tiếp (≥90 giây) thì đóng, luôn chừa 1 tab. Tab có trang thật không đụng.
+
+## 2026.11.22.1 — Bot Zalo bị Zalo chặn tần suất (HTTP 429)
+Bot nhận tin Zalo gọi getUpdates dồn dập (khi Zalo trả "hết giờ" ngay) nên bị Zalo trả 429 và im lặng. Nay: mỗi lần nhận cách nhau tối thiểu ~3 giây; gặp 429 thì nghỉ 30 giây rồi tăng dần tới 5 phút, báo "tự thử lại" (không bảo kiểm tra token).

@@ -112,6 +112,20 @@ test('zaloBot: lỗi nhận tin liên tục → báo chủ máy đúng một l�
   assert.equal(createZaloBot({ env: {}, log: () => {}, fetch }).start(), false);
 });
 
+test('zaloBot: bị Zalo giới hạn (429) → nghỉ lâu hơn hẳn, báo "tự thử lại" (không bảo kiểm tra token), rồi nhận tin lại được', async () => {
+  const notes = [], sleeps = [], sent = []; let n = 0;
+  const fetch = async (url, init) => {
+    if (url.endsWith('getUpdates')) { n++; if (n <= 4) return { status: 429, json: async () => ({ ok: false, error_code: 429, description: 'Too Many Requests' }) }; if (n === 5) return { status: 200, json: async () => ({ ok: true, result: ev('chào') }) }; return { status: 200, json: async () => ({ ok: true, result: null }) }; }
+    if (url.endsWith('sendMessage')) { sent.push(JSON.parse(init.body)); }
+    return { status: 200, json: async () => ({ ok: true, result: {} }) };
+  };
+  const z = createZaloBot({ env: { ZALOBOT_TOKEN: TK, ZALOBOT_OWNERS: 'boss1' }, file: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'zb-')), 'z.json'), log: () => {}, fetch, notify: async (t) => { notes.push(t); }, idleMs: 1, sleep: (ms) => { sleeps.push(ms); return new Promise((r) => setTimeout(r, 1)); } });
+  z.start(); for (let i = 0; i < 300 && !sent.length; i++) await new Promise((r) => setTimeout(r, 5)); z.stop();
+  assert.ok(sleeps.some((ms) => ms >= 30000), 'sau 429 phải nghỉ ít nhất 30 giây');
+  assert.equal(notes.length, 1); assert.match(notes[0], /429/); assert.doesNotMatch(notes[0], /token/i);
+  assert.ok(sent.length >= 1, 'hết bị giới hạn thì nhận và trả lời tin lại');
+});
+
 test('zaloBot: TRONG NHÓM ai @bot cũng được trả lời (chỉ trong nhóm đó), prompt dặn không lộ nội bộ; chủ máy thì được hỏi nội bộ', async () => {
   const { z, sent, ai } = mk();
   await z.onUpdate(ev('@Bot giờ mở cửa mấy giờ', { from: { id: 'nv77', display_name: 'Nhân viên', is_bot: false }, chat: { id: 'grpA', chat_type: 'GROUP' } }), true);

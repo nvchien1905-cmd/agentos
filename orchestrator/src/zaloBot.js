@@ -348,16 +348,24 @@ function createZaloBot(o) {
     try { const t = token(); if (t) await call(t, 'deleteWebhook', {}, { fetch: o.fetch }).catch(() => {}); } catch (e) { /* bỏ qua */ }
     while (!stopping) {
       const t = token(); if (!t) { await sleep(5000); continue; }
+      const t0 = now();
+      // Zalo có lúc trả "hết giờ" NGAY (không giữ 30 giây) → nếu nhận tin quá dồn dập sẽ bị HTTP 429. Gọi nhanh quá thì nghỉ thêm cho đủ ~3 giây/lần.
+      const pace = async () => { const used = now() - t0, gap = o.idleMs == null ? 3000 : o.idleMs; if (used < gap) await sleep(gap - used); };
       try {
         const r = await call(t, 'getUpdates', { timeout: '30' }, { fetch: o.fetch, timeoutMs: 45000 });
         fails = 0; alerted = false; lastOk = now(); lastErr = '';
         await onUpdate(r);
-        if (!r) await sleep(o.idleMs == null ? 800 : o.idleMs);
+        await pace();
       } catch (e) {
         if (stopping) break;
-        if (e.code === 408 || /timeout/i.test(String(e.message))) { fails = 0; lastOk = now(); await sleep(o.idleMs == null ? 800 : o.idleMs); continue; }   // không có tin mới trong 30 giây
+        if (e.code === 408 || /timeout/i.test(String(e.message))) { fails = 0; lastOk = now(); await pace(); continue; }   // không có tin mới trong 30 giây
         fails++; lastErr = clip(e.message, 120);
         log('bot Zalo: lỗi nhận tin: ' + e.message);
+        if (e.code === 429) {                                      // bị giới hạn tần suất: nghỉ lâu (30 giây → tối đa 5 phút), KHÔNG báo "kiểm tra token" vì token không sai
+          if (fails >= 3 && !alerted && o.notify) { alerted = true; o.notify('⚠️ Zalo đang giới hạn tần suất nhận tin (HTTP 429). Bot tự thử lại sau ít phút, không cần làm gì.').catch(() => {}); }
+          await sleep(Math.min(300000, 30000 * fails) + Math.floor(Math.random() * 5000));
+          continue;
+        }
         if (fails >= 5 && !alerted && o.notify) { alerted = true; o.notify('⚠️ Bot Zalo nhận tin lỗi liên tục: ' + clip(e.message, 150) + '. Kiểm tra token ở Cài đặt → Bot Zalo.').catch(() => {}); }
         await sleep(Math.min(60000, 2000 * fails));
       }

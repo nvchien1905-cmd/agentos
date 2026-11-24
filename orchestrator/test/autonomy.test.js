@@ -126,3 +126,15 @@ test('khởi động lại giữa chừng: việc của chủ máy tự làm ti�
   assert.match(src, /setTimeout\(\(\) => notify\(j\.chat_id, msg\)/);
   assert.match(src, /ĐỪNG khởi động lại\/dừng dịch vụ agentos-orchestrator/);
 });
+
+test('hạn một việc: toàn quyền + 3600 (mặc định cũ) → 4 giờ; số chủ máy tự đặt giữ nguyên; AI được dặn ưu tiên công cụ trình duyệt hơn chụp màn hình; có cảnh báo quá tải không dừng việc', () => {
+  const { load: loadConfig } = require('../src/config');
+  const base = { TELEGRAM_TOKEN: '1:a', ALLOWED_USER_IDS: '1' };
+  const ms = (e) => loadConfig(Object.assign({}, base, e)).jobTimeoutMs;
+  assert.equal(ms({ FULL_ACCESS: '1', JOB_TIMEOUT_SEC: '3600' }), 4 * 3600000);
+  assert.equal(ms({ FULL_ACCESS: '1', JOB_TIMEOUT_SEC: '7200' }), 7200000);
+  assert.equal(ms({ FULL_ACCESS: '0', JOB_TIMEOUT_SEC: '900' }), 900000);
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'index.js'), 'utf8');
+  assert.match(src, /TỐC ĐỘ: việc trên TRANG WEB/);
+  assert.match(src, /Em vẫn làm tiếp, gõ \/dung nếu muốn dừng/);
+});

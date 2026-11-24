@@ -48,7 +48,8 @@ function load(env) {
     workdir: path.resolve(env.WORKDIR || './work'),
     allowedTools: env.CLAUDE_ALLOWED_TOOLS === undefined ? 'Read,Glob,Grep' : env.CLAUDE_ALLOWED_TOOLS,
     codexSandbox: env.CODEX_SANDBOX || 'read-only',
-    jobTimeoutMs: (Number(env.JOB_TIMEOUT_SEC) || 900) * 1000,
+    // Hạn một việc: mặc định 4 giờ. Máy đã bật TOÀN QUYỀN từng được ghi sẵn 3600 (1 giờ) làm mặc định → coi là mặc định cũ, nâng lên 4 giờ (chủ máy giao việc điều khiển màn hình cả tiếng). Số khác 3600 là do chủ máy tự đặt → giữ nguyên.
+    jobTimeoutMs: ((env.FULL_ACCESS === '1' && Number(env.JOB_TIMEOUT_SEC) === 3600) ? 4 * 3600 : (Number(env.JOB_TIMEOUT_SEC) || 4 * 3600)) * 1000,                            // mặc định 4 giờ (chủ máy giao việc điều khiển màn hình cả tiếng); AI im lặng 15 phút vẫn bị coi là kẹt (jobIdleMs)
     jobIdleMs: (Number(env.JOB_IDLE_SEC) || 15 * 60) * 1000,                                   // AI không in gì quá chừng này (mặc định 15 phút) -> coi là kẹt, cắt và chạy lại không kèm phiên cũ
     jobIdleBgMs: (Number(env.JOB_IDLE_BG_SEC) || 60 * 60) * 1000,
     // Trợ lý phụ (subagents.js): AI chính giao việc cho AI phụ chạy song song. SUBAGENTS=0 để tắt

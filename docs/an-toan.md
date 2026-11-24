@@ -867,3 +867,8 @@ Trước đây AI tự khởi động lại dịch vụ giữa việc → việc
 
 ## 2026.11.24.1 — RAM/CPU là kho chung, không chia, không giới hạn
 Chủ máy yêu cầu: bỏ trần RAM của nhóm bot (trước: tổng RAM trừ 15%), bỏ phần RAM "bảo đảm" chia đều (MemoryLow), bot quản lý cũng không có trần. CPU không có hạn mức (chỉ trọng số bằng nhau, mặc định). Hệ quả: một việc chạy lỗi có thể chiếm hết RAM làm máy đơ; TasksMax (số tiến trình) vẫn giữ.
+
+## 2026.11.25.1 — Làm việc trên web nhanh hơn, báo quá tải, việc dài không bị cắt
+- AI được dặn dùng công cụ trình duyệt (đọc chữ trong trang) cho việc trên web; chụp màn hình (agentos-desk) chỉ cho ứng dụng không có bản web.
+- Máy quá tải khi đang có việc chạy: báo 1 lần/30 phút (không dừng, không hỏi). Việc chạy ≥30 phút: báo "đang làm tiếp" mỗi 30 phút.
+- Hạn một việc: mặc định 4 giờ; máy toàn quyền có sẵn 3600 (mặc định cũ) được nâng lên 4 giờ, số chủ máy tự đặt giữ nguyên. AI im lặng 15 phút vẫn bị coi là kẹt.

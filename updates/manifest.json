@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.24.1",
-  "file": "agentos-update-2026.11.24.1.tar.gz",
-  "size": 679293,
-  "sha256": "16095beca1a635073e52f9189f7f54b5d0c10b873bfe22af18edd12870def4d0",
+  "version": "2026.11.25.1",
+  "file": "agentos-update-2026.11.25.1.tar.gz",
+  "size": 680341,
+  "sha256": "3510cc608c566c93e0aef7c40049de4749d5adc490e8b8f3019f9ccbe8920383",
   "date": "2026-11-24",
-  "notes": "RAM/CPU kho chung, không chia, không giới hạn"
+  "notes": "Việc web nhanh hơn, báo quá tải, hạn việc 4 giờ"
 }

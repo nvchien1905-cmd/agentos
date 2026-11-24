@@ -500,8 +500,9 @@ function createAgentCtl(deps) {
     const sz = poolSizes(pool), active = [];
     for (const b of botUnits()) { const a = await sc('is-active', b.unit); if (a.code === 0) active.push(b); }
     const per = Math.floor(sz.maxMb / Math.max(1, active.length));
-    for (const b of active) await sc('set-property', '--runtime', b.unit, 'MemoryLow=' + per + 'M');
-    return ok('Đã chia ' + sz.maxMb + ' MB cho ' + active.length + ' bot đang chạy (mỗi bot được bảo đảm ' + per + ' MB).', { maxMb: sz.maxMb, active: active.length, perMb: per });
+    // KHO CHUNG KHÔNG CHIA: gỡ mọi phần bảo đảm riêng (MemoryLow=0) → ai cần RAM/CPU thì dùng, không bot nào bị giữ phần hay bị giới hạn
+    for (const b of active) await sc('set-property', '--runtime', b.unit, 'MemoryLow=0');
+    return ok('Kho tài nguyên chung: ' + active.length + ' bot đang chạy dùng chung toàn bộ RAM/CPU, không chia phần, không giới hạn.', { maxMb: sz.maxMb, active: active.length, perMb: per });
   }
   // Ghi nhóm tài nguyên + cấu hình bot quản lý, viết lại tệp dịch vụ mọi bot, khởi động lại bot nào có tệp đổi (bot quản lý: khởi động lại không chặn)
   async function applyPool(opts) {
@@ -511,7 +512,7 @@ function createAgentCtl(deps) {
     if (pool.enabled) {
       const sz = poolSizes(pool);
       F.writeFileSync(sliceF, ['# Tạo bởi agentos-agentctl: tài nguyên chung cho mọi bot (Cài đặt → Bot Telegram → Tài nguyên chung)', '[Unit]', 'Description=AgentOS - tài nguyên chung cho mọi bot', '[Slice]',
-        'MemoryHigh=' + sz.maxMb + 'M', 'MemoryMax=' + sz.maxMb + 'M', 'MemoryLow=' + sz.maxMb + 'M', 'CPUWeight=100', ''].join('\n'), { mode: 0o644 });
+        '# KHO CHUNG: không đặt trần RAM/CPU cho nhóm (chủ máy muốn dùng hết máy khi cần)', 'MemoryHigh=infinity', 'MemoryMax=infinity', 'CPUWeight=100', ''].join('\n'), { mode: 0o644 });
       const want = ['# Tạo bởi agentos-agentctl: bot quản lý dùng chung nhóm tài nguyên với các bot khác', '[Service]', 'Slice=agentos-bots.slice', 'MemoryHigh=infinity', 'MemoryMax=infinity', 'CPUWeight=100', ''].join('\n');
       let cur = ''; try { cur = F.readFileSync(dropF, 'utf8'); } catch (e) { /* chưa có */ }
       if (cur !== want) { F.mkdirSync(dropDir, { recursive: true }); F.writeFileSync(dropF, want, { mode: 0o644 }); mainChanged = true; }

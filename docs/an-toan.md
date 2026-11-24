@@ -864,3 +864,6 @@ Bot nhận tin Zalo gọi getUpdates dồn dập (khi Zalo trả "hết giờ" n
 
 ## 2026.11.23.1 — Việc bị ngắt do khởi động lại tự làm tiếp
 Trước đây AI tự khởi động lại dịch vụ giữa việc → việc chết, báo "gửi lại" không tới Zalo → bot im lặng. Nay: việc của chủ máy (mới ngắt <2 giờ, tối đa 3 việc, không làm tiếp bản làm tiếp) tự được giao lại kèm dặn "kiểm tra phần đã làm"; báo lặp lại sau 20 giây; AI được dặn không tự khởi động lại orchestrator giữa việc.
+
+## 2026.11.24.1 — RAM/CPU là kho chung, không chia, không giới hạn
+Chủ máy yêu cầu: bỏ trần RAM của nhóm bot (trước: tổng RAM trừ 15%), bỏ phần RAM "bảo đảm" chia đều (MemoryLow), bot quản lý cũng không có trần. CPU không có hạn mức (chỉ trọng số bằng nhau, mặc định). Hệ quả: một việc chạy lỗi có thể chiếm hết RAM làm máy đơ; TasksMax (số tiến trình) vẫn giữ.

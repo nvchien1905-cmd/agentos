@@ -398,13 +398,14 @@ test('tài nguyên chung: bot không có trần riêng, nằm trong nhóm chung;
   const st = await w.ctl.poolStatus(); assert.equal(st.enabled, true); assert.equal(st.maxMb, 6963);
   // chỉ bot đang chạy được chia: giả lập a1 chạy, bot quản lý chạy -> 2 bot -> 3481 MB mỗi bot
   const r2 = await w.ctl.handle({ rid: RID, action: 'balance' }); assert.equal(r2.active, 2); assert.equal(r2.perMb, 3481);
-  assert.ok(w.cmds.some((c) => c === 'systemctl set-property --runtime agentos-agent-a1 MemoryLow=3481M'));
+  assert.ok(w.cmds.some((c) => c === 'systemctl set-property --runtime agentos-agent-a1 MemoryLow=0'), 'không chia phần bảo đảm: MemoryLow=0');
+  assert.ok(!w.cmds.some((c) => /MemoryLow=[1-9]/.test(c)));
   // bật xong: nhóm + cấu hình bot quản lý
   const slice = fs.readFileSync(path.join(w.paths.units, 'agentos-bots.slice'), 'utf8');
-  assert.match(slice, /^MemoryMax=6963M$/m);
+  assert.match(slice, /^MemoryMax=infinity$/m); assert.match(slice, /^MemoryHigh=infinity$/m); assert.doesNotMatch(slice, /MemoryLow|CPUQuota/);
   // đặt phần để lại cho hệ thống 2 GB -> trần 6144 MB
   const r3 = await w.ctl.handle({ rid: RID, action: 'pool', reserveMb: 2048 }); assert.equal(r3.ok, true);
-  assert.match(fs.readFileSync(path.join(w.paths.units, 'agentos-bots.slice'), 'utf8'), /^MemoryMax=6144M$/m);
+  assert.match(fs.readFileSync(path.join(w.paths.units, 'agentos-bots.slice'), 'utf8'), /^MemoryMax=infinity$/m);
   const drop = path.join(w.paths.units, 'agentos-orchestrator.service.d', '20-pool.conf');
   assert.match(fs.readFileSync(drop, 'utf8'), /^Slice=agentos-bots\.slice$/m);
   // tắt: về giới hạn riêng, gỡ nhóm + cấu hình bot quản lý, bot được khởi động lại với tệp mới

@@ -1,8 +1,8 @@
 {
-  "version": "2026.11.25.2",
-  "file": "agentos-update-2026.11.25.2.tar.gz",
-  "size": 680794,
-  "sha256": "14ae2eaf24bb49594e43d7d92a10b7562830076f1c054cc40fd20756a36858c3",
+  "version": "2026.11.26.1",
+  "file": "agentos-update-2026.11.26.1.tar.gz",
+  "size": 681323,
+  "sha256": "6d25200917d27f8e29764d0ddc4eb63b96224f90539aeacf506da5b02b89b42c",
   "date": "2026-11-25",
-  "notes": "Cảnh báo quá tải kèm chương trình ngốn RAM nhất"
+  "notes": "Hàng đợi từng bot độc lập; không tự sửa quá tải"
 }

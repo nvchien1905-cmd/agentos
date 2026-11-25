@@ -56,7 +56,7 @@ function load(env) {
     subagents: { enabled: env.SUBAGENTS !== '0', perJob: Math.max(1, Math.min(8, Number(env.SUB_PER_JOB) || 4)), total: Math.max(1, Math.min(20, Number(env.SUB_TOTAL) || 8)) },
     // Mốc khôi phục (checkpoints.js): chụp thư mục dự án trước mỗi việc, /hoantac quay về. CHECKPOINTS=0 để tắt; CHECKPOINT_KEEP = số mốc giữ cho mỗi dự án
     checkpoints: { enabled: env.CHECKPOINTS !== '0', keep: Math.max(3, Math.min(100, Number(env.CHECKPOINT_KEEP) || 20)) },
-    mainParallel: Math.max(1, Math.min(8, Number(env.PARALLEL_CHATS) || 3)),   // số ID Telegram được làm việc cùng lúc (mỗi ID vẫn làm tuần tự)
+    mainParallel: Math.max(1, Math.min(8, Number(env.PARALLEL_CHATS) || 5)),   // số ID Telegram được làm việc cùng lúc (mỗi ID vẫn làm tuần tự)
     jobTimeoutBgMs: Math.max(Number(env.JOB_TIMEOUT_BG_SEC) || 4 * 3600, Number(env.JOB_TIMEOUT_SEC) || 900) * 1000,   // việc nền /nen: mặc định 4 giờ
     limitCooldownMs: (Number(env.LIMIT_COOLDOWN_MIN) || 60) * 60 * 1000,
     dbPath: path.resolve(env.DB_PATH || './data/agentos.db'),

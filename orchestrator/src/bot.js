@@ -98,8 +98,10 @@ function createBot({ zaloBot, vps, weblogin, db, worker, allowed, profiles, isAd
     const id = db.addJob(chatId, prompt, pref, profile, 'main', proj, council);
     if (proj && projects && projects.markActive) projects.markActive(proj);
     const ahead = db.aheadOf(id);
+    const blk = ahead > 0 && db.blockerOf ? db.blockerOf(id) : null;
+    const why = blk ? ' Đang chờ việc #' + blk.id + ' (đã chạy ' + blk.mins + ' phút) của chính cuộc trò chuyện này xong; việc của bot/chat khác vẫn chạy song song, không chặn. Muốn chạy ngay song song: gõ /nen <việc>; muốn hủy việc đang chạy: /dung.' : '';
     setImmediate(() => worker.wake());
-    if (quietAck) return ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó). Gõ /huy để hủy.' : null;        // việc làm ngay: bot hiện "đang gõ" + tin trạng thái thay cho tin báo nhận
+    if (quietAck) return ahead > 0 ? '⏳ Đã xếp hàng (còn ' + ahead + ' việc trước đó).' + why + ' Gõ /huy để hủy.' : null;        // việc làm ngay: bot hiện "đang gõ" + tin trạng thái thay cho tin báo nhận
     return ahead > 0 ? 'Đã nhận việc #' + id + ' (còn ' + ahead + ' việc trước đó).' : 'Đã nhận việc #' + id + ', đang làm...';
   }
 

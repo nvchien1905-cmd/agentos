@@ -875,3 +875,9 @@ Chủ máy yêu cầu: bỏ trần RAM của nhóm bot (trước: tổng RAM tr�
 
 ## 2026.11.25.2 — Cảnh báo quá tải kèm chương trình ngốn RAM nhất
 Tin báo quá tải nay liệt kê 5 chương trình dùng nhiều RAM nhất (tên, số tiến trình, MB, CPU; không in dòng lệnh) để biết ngay thủ phạm.
+
+## 2026.11.26.1 — Hàng đợi từng bot độc lập, rõ ràng
+- Tin "Đã xếp hàng (còn N việc trước đó)" trước đây đếm việc của MỌI chat/bot nên tưởng mọi thứ dồn về một chỗ. Nay chỉ đếm việc cùng cuộc trò chuyện (chat + dự án), nói rõ việc nào đang chặn và đã chạy bao lâu, gợi ý /nen để chạy song song hoặc /dung để hủy. Việc của chat/bot khác vẫn chạy song song như cũ.
+- Số chat làm việc cùng lúc mặc định 3 → 5 (PARALLEL_CHATS).
+- Máy quá tải không còn tự giao "AI tự sửa" (chỉ làm máy nặng thêm và chen vào chat của chủ máy); chỉ báo kèm danh sách chương trình ngốn nhiều nhất.
+- Trình duyệt: mỗi việc AI vẫn dùng đúng một tab riêng trong Chrome dùng chung và tự đóng khi xong; mỗi ID chat có Chrome riêng.

@@ -32,6 +32,7 @@ function createAiFix(o) {
     if (!enabled() || !failed.length) return out;
     const st = state(), today = day(), take = [];
     for (const r of failed) {
+      if (r.id === 'resources') continue;                          // quá tải CPU/RAM: giao AI sửa chỉ làm máy nặng thêm và chặn việc của chủ máy — chỉ báo, kèm danh sách chương trình ngốn nhiều nhất
       const s = st[r.id] || { day: today, n: 0, at: 0 };
       if (s.day !== today) { s.day = today; s.n = 0; }
       if (s.n >= MAX_PER_DAY) { out.notes.push(r.name + ': AI đã thử ' + MAX_PER_DAY + ' lần hôm nay mà chưa hết lỗi, cần anh xem'); continue; }

@@ -86,7 +86,9 @@ function openDb(file) {
     lastId: db.prepare("SELECT COALESCE(MAX(id), 0) AS n FROM jobs WHERE chat_id = ? AND COALESCE(project,'') = ?"),
     countQueued: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'queued' OR (status = 'waiting' AND COALESCE(run_after, 0) < " + HOLD_AT + ')'),
     countWaiting: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status = 'waiting' AND COALESCE(run_after, 0) < " + HOLD_AT),
-    countAhead: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued','running','waiting') AND id < ? AND COALESCE(lane,'main') = COALESCE((SELECT lane FROM jobs WHERE id = ?),'main')"),
+    // CHỈ đếm việc ĐỨNG TRƯỚC trong CÙNG cuộc trò chuyện (chat + dự án + làn): việc của chat/bot khác chạy song song, không chặn nhau nên không tính (trước đây đếm cả hệ thống → tin "còn 2 việc trước đó" gây tưởng mọi việc dồn về một chỗ)
+    countAhead: db.prepare("SELECT COUNT(*) AS n FROM jobs j2 JOIN jobs me ON me.id = ? WHERE j2.status IN ('queued','running','waiting') AND j2.id < me.id AND COALESCE(j2.lane,'main') = COALESCE(me.lane,'main') AND j2.chat_id = me.chat_id AND COALESCE(j2.project,'') = COALESCE(me.project,'')"),
+    blocker: db.prepare("SELECT j2.id AS id, j2.started_at AS startedAt FROM jobs j2 JOIN jobs me ON me.id = ? WHERE j2.status = 'running' AND j2.id < me.id AND COALESCE(j2.lane,'main') = COALESCE(me.lane,'main') AND j2.chat_id = me.chat_id AND COALESCE(j2.project,'') = COALESCE(me.project,'') ORDER BY j2.id LIMIT 1"),
     running: db.prepare("SELECT * FROM jobs WHERE status = 'running'"),
     interrupt: db.prepare("UPDATE jobs SET status = 'interrupted', finished_at = ? WHERE status = 'running'"),
     cancelQueued: db.prepare("UPDATE jobs SET status = 'cancelled', run_after = NULL, finished_at = ? WHERE chat_id = ? AND status IN ('queued','waiting')"),
@@ -168,7 +170,9 @@ function openDb(file) {
     lastJobId(scope) { const [c, p] = splitScope(scope); return q.lastId.get(c, p).n; },
     queuedCount() { return q.countQueued.get().n; },
     waitingCount() { return q.countWaiting.get().n; },
-    aheadOf(id) { return q.countAhead.get(id, id).n; },
+    aheadOf(id) { return q.countAhead.get(id).n; },
+    // việc đang chạy chặn việc này (cùng cuộc trò chuyện): { id, mins } hoặc null
+    blockerOf(id) { const r = q.blocker.get(id); return r ? { id: r.id, mins: Math.max(0, Math.round((now() - Number(r.startedAt || now())) / 60000)) } : null; },
     // Khởi động lại sau sự cố: việc đang chạy dở KHÔNG tự chạy lại (có thể đã gây tác dụng phụ).
     markInterrupted() {
       const list = q.running.all();

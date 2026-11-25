@@ -145,3 +145,26 @@ test('cảnh báo quá tải kèm danh sách chương trình ngốn RAM nhất (
   assert.match(src, /'-eo', 'rss=,pcpu=,comm='/);
   assert.doesNotMatch(src, /'-eo', '[^']*args/);
 });
+
+test('hàng đợi: "còn N việc trước" chỉ tính cùng cuộc trò chuyện; việc chat khác không chặn; báo rõ việc nào đang chặn', () => {
+  const db = openDb(':memory:');
+  const a = db.addJob('zl:1', 'việc dài');           // chat Zalo
+  const x = db.addJob('999', 'việc chat khác');      // chat khác (bot khác)
+  const b = db.addJob('zl:1', 'câu hỏi sau');
+  db.claimNext(); db.claimNext();                     // cả hai chat cùng chạy (perChat không bật: chỉ kiểm đếm)
+  assert.equal(db.aheadOf(b), 1, 'chỉ tính việc #a cùng chat, không tính việc của chat khác');
+  assert.equal(db.aheadOf(x), 0);
+  const blk = db.blockerOf(b); assert.equal(blk.id, a); assert.ok(blk.mins >= 0);
+  assert.equal(db.blockerOf(x), null);
+  const c = db.addJob('zl:1', 'khác dự án', null, null, 'main', 'duan-x');
+  assert.equal(db.aheadOf(c), 0, 'dự án khác = cuộc trò chuyện khác, chạy song song');
+});
+
+test('AI tự sửa: lỗi quá tải tài nguyên không giao AI (chỉ báo), lỗi khác vẫn giao', () => {
+  const { createAiFix } = require('../src/aifix');
+  const kv = {}, subs = [];
+  const fx = createAiFix({ db: { kvGet: (k) => kv[k] || null, kvSet: (k, v) => { kv[k] = v; } }, submit: (t) => { subs.push(t); return subs.length; } });
+  assert.equal(fx.repair([{ id: 'resources', name: 'Tài nguyên máy', detail: 'quá tải' }]).jobs.length, 0);
+  assert.equal(subs.length, 0);
+  assert.equal(fx.repair([{ id: 'engines', name: 'AI', detail: 'lỗi' }]).jobs.length, 1);
+});

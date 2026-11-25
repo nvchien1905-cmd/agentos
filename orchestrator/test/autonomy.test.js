@@ -138,3 +138,10 @@ test('hạn một việc: toàn quyền + 3600 (mặc định cũ) → 4 giờ; 
   assert.match(src, /TỐC ĐỘ: việc trên TRANG WEB/);
   assert.match(src, /Em vẫn làm tiếp, gõ \/dung nếu muốn dừng/);
 });
+
+test('cảnh báo quá tải kèm danh sách chương trình ngốn RAM nhất (không in tham số dòng lệnh)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'src', 'index.js'), 'utf8');
+  assert.match(src, /Đang ngốn nhiều nhất/);
+  assert.match(src, /'-eo', 'rss=,pcpu=,comm='/);
+  assert.doesNotMatch(src, /'-eo', '[^']*args/);
+});

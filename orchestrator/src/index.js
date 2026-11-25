@@ -348,6 +348,17 @@ async function main() {
   setInterval(() => { browserHost.reap(30 * 60000).catch(() => {}); }, 5 * 60000).unref();
   // Máy quá tải khi đang có việc chạy: báo MỘT lần (cách nhau ≥30 phút) để chủ máy biết vì sao chậm; việc dài (≥30 phút) báo đang làm tiếp mỗi 30 phút. KHÔNG dừng, KHÔNG hỏi — việc điều khiển màn hình cả tiếng là bình thường; gõ /dung nếu muốn dừng.
   const loadWarned = new Map(), longNoted = new Map();
+  // 5 chương trình ngốn RAM nhiều nhất (đã cắt gọn, KHÔNG in tham số dòng lệnh vì có thể chứa khóa/mật khẩu)
+  const topProcs = () => new Promise((res) => {
+    try {
+      require('child_process').execFile('ps', ['-eo', 'rss=,pcpu=,comm=', '--sort=-rss'], { timeout: 5000 }, (e, out) => {
+        if (e) return res('');
+        const rows = String(out).trim().split('\n').slice(0, 12).map((l) => l.trim().split(/\s+/)), agg = {};
+        for (const [rss, cpu, ...c] of rows) { const n = c.join(' ').slice(0, 24); agg[n] = agg[n] || { mb: 0, cpu: 0, n: 0 }; agg[n].mb += Number(rss) / 1024; agg[n].cpu += Number(cpu) || 0; agg[n].n++; }
+        res(Object.entries(agg).sort((x, y) => y[1].mb - x[1].mb).slice(0, 5).map(([n, v]) => '• ' + n + (v.n > 1 ? ' ×' + v.n : '') + ' — ' + Math.round(v.mb) + ' MB, CPU ' + Math.round(v.cpu) + '%').join('\n'));
+      });
+    } catch (e) { res(''); }
+  });   // 5 chương trình ngốn RAM nhất; KHÔNG in tham số dòng lệnh (có thể chứa khóa/mật khẩu)
   setInterval(() => {
     try {
       const os = require('os'), la = os.loadavg()[0], cores = os.cpus().length || 1, memFree = os.freemem() / os.totalmem();
@@ -355,7 +366,7 @@ async function main() {
       for (const j of db.runningJobs()) {
         if (!j.chat_id || String(j.chat_id).startsWith('sys:') || (j.lane || 'main') !== 'main') continue;
         const mins = Math.round((t - Number(j.started_at || t)) / 60000);
-        if (heavy && mins >= 2 && t - (loadWarned.get(j.chat_id) || 0) > 30 * 60000) { loadWarned.set(j.chat_id, t); notify(j.chat_id, '⚠️ Máy đang quá tải (tải ' + la.toFixed(1) + '/' + cores + ' nhân, RAM trống ' + Math.round(memFree * 100) + '%) nên việc #' + j.id + ' chạy chậm hơn bình thường. Em vẫn làm tiếp, gõ /dung nếu muốn dừng.').catch(() => {}); }
+        if (heavy && mins >= 2 && t - (loadWarned.get(j.chat_id) || 0) > 30 * 60000) { loadWarned.set(j.chat_id, t); topProcs().then((top) => notify(j.chat_id, '⚠️ Máy đang quá tải (tải ' + la.toFixed(1) + '/' + cores + ' nhân, RAM trống ' + Math.round(memFree * 100) + '%) nên việc #' + j.id + ' chạy chậm hơn bình thường. Em vẫn làm tiếp, gõ /dung nếu muốn dừng.' + (top ? '\nĐang ngốn nhiều nhất:\n' + top : '')).catch(() => {})); }
         if (mins >= 30 && t - (longNoted.get(j.id) || 0) > 30 * 60000) { longNoted.set(j.id, t); notify(j.chat_id, '⏳ Việc #' + j.id + ' đã chạy ' + mins + ' phút, em vẫn đang làm tiếp (gõ /dung nếu muốn dừng).').catch(() => {}); }
       }
       if (loadWarned.size > 50) loadWarned.clear(); if (longNoted.size > 100) longNoted.clear();

@@ -872,3 +872,6 @@ Chủ máy yêu cầu: bỏ trần RAM của nhóm bot (trước: tổng RAM tr�
 - AI được dặn dùng công cụ trình duyệt (đọc chữ trong trang) cho việc trên web; chụp màn hình (agentos-desk) chỉ cho ứng dụng không có bản web.
 - Máy quá tải khi đang có việc chạy: báo 1 lần/30 phút (không dừng, không hỏi). Việc chạy ≥30 phút: báo "đang làm tiếp" mỗi 30 phút.
 - Hạn một việc: mặc định 4 giờ; máy toàn quyền có sẵn 3600 (mặc định cũ) được nâng lên 4 giờ, số chủ máy tự đặt giữ nguyên. AI im lặng 15 phút vẫn bị coi là kẹt.
+
+## 2026.11.25.2 — Cảnh báo quá tải kèm chương trình ngốn RAM nhất
+Tin báo quá tải nay liệt kê 5 chương trình dùng nhiều RAM nhất (tên, số tiến trình, MB, CPU; không in dòng lệnh) để biết ngay thủ phạm.

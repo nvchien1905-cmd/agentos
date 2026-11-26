@@ -78,7 +78,7 @@ function createHandler(deps) {
   async function act(name, a) {
     const title = await activeTitle();
     if (PHONE_WIN_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") là màn hình/ứng dụng của ĐIỆN THOẠI. Bot không được lấy thông tin hay điều khiển điện thoại — chủ máy tự làm.');
-    if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") đang hiện CAPTCHA (xác minh "không phải robot"). Máy không giải được — hãy báo chủ máy tự làm bước này, rồi dừng.');
+    if (SENSITIVE_RE.test(title)) return err('DỪNG: cửa sổ đang chọn ("' + title.slice(0, 80) + '") đang hiện CAPTCHA (xác minh "không phải robot"). Máy không giải được — gọi công cụ ask_human (nếu có) nhờ chủ máy tự giải rồi bấm "Em xong rồi" và làm tiếp; không có công cụ đó thì báo chủ máy tự làm rồi dừng.');
     const zaloOn = ZALO_RE.test(title) && zalo.isEnabled(zaloFile);
     if (zaloOn) {
       // Trợ lý Zalo ĐANG BẬT (chủ máy cho phép): Enter / nút Gửi chỉ được khi có PHIẾU gửi (bot_command "/zalo duyet <nơi nhận> | <nội dung>"), phiếu dùng đúng 1 lần

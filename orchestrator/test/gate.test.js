@@ -500,7 +500,7 @@ test('cmd-mcp (tiến trình thật): nói đúng giao thức MCP, bot_command v
       { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'khac', arguments: {} } },
     ].map((m) => JSON.stringify(m)).join('\n') + '\n';
     const out = (await runScript('cmd-mcp.js', env, msgs)).trim().split('\n').map((l) => JSON.parse(l));
-    assert.equal(out.length, 7); assert.equal(out[0].result.serverInfo.name, 'agentos-cmd'); assert.deepEqual(out[1].result.tools.map((x) => x.name), ['bot_command', 'bot_help']);
+    assert.equal(out.length, 7); assert.equal(out[0].result.serverInfo.name, 'agentos-cmd'); assert.deepEqual(out[1].result.tools.map((x) => x.name), ['bot_command', 'ask_human', 'bot_help']);
     assert.match(out[1].result.tools[0].description, /KHÔNG bảo chủ máy tự gõ lệnh/);
     assert.equal(out[2].result.content[0].text, 'kết quả của /ton nồi chiên'); assert.ok(!out[2].result.isError);
     assert.match(out[3].result.content[0].text, /Đã gửi 1 tệp/); assert.equal(out[4].result.content[0].text, 'DANH SÁCH LỆNH');
@@ -520,5 +520,25 @@ test('bot_command: việc của chủ máy ở chế độ toàn quyền (noAsk)
     assert.equal((await call('/capnhat co')).ok, true); assert.equal((await call('/tatmay co')).ok, true);
     assert.deepEqual(ran, ['/capnhat co', '/tatmay co']); assert.equal(G.asked.length, 0, 'không hỏi gì');
     assert.ok(G.db.jobAudit(9).some((a) => a.tool === 'bot_command' && a.source === 'auto'));
+  } finally { await G.gate.close(); }
+});
+
+test('ask_human: gặp CAPTCHA/OTP AI dừng, nhắn chủ máy kèm nút "Em xong rồi"; bấm xong → làm tiếp cùng việc; bỏ qua → dừng; việc người thường và thiếu nội dung bị chặn', async () => {
+  const ran = []; const G = await gateSetup({}, { cmd: cmdOf(ran) });
+  try {
+    const call = (reason, jobId) => fetch('http://127.0.0.1:' + G.port + '/human', { method: 'POST', headers: { 'x-gate-token': G.gate.token, 'content-type': 'application/json' }, body: JSON.stringify({ jobId: jobId || 9, reason }) }).then((r) => r.json());
+    let p = call('Giải CAPTCHA ở trang đăng nhập KiotViet'); await tick();
+    assert.equal(G.asked.length, 1); assert.match(G.asked[0].text, /Việc #9 cần anh giúp một bước/); assert.match(G.asked[0].text, /CAPTCHA/); assert.match(G.asked[0].text, /\/manhinh/);
+    const row = G.asked[0].buttons[0]; assert.deepEqual(row.map((b) => b.text), ['✅ Em xong rồi, làm tiếp', '❌ Bỏ qua, dừng việc này']);
+    await G.approvals.answer(row[0].data, 1); let r = await p;
+    assert.equal(r.ok, true); assert.equal(r.done, true); assert.match(r.text, /ĐÃ LÀM XONG/);
+    assert.match(G.edited[0][2], /Anh đã làm xong, em làm tiếp/);
+    p = call('Nhập mã OTP gửi về điện thoại'); await tick();
+    await G.approvals.answer(G.asked[1].buttons[0][1].data, 1); r = await p;
+    assert.equal(r.ok, true); assert.equal(r.done, false); assert.match(r.text, /bỏ qua/);
+    assert.equal((await call('')).ok, false);
+    G.gate.begin({ id: 11, chat_id: '2' }, { policy: {} });
+    r = await call('x', 11); assert.equal(r.ok, false); assert.match(r.error, /chủ máy/);
+    assert.equal((await call('x', 404)).ok, false);
   } finally { await G.gate.close(); }
 });

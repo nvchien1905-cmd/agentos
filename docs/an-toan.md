@@ -881,3 +881,7 @@ Tin báo quá tải nay liệt kê 5 chương trình dùng nhiều RAM nhất (t
 - Số chat làm việc cùng lúc mặc định 3 → 5 (PARALLEL_CHATS).
 - Máy quá tải không còn tự giao "AI tự sửa" (chỉ làm máy nặng thêm và chen vào chat của chủ máy); chỉ báo kèm danh sách chương trình ngốn nhiều nhất.
 - Trình duyệt: mỗi việc AI vẫn dùng đúng một tab riêng trong Chrome dùng chung và tự đóng khi xong; mỗi ID chat có Chrome riêng.
+
+## 2026.11.27.1 — Gặp CAPTCHA/OTP: AI dừng, nhờ chủ máy làm rồi tiếp tục (KHÔNG vượt)
+- Công cụ mới `ask_human` (agentos_cmd, chỉ việc của chủ máy): AI KHÔNG giải/vượt CAPTCHA, OTP, xác minh robot. Nó dừng tại chỗ, nhắn chủ máy (Telegram/Zalo) nêu rõ cần làm gì kèm nút "Em xong rồi, làm tiếp" / "Bỏ qua, dừng việc này"; chờ tối đa 12 phút (dưới hạn im lặng 15 phút). Bấm xong → AI kiểm tra lại trang và làm tiếp TRONG CÙNG việc; hết giờ/bỏ qua → dừng và báo.
+- AI được dặn dùng lại hồ sơ trình duyệt đã đăng nhập, không mở nhiều phiên đăng nhập liên tiếp (giảm bị hỏi CAPTCHA).

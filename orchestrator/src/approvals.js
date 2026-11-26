@@ -16,7 +16,7 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat,
   const list = () => [...pending.entries()].map(([id, p]) => ({ id, jobId: p.job.id, cls: p.d.cls, label: p.d.label || LABEL[p.d.cls] || 'Dùng công cụ', summary: String(p.d.summary || '').slice(0, 600), warn: p.d.warn || '', canRemember: !!p.d.canRemember, since: p.since }));
   const persist = () => { if (!snapshotFile) return; try { const f = require('fs'); const t = snapshotFile + '.tmp'; f.writeFileSync(t, JSON.stringify(list())); f.renameSync(t, snapshotFile); } catch (e) { /* bỏ qua */ } };
 
-  const header = (job, d) => '🔐 Việc #' + job.id + (job.lane === 'hook' ? ' (từ webhook)' : '') + ' xin quyền: ' + (d.label || LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
+  const header = (job, d) => d.human ? '🙋 Việc #' + job.id + ' cần anh giúp một bước:\n' + d.summary + (d.warn ? '\n\n' + d.warn : '') : '🔐 Việc #' + job.id + (job.lane === 'hook' ? ' (từ webhook)' : '') + ' xin quyền: ' + (d.label || LABEL[d.cls] || 'Dùng công cụ') + '\n' + d.summary +
     (d.warn ? '\n\n⚠️ ' + d.warn : '');
 
   async function finish(id, allowed, remember, source, by, label) {
@@ -37,10 +37,10 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat,
       return new Promise((resolve) => {
         const p = { job, tool, d, resolve, msgId: null, timer: null, target: askChat ? askChat(job) : job.chat_id, since: now() };
         pending.set(id, p); persist();
-        p.timer = setTimeout(() => finish(id, false, false, 'timeout', null, '⏱ Hết thời gian chờ, đã tự từ chối.'), timeoutMs);
-        const row = [{ text: '✅ Cho phép', data: 'ap:' + id + ':y' }];
+        p.timer = setTimeout(() => finish(id, false, false, 'timeout', null, '⏱ Hết thời gian chờ, đã tự từ chối.'), d.human && d.human.timeoutMs ? d.human.timeoutMs : timeoutMs);
+        const row = [{ text: d.human ? d.human.yes : '✅ Cho phép', data: 'ap:' + id + ':y' }];
         if (d.canRemember) row.push({ text: '✅ Cho phép cả việc này', data: 'ap:' + id + ':r' });
-        row.push({ text: '❌ Từ chối', data: 'ap:' + id + ':n' });
+        row.push({ text: d.human ? d.human.no : '❌ Từ chối', data: 'ap:' + id + ':n' });
         Promise.resolve().then(() => ask(p.target, header(job, d) + (String(p.target) !== String(job.chat_id) ? '\n(việc của người dùng ' + job.chat_id + ')' : ''), [row])).then((mid) => { p.msgId = mid; }).catch((e) => {
           log('không gửi được câu hỏi duyệt: ' + e.message);
           finish(id, false, false, 'error', null, '⚠️ Không gửi được câu hỏi, đã tự từ chối.');
@@ -55,10 +55,10 @@ function createApprovals({ db, ask, edit, isAdmin, timeoutMs, log, now, askChat,
       if (!p) return { ok: false, text: 'Yêu cầu này đã hết hạn hoặc đã được trả lời.' };
       const risky = p.d.cls === 'exec' || p.d.cls === 'write' || p.d.cls === 'other';
       if (risky && !isAdmin(String(userId))) return { ok: false, text: 'Chỉ quản trị viên được duyệt việc này.' };
-      if (m[2] === 'n') { await finish(m[1], false, false, 'user', userId, '❌ Đã từ chối.'); return { ok: true, text: 'Đã từ chối.' }; }
+      if (m[2] === 'n') { await finish(m[1], false, false, 'user', userId, p.d.human ? '❌ Anh bỏ qua bước này.' : '❌ Đã từ chối.'); return { ok: true, text: p.d.human ? 'Đã bỏ qua.' : 'Đã từ chối.' }; }
       const remember = m[2] === 'r' && p.d.canRemember;
-      await finish(m[1], true, remember, 'user', userId, remember ? '✅ Đã cho phép (cả việc này).' : '✅ Đã cho phép.');
-      return { ok: true, text: 'Đã cho phép.' };
+      await finish(m[1], true, remember, 'user', userId, p.d.human ? '✅ Anh đã làm xong, em làm tiếp.' : remember ? '✅ Đã cho phép (cả việc này).' : '✅ Đã cho phép.');
+      return { ok: true, text: p.d.human ? 'Đã báo em làm tiếp.' : 'Đã cho phép.' };
     },
     // Việc kết thúc/bị hủy: từ chối mọi câu hỏi còn treo của việc đó.
     cancelJob(jobId) {

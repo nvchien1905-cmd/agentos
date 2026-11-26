@@ -8,6 +8,7 @@ const { TOOLS_HELP } = require('./cmdTool');
 
 const TOOLS = [
   { name: 'bot_command', description: TOOLS_HELP, inputSchema: { type: 'object', properties: { command: { type: 'string', description: 'Lệnh đầy đủ bắt đầu bằng "/", ví dụ "/doanhso hôm nay"' } }, required: ['command'] } },
+  { name: 'ask_human', description: 'Gặp CAPTCHA, mã OTP, xác minh "không phải robot", đăng nhập cần người: KHÔNG tìm cách vượt. Gọi công cụ này với `reason` nói rõ chủ máy cần làm gì (trang nào, bước nào); công cụ chờ tới 12 phút để chủ máy tự làm rồi bấm "Em xong rồi". Trả về done=true thì kiểm tra lại trang và làm tiếp trong cùng việc; done=false thì dừng việc và báo lại.', inputSchema: { type: 'object', properties: { reason: { type: 'string', description: 'Việc chủ máy cần làm, ví dụ "Giải CAPTCHA ở trang đăng nhập KiotViet (tab đang mở) rồi báo em"' } }, required: ['reason'] } },
   { name: 'bot_help', description: 'Xem danh sách mọi lệnh của bot và cách dùng (để biết cú pháp trước khi gọi bot_command).', inputSchema: { type: 'object', properties: {} } },
 ];
 
@@ -16,8 +17,17 @@ function createHandler(deps) {
   const doFetch = deps.fetch || ((...a) => fetch(...a));
   const text = (t, isError) => ({ content: [{ type: 'text', text: String(t) }], isError: !!isError });
   return async function call(name, args) {
-    if (name !== 'bot_command' && name !== 'bot_help') return text('Công cụ lạ: ' + name, true);
+    if (name !== 'bot_command' && name !== 'bot_help' && name !== 'ask_human') return text('Công cụ lạ: ' + name, true);
     if (!deps.url || !deps.token || !deps.jobId) return text('Cổng lệnh chưa được cấu hình.', true);
+    if (name === 'ask_human') {
+      try {
+        const r = await doFetch(deps.url + '/human', { method: 'POST', headers: { 'content-type': 'application/json', 'x-gate-token': deps.token }, body: JSON.stringify({ jobId: deps.jobId, reason: String((args && args.reason) || '') }) });
+        if (!r.ok) return text('Cổng trả lỗi ' + r.status + '.', true);
+        const j = await r.json();
+        if (!j || !j.ok) return text((j && j.error) || 'Không nhờ được chủ máy.', true);
+        return text(j.text);
+      } catch (e) { return text('Không liên lạc được cổng: ' + e.message, true); }
+    }
     const command = name === 'bot_help' ? '/help' : String((args && args.command) || '');
     try {
       const r = await doFetch(deps.url + '/cmd', { method: 'POST', headers: { 'content-type': 'application/json', 'x-gate-token': deps.token }, body: JSON.stringify({ jobId: deps.jobId, command, help: name === 'bot_help' }) });

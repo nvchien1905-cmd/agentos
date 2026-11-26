@@ -7,6 +7,7 @@ const { classify: classifyCmd } = require('./cmdTool');
 // Cổng duyệt: máy chủ HTTP chỉ nghe ở 127.0.0.1. Claude Code hỏi cổng (qua MCP gate-mcp.js và
 // --permission-prompt-tool) trước mỗi lần dùng công cụ chưa được cho phép sẵn.
 //   POST /gate  header x-gate-token  body {jobId, tool, input}  ->  {behavior:'allow',updatedInput} | {behavior:'deny',message}
+const HUMAN_WAIT_MS = 12 * 60 * 1000;
 function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow, kiotviet: kv, perms, sub, journal, cmd, noAsk }) {
   log = log || (() => {});
   const token = crypto.randomBytes(24).toString('hex');
@@ -96,6 +97,21 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
     catch (e) { log('bot_command lỗi: ' + e.message); return { ok: false, error: 'Lệnh báo lỗi: ' + String(e && e.message || e).slice(0, 300) }; }
   }
 
+  // NHỜ NGƯỜI LÀM MỘT BƯỚC (CAPTCHA, mã OTP, xác minh, đăng nhập...): AI KHÔNG vượt các bước này; nó dừng tại chỗ, nhắn chủ máy kèm nút "Em xong rồi", CHỜ rồi làm tiếp trong CÙNG một việc (không phải giao lại từ đầu).
+  // Chờ tối đa HUMAN_WAIT_MS (< hạn "im lặng" 15 phút của việc để không bị coi là kẹt). Hết giờ/bỏ qua → AI nhận kết quả và dừng, báo chủ máy.
+  async function humanCall(body) {
+    const entry = jobs.get(Number(body.jobId));
+    if (!entry) return { ok: false, error: 'Việc không còn chạy.' };
+    if (!cmd || !cmd.isAdmin || !cmd.isAdmin(String(entry.job.chat_id))) return { ok: false, error: 'Chỉ việc của chủ máy mới nhờ được.' };
+    const reason = String(body.reason || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    if (!reason) return { ok: false, error: 'Thiếu nội dung: nói rõ anh cần làm gì.' };
+    const d = { action: 'ask', cls: 'other', label: 'Cần anh làm một bước', summary: reason + '\n\nGõ /manhinh để xem màn hình máy. Làm xong bấm nút bên dưới, em sẽ làm tiếp ngay.', warn: '', taint: false, canRemember: false,
+      human: { yes: '✅ Em xong rồi, làm tiếp', no: '❌ Bỏ qua, dừng việc này', timeoutMs: HUMAN_WAIT_MS } };
+    const r = await approvals.request(entry.job, 'ask_human', d);
+    if (r.allowed) return { ok: true, done: true, text: 'Chủ máy báo ĐÃ LÀM XONG bước đó. Hãy chụp/đọc lại trang để kiểm tra rồi làm tiếp.' };
+    return { ok: true, done: false, text: r.source === 'timeout' ? 'Chủ máy chưa trả lời kịp (' + Math.round(HUMAN_WAIT_MS / 60000) + ' phút). Hãy DỪNG việc này và báo rõ bước cần làm; đừng thử vượt.' : 'Chủ máy chọn bỏ qua bước này. Hãy dừng việc và báo lại ngắn gọn.' };
+  }
+
   // Trợ lý phụ (subagents.js): chỉ AI chính của một việc đang chạy mới gọi được
   async function subCall(body) {
     if (!sub || !sub.enabled()) return { ok: false, error: 'Tính năng trợ lý phụ đang tắt.' };
@@ -111,7 +127,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
 
   function handler(req, res) {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
-    if (req.method !== 'POST' || (req.url !== '/gate' && req.url !== '/kiotviet' && req.url !== '/sub' && req.url !== '/cmd')) return send(404, { error: 'not found' });
+    if (req.method !== 'POST' || (req.url !== '/gate' && req.url !== '/kiotviet' && req.url !== '/sub' && req.url !== '/cmd' && req.url !== '/human')) return send(404, { error: 'not found' });
     const given = Buffer.from(String(req.headers['x-gate-token'] || ''));
     const want = Buffer.from(token);
     if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return send(401, { error: 'unauthorized' });
@@ -123,6 +139,7 @@ function createGate({ db, approvals, workdir, log, extraDirs, dirsFor, autoAllow
       if (req.url === '/kiotviet') return send(200, await kiotvietCall(body));
       if (req.url === '/sub') return send(200, await subCall(body));
       if (req.url === '/cmd') return send(200, await cmdCall(body));
+      if (req.url === '/human') return send(200, await humanCall(body));
       try { send(200, await evaluate(body)); } catch (e) { log('cổng lỗi: ' + e.message); send(200, { behavior: 'deny', message: 'Lỗi nội bộ của cổng duyệt, từ chối.' }); }
     });
   }
